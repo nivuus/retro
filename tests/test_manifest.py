@@ -17,7 +17,7 @@ schema = 1
 name = "RetroArch"
 version = "1.19.1"
 url = "https://exemple.invalid/RetroArch.7z"
-sha256 = "aa" 
+sha256 = "aa"
 archive = "7z"
 install_dir = "RetroArch"
 profile = "retroarch"
@@ -104,7 +104,11 @@ def test_schema_inconnu_refuse(tmp_path):
 def test_champ_manquant_nomme_le_champ_et_l_emulateur(tmp_path):
     """Un manifeste utilisateur est écrit à la main : le message doit dire
     quoi corriger, pas lever un KeyError nu."""
-    mauvais = NOYAU.replace('sha256 = "aa" \n', "")
+    # Retrait par motif structurel : dépendre d'un espace de fin de
+    # ligne ferait échouer ce test au premier reformatage, avec un
+    # message qui ne dirait rien de la vraie cause.
+    mauvais = "\n".join(l for l in NOYAU.splitlines()
+                        if not l.startswith("sha256"))
     with pytest.raises(manifest.ManifestError) as exc:
         manifest.load_manifest(ecrire(tmp_path, "c.toml", mauvais))
     assert "sha256" in str(exc.value) and "retroarch" in str(exc.value)
@@ -125,8 +129,23 @@ def test_toml_malforme_ne_leve_pas_de_trace(tmp_path):
 def test_install_dir_ne_peut_pas_s_echapper(tmp_path):
     """install_dir est concaténé à la racine d'émulation. Un « .. » y écrirait
     hors du volume prévu, et un manifeste utilisateur n'est pas de confiance."""
-    for mauvais_dir in ("../ailleurs", "/absolu", "C:\\\\ailleurs", "a/../..") :
+    mauvais_dirs = list(("../ailleurs", "/absolu", "a/../..", "", ".", ".."))
+    # Les formes que la garde énumérative laissait passer : un backslash
+    # seul en tête, sans lettre de lecteur, et un chemin UNC. Le premier
+    # écrase la racine entière — mesuré le 2026-08-26.
+    mauvais_dirs += [chr(92) + "ailleurs", chr(92) * 2 + "serveur" + chr(92) + "part"]
+    mauvais_dirs += ["C:" + chr(92) + "ailleurs"]
+    for mauvais_dir in mauvais_dirs:
         mauvais = NOYAU.replace('install_dir = "RetroArch"',
                                 f'install_dir = "{mauvais_dir}"')
         with pytest.raises(manifest.ManifestError):
             manifest.load_manifest(ecrire(tmp_path, "c.toml", mauvais))
+
+
+def test_install_dir_relatif_simple_accepte(tmp_path):
+    """Le pendant : une garde qui refuserait tout ne protégerait rien."""
+    for bon in ("RetroArch", "a/b", "Dolphin"):
+        contenu = NOYAU.replace('install_dir = "RetroArch"',
+                                f'install_dir = "{bon}"')
+        m = manifest.load_manifest(ecrire(tmp_path, "c.toml", contenu))
+        assert m["retroarch"].install_dir == bon

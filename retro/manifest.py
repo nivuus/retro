@@ -16,6 +16,9 @@ import tomllib
 
 SCHEMA = 1
 ARCHIVES = ("7z", "zip")
+# Racine témoin pour la validation d'install_dir. Sa valeur n'a aucune
+# importance : elle ne sert qu'à éprouver la jointure.
+_TEMOIN = pathlib.PureWindowsPath("D:/__racine__")
 _CHAMPS = ("name", "version", "url", "sha256", "archive", "install_dir", "profile")
 
 
@@ -57,16 +60,26 @@ def _valider_install_dir(cle: str, valeur: str) -> None:
     """install_dir est concaténé à la racine d'émulation.
 
     Un manifeste utilisateur n'est pas de confiance : il est écrit à la main et
-    peut être copié depuis n'importe où. Un « .. » ou un chemin absolu y ferait
-    écrire hors du volume prévu — sur C:, qui est effacée à chaque
-    reconstruction, ou pire.
+    peut être copié depuis n'importe où. Un chemin qui s'échappe y ferait écrire
+    hors du volume prévu — sur la partition système, effacée à chaque
+    reconstruction de la machine, ou pire.
+
+    La vérification est POSITIVE : la jointure doit rester sous la racine. La
+    liste des formes interdites, elle, ne se termine jamais. Mesuré le
+    2026-08-26 : un backslash seul en tête, sans lettre de lecteur, a
+    is_absolute() faux, drive vide et aucun « .. » dans parts — et la jointure
+    écrase pourtant la racine entière.
+
+    Le refus de « .. » reste nécessaire en plus : PureWindowsPath ne normalise
+    pas, donc 'D:/racine/..' a bien 'D:/racine' pour parent.
     """
     p = pathlib.PureWindowsPath(valeur)
-    if p.is_absolute() or p.drive or ".." in p.parts or valeur.startswith("/"):
-        raise ManifestError(
-            f"[emulator.{cle}] install_dir = {valeur!r} : un chemin relatif "
-            "simple est attendu, sans '..' ni racine"
-        )
+    if valeur and ".." not in p.parts and _TEMOIN in (_TEMOIN / valeur).parents:
+        return
+    raise ManifestError(
+        f"[emulator.{cle}] install_dir = {valeur!r} : un chemin relatif "
+        "simple est attendu, qui reste sous la racine d'émulation"
+    )
 
 
 def load_manifest(core: pathlib.Path,
