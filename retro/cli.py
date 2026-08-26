@@ -51,7 +51,7 @@ def _cmd_sync(args) -> int:
     # en rapportant « + <titre> » comme si tout allait bien. Mesuré : trois
     # passages, trois entrées identiques. On refuse avant d'écrire.
     hors_racine = [rom.emulator_exe for rom in voulu
-                   if not entry.is_under_root(rom.emulator_exe, args.emulation_root)]
+                   if not entry.is_under_root(entry.quote(rom.emulator_exe), args.emulation_root)]
     if hors_racine:
         print(
             f"--emulation-root {args.emulation_root} ne contient pas les "

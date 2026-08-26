@@ -95,6 +95,30 @@ def test_emulation_root_juste_ne_bloque_pas(tmp_path, capsys):
                      "--inventory", str(inventaire)]) == 0
 
 
+def test_emulation_root_avec_espace_est_acceptee(tmp_path, capsys):
+    """entry.is_under_root attend le champ exe au format Steam (guillemeté).
+
+    _cmd_sync doit donc guillemeter rom.emulator_exe avant de le passer à la
+    garde, exactement comme build_shortcut le fait pour écrire — sinon une
+    racine d'émulation contenant un espace coupe le chemin au premier espace
+    et la garde refuse à tort une configuration pourtant valide.
+    """
+    (tmp_path / "userdata" / "123" / "config").mkdir(parents=True)
+    inventaire = tmp_path / "inv.json"
+    inventaire.write_text(json.dumps([{
+        "title": "Chrono Trigger",
+        "rom_path": "G:\\ROMs\\snes\\ct.sfc",
+        "system_name": "Super Nintendo",
+        "emulator_exe": "D:\\Mes Emulateurs\\RetroArch\\retroarch.exe",
+        "launch_template": '-L "cores\\snes9x_libretro.dll" -f "{rom}"',
+        "start_dir": "D:\\Mes Emulateurs\\RetroArch",
+    }]))
+    code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--emulation-root", "D:\\Mes Emulateurs",
+                     "--inventory", str(inventaire)])
+    assert code == 0, capsys.readouterr().err
+
+
 def test_invocation_en_module_ne_reussit_pas_sans_rien_faire():
     """`python -m retro.cli` est ce qu'un contributeur essaie avant d'installer
     le paquet. Sans bloc __main__, il rendait 0 sans rien faire ni rien dire."""
