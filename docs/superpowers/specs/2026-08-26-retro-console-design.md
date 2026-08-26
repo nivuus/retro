@@ -183,11 +183,20 @@ ROM :
 
 | Champ | Valeur |
 |---|---|
-| `AppName` | Titre canonique, issu des métadonnées |
-| `Exe` | Chemin absolu de l'émulateur, sous `D:\Emulation\` |
+| `appname` | Titre canonique, issu des métadonnées |
+| `exe` | Chemin absolu de l'émulateur, sous `D:\Emulation\` |
 | `LaunchOptions` | Gabarit `launch` du profil, `{rom}` substitué |
 | `StartDir` | Dossier d'installation de l'émulateur |
+| `icon` | Chemin absolu vers l'icône déposée dans `grid\` |
 | `tags` | `["Rétro", "<système>", …tags dérivés]` |
+
+**La casse des noms de champs est celle que Steam écrit, et elle n'est pas
+uniforme** — mesurée sur une installation réelle le 2026-08-26 : `appid`,
+`appname`, `exe`, `icon`, `sortas`, `tags` en minuscules ; `StartDir`,
+`LaunchOptions`, `IsHidden`, `AllowDesktopConfig`, `AllowOverlay`, `OpenVR`,
+`Devkit`, `DevkitGameID`, `DevkitOverrideAppID`, `LastPlayTime`,
+`ShortcutPath`, `FlatpakAppID` en CamelCase. Un champ dans la mauvaise casse
+est ignoré par Steam sans le moindre message.
 
 `shortcuts.vdf` ne comporte **aucun champ de description, de date de sortie,
 d'éditeur ou de genre**. Steam ne détient ces métadonnées que pour les appIDs de
@@ -219,11 +228,18 @@ entrée non nôtre                      → ne jamais toucher
 
 ### Dérivation de l'identifiant
 
-L'identifiant dérivé du couple `(Exe, AppName)` par CRC32 nomme aussi les
-fichiers d'artwork. La formule est connue mais ne sera **pas codée de mémoire** :
-le premier test du module la verrouille contre une fixture, c'est-à-dire un
-`shortcuts.vdf` réellement produit par Steam. Une dérivation fausse ne lève
-aucune erreur — elle produit des vignettes muettes que rien ne signale.
+L'identifiant dérivé du couple `(exe, appname)` par CRC32 nomme aussi les
+fichiers d'artwork.
+
+**Il n'a pas à reproduire celui de Steam.** Mesure du 2026-08-26 : sur dix
+raccourcis réels, un seul se recalcule — les neuf autres ont vu leurs chemins
+changer depuis leur création, et Steam ne recalcule jamais l'appid d'un
+raccourci existant. Il lit celui du fichier et cherche l'artwork sous ce
+nombre, ce qui est vérifié sur les huit raccourcis qui en ont.
+
+L'exigence réelle est donc le **déterminisme et la stabilité**, pas la
+fidélité. On conserve CRC32 parce que c'est la convention de l'écosystème,
+donc compatible avec les bibliothèques déjà constituées par d'autres outils.
 
 Conséquence de conception : `Exe` et `AppName` déterminent l'identifiant, donc
 renommer un jeu change son identifiant et orpheline son artwork. Le sync
@@ -253,13 +269,22 @@ explicitement, faute de quoi ils se manifestent par une exception opaque :
 
 ### Cinq assets, pas un
 
-| Asset | Fichier | Où il s'affiche |
+| Asset | Préfixe de fichier | Où il s'affiche |
 |---|---|---|
-| Grid portrait 600×900 | `<appid>p.jpg` | Vignette de bibliothèque |
-| Grid paysage 920×430 | `<appid>.jpg` | Vue « récents », étagères |
-| Hero 1920×620 | `<appid>_hero.jpg` | Bannière de la fiche |
-| Logo transparent | `<appid>_logo.png` | Superposé au hero |
-| Icône | champ `icon` du VDF | Listes compactes |
+| Grid portrait 600×900 | `<appid>p` | Vignette de bibliothèque |
+| Grid paysage 920×430 | `<appid>` | Vue « récents », étagères |
+| Hero 1920×620 | `<appid>_hero` | Bannière de la fiche |
+| Logo transparent | `<appid>_logo` | Superposé au hero |
+| Icône | `<appid>_icon` | Listes compactes |
+
+**Les extensions ne sont pas fixes** : `.png`, `.jpg` et `.ico` coexistent pour
+un même rôle — mesuré sur 18 jeux d'une installation réelle. Toute recherche
+d'existence et toute purge se font donc par préfixe, jamais sur une extension
+supposée. Coder `.jpg` en dur ferait retélécharger indéfiniment, à chaque
+synchronisation, un portrait déjà présent en `.png`.
+
+Les cinq vivent dans `grid\`, l'icône comprise. Le champ `icon` du raccourci
+porte en plus le chemin absolu vers ce fichier.
 
 Écrits dans `D:\Steam\userdata\<compte>\config\grid\`. Une bibliothèque munie
 des cinq est indiscernable d'une bibliothèque de vrais jeux Steam ; réduite au
