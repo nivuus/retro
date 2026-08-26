@@ -1910,10 +1910,40 @@ class ArtworkMuet(artwork.ArtworkClient):
         super().__init__(api_key=None)
 
 
+class ArtworkTemoin(artwork.ArtworkClient):
+    """Observe l'état du monde au moment où l'artwork est demandé.
+
+    ArtworkMuet ne peut rien attester : il rend [] sans regarder ni le disque ni
+    l'entrée. Mesuré — avec lui seul, inverser l'ordre artwork/écriture ou
+    retirer le filtre de propriété laisse toute la suite verte.
+    """
+
+    def __init__(self, shortcuts_path):
+        super().__init__(api_key=None)
+        self.shortcuts_path = shortcuts_path
+        self.appels = []
+
+    def fetch_for(self, title, legacy_appid, grid_dir):
+        self.appels.append((title, self.shortcuts_path.exists()))
+        return []
+
+
 def faire_compte(tmp_path):
     config = tmp_path / "userdata" / "123" / "config"
     config.mkdir(parents=True)
     return accounts.SteamAccount(account_id="123", config_dir=config)
+
+
+def etranger(nom):
+    """Un jeu non-Steam que le propriétaire a ajouté lui-même."""
+    return {
+        "appid": 42, "appname": nom, "exe": '"C:\\Jeux\\perso.exe"',
+        "StartDir": '"C:\\Jeux"', "icon": "", "ShortcutPath": "",
+        "LaunchOptions": "", "IsHidden": 0, "AllowDesktopConfig": 1,
+        "AllowOverlay": 1, "OpenVR": 0, "Devkit": 0, "DevkitGameID": "",
+        "DevkitOverrideAppID": 0, "FlatpakAppID": "", "sortas": "",
+        "LastPlayTime": 0, "tags": {"0": "Favoris"},
+    }
 
 
 def rom(titre):
@@ -1941,6 +1971,28 @@ def test_deuxieme_passage_ne_change_rien(tmp_path):
     r2 = sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkMuet())
     assert r2.created == [] and r2.removed == []
     assert compte.shortcuts_path.read_bytes() == avant
+
+
+def test_l_artwork_est_recupere_avant_l_ecriture(tmp_path):
+    """Un jeu sans vignette vaut mieux qu'une vignette sans jeu : une panne
+    d'artwork ne doit pas empêcher les raccourcis d'être écrits. Le témoin
+    observe que shortcuts.vdf n'existe pas encore quand l'artwork est demandé."""
+    compte = faire_compte(tmp_path)
+    client = ArtworkTemoin(compte.shortcuts_path)
+    sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", client)
+    assert client.appels, "l'artwork n'a jamais été demandé"
+    assert all(not existait for _, existait in client.appels), (
+        "shortcuts.vdf existait déjà : l'écriture a précédé l'artwork"
+    )
+
+
+def test_l_artwork_n_est_demande_que_pour_nos_entrees(tmp_path):
+    """Chercher de l'artwork pour les jeux du propriétaire écraserait le sien."""
+    compte = faire_compte(tmp_path)
+    compte.shortcuts_path.write_bytes(vdf_io.dumps_shortcuts([etranger("Mon jeu à moi")]))
+    client = ArtworkTemoin(compte.shortcuts_path)
+    sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", client)
+    assert [t for t, _ in client.appels] == ["Chrono Trigger"]
 
 
 def test_le_rapport_est_lisible(tmp_path):
@@ -1980,6 +2032,17 @@ def test_sync_sans_compte_steam_echoue_proprement(tmp_path, capsys):
                      "--inventory", str(inventaire)])
     assert code != 0
     assert "connect" in capsys.readouterr().err.lower()
+
+
+def test_inventaire_malforme_ne_leve_pas_de_trace(tmp_path, capsys):
+    """Une console sans clavier ni écran ne doit jamais rendre de trace Python."""
+    (tmp_path / "userdata" / "123" / "config").mkdir(parents=True)
+    mauvais = tmp_path / "inv.json"
+    mauvais.write_text("{ceci n'est pas du JSON")
+    code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--inventory", str(mauvais)])
+    assert code != 0
+    assert "Traceback" not in capsys.readouterr().err
 
 
 def test_sync_complet(tmp_path, capsys):
