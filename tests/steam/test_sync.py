@@ -236,3 +236,14 @@ def test_la_racine_de_grille_terminee_par_un_antislash_est_normalisee(tmp_path):
     legacy = appid.to_unsigned(relu[0]["appid"])
     assert relu[0]["icon"] == (
         f"D:\\Steam\\userdata\\123\\config\\grid\\{legacy}_icon.png")
+
+
+def test_un_seul_jeu_deja_a_jour_s_accorde_au_singulier(tmp_path):
+    """« 1 jeux déjà à jour » : même famille que le « 1 jeux » du rapport de
+    `retro status`."""
+    compte = faire_compte(tmp_path)
+    sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkMuet())
+    r = sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkMuet())
+    texte = sync.format_report([r])
+    assert "1 jeu déjà à jour" in texte
+    assert "1 jeux" not in texte

@@ -79,7 +79,11 @@ def format_report(reports: list[SyncReport]) -> str:
     for r in reports:
         lignes.append(f"Compte {r.account_id}")
         if not r.created and not r.removed:
-            lignes.append(f"  aucun changement ({len(r.kept)} jeux déjà à jour)")
+            n = len(r.kept)
+            lignes.append(
+                f"  aucun changement ({n} {'jeu' if n <= 1 else 'jeux'} "
+                "déjà à jour)"
+            )
         for titre in r.created:
             lignes.append(f"  + {titre}")
         for titre in r.removed:
