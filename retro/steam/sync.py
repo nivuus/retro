@@ -25,6 +25,7 @@ def sync_account(
     wanted: list[entry.RomEntry],
     emulation_root: str,
     artwork_client,
+    grid_dir_windows: str | None = None,
 ) -> SyncReport:
     existant = vdf_io.load_shortcuts(account.shortcuts_path)
     resultat = reconcile.reconcile(existant, wanted, emulation_root)
@@ -41,6 +42,16 @@ def sync_account(
         # Compté APRÈS le passage : ce qui manque encore est ce qu'une panne a
         # laissé derrière elle. On le signale, on ne bloque pas.
         manquants += len(artwork.missing_assets(account.grid_dir, legacy))
+        # Le champ icon est renseigné dans ce même passage, pas avant : il lui
+        # faut le résultat du fetch qui précède. Il ne participe jamais au
+        # calcul de l'identifiant (appid), qui reste dérivé de (exe, appname)
+        # seul — sinon tout l'artwork déjà déposé deviendrait orphelin d'un
+        # coup, sur toute la bibliothèque, dès qu'une icône serait renseignée.
+        if grid_dir_windows is not None:
+            prefixe = appid_mod.grid_prefixes(legacy)["icone"]
+            fichier = appid_mod.existing_asset(account.grid_dir, prefixe)
+            if fichier is not None:
+                raccourci["icon"] = f"{grid_dir_windows}\\{fichier.name}"
 
     purges = len(artwork.prune_orphans(account.grid_dir, resultat.orphaned_appids))
 
