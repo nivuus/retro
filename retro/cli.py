@@ -44,6 +44,25 @@ def _load_inventory(path: pathlib.Path) -> list[entry.RomEntry]:
     ]
 
 
+def _grid_dir_windows(steam_root: str, account_id: str) -> str:
+    """Le dossier de grille d'un compte, en chemin WINDOWS.
+
+    C'est ce que sync_account écrit dans le champ `icon` des raccourcis, donc
+    il doit être lisible par Steam, pas par nous : une chaîne, jamais un
+    pathlib.Path, qui sur Linux prendrait « D:\\Steam » pour un chemin relatif.
+
+    --steam-root EST ce chemin Windows en production, et Steam range toujours
+    la grille au même endroit : <steam-root>\\userdata\\<compte>\\config\\grid.
+    Rien d'autre n'est à demander à l'utilisateur.
+
+    L'antislash final de --steam-root est retiré : « D:\\Steam\\ » et
+    « D:\\Steam » doivent donner le même chemin. « D:\\ » se réduit à « D: »,
+    qui reste juste ici puisqu'un antislash suit immédiatement.
+    """
+    racine = steam_root.rstrip("\\")
+    return f"{racine}\\userdata\\{account_id}\\config\\grid"
+
+
 def _cmd_sync(args) -> int:
     inventaire_path = pathlib.Path(args.inventory)
     if not inventaire_path.exists():
@@ -89,7 +108,11 @@ def _cmd_sync(args) -> int:
     # filet, l'une ou l'autre remontait en trace Python brute.
     try:
         rapports = [
-            sync.sync_account(c, voulu, args.emulation_root, client) for c in comptes
+            sync.sync_account(
+                c, voulu, args.emulation_root, client,
+                grid_dir_windows=_grid_dir_windows(args.steam_root, c.account_id),
+            )
+            for c in comptes
         ]
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
         print(str(exc), file=sys.stderr)

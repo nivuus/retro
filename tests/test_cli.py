@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from retro import cli
+from retro.steam import appid, entry, vdf_io
 
 
 def test_sync_sans_inventaire_echoue_proprement(tmp_path, capsys):
@@ -227,3 +228,56 @@ def test_invocation_en_module_ne_reussit_pas_sans_rien_faire():
                        cwd=racine, capture_output=True, text=True)
     assert r.returncode != 0, f"réussite muette : {r.stdout!r}"
     assert "retro" in r.stderr
+
+
+def test_sync_renseigne_le_champ_icon(tmp_path, capsys):
+    """sync_account sait renseigner le champ icon depuis la tâche 4, mais
+    _cmd_sync ne lui passait jamais grid_dir_windows : en production le champ
+    restait vide, et Steam affichait un raccourci sans icône alors que le
+    fichier était déposé à côté. Le dossier de grille se dérive de
+    --steam-root, qui EST le chemin Windows en production — aucun appel
+    réseau, aucune option nouvelle.
+    """
+    config = tmp_path / "userdata" / "123" / "config"
+    (config / "grid").mkdir(parents=True)
+    exe = "D:\\Emulation\\RetroArch\\retroarch.exe"
+    legacy = appid.legacy_appid(entry.quote(exe), "Chrono Trigger")
+    (config / "grid" / f"{legacy}_icon.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    inventaire = tmp_path / "inv.json"
+    inventaire.write_text(json.dumps([{
+        "title": "Chrono Trigger",
+        "rom_path": "G:\\ROMs\\snes\\ct.sfc",
+        "system_name": "Super Nintendo",
+        "emulator_exe": exe,
+        "launch_template": '-L "cores\\snes9x_libretro.dll" -f "{rom}"',
+        "start_dir": "D:\\Emulation\\RetroArch",
+    }]))
+    code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--emulation-root", "D:\\Emulation",
+                     "--inventory", str(inventaire)])
+    assert code == 0, capsys.readouterr().err
+    relu = vdf_io.load_shortcuts(config / "shortcuts.vdf")
+    attendu = f"{tmp_path}\\userdata\\123\\config\\grid\\{legacy}_icon.png"
+    assert relu[0]["icon"] == attendu
+
+
+def test_sync_laisse_le_champ_icon_vide_sans_fichier(tmp_path, capsys):
+    """Le pendant du test précédent : sans icône déposée, rien à référencer.
+    Sans lui, un chemin écrit en dur passerait le test qui précède."""
+    config = tmp_path / "userdata" / "123" / "config"
+    config.mkdir(parents=True)
+    inventaire = tmp_path / "inv.json"
+    inventaire.write_text(json.dumps([{
+        "title": "Chrono Trigger",
+        "rom_path": "G:\\ROMs\\snes\\ct.sfc",
+        "system_name": "Super Nintendo",
+        "emulator_exe": "D:\\Emulation\\RetroArch\\retroarch.exe",
+        "launch_template": '-L "cores\\snes9x_libretro.dll" -f "{rom}"',
+        "start_dir": "D:\\Emulation\\RetroArch",
+    }]))
+    code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--emulation-root", "D:\\Emulation",
+                     "--inventory", str(inventaire)])
+    assert code == 0, capsys.readouterr().err
+    relu = vdf_io.load_shortcuts(config / "shortcuts.vdf")
+    assert relu[0]["icon"] == ""
