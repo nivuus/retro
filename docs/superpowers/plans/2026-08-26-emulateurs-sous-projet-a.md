@@ -1029,6 +1029,8 @@ git commit -m "feat(acquire): telechargement verifie et extraction sans echappem
 - Produit :
   - `base_title(filename: str) -> str` — titre sans marqueur de disque, clé de
     regroupement des disques d'un même jeu.
+  - `discriminant(filename: str) -> str` — premier fragment parenthésé, en
+    pratique la région ; départage deux titres identiques.
   - `clean_title(filename: str) -> str` — titre affiché, marqueur conservé.
   - `scan(roms_root: pathlib.Path, profils: dict[str, Profile], emulation_root: str, install_dirs: dict[str, str]) -> list[entry.RomEntry]`
   - `ScanError`
@@ -1183,6 +1185,34 @@ def test_les_tags_portent_le_systeme(tmp_path, profils):
     assert scanner(racine, profils)[0].system_name == "Super Nintendo"
 
 
+def test_deux_regions_du_meme_jeu_restent_distinctes(tmp_path, profils):
+    """Sans désambiguïsation, les deux rendent « Jeu », donc le même
+    identifiant Steam, et un seul des deux survit — un jeu qui disparaît de la
+    bibliothèque sans que rien ne le signale."""
+    racine = faire_roms(tmp_path, ["snes/Jeu (USA).sfc", "snes/Jeu (Europe).sfc"])
+    titres = sorted(r.title for r in scanner(racine, profils))
+    assert titres == ["Jeu (Europe)", "Jeu (USA)"]
+
+
+def test_un_titre_unique_n_est_pas_desambigue(tmp_path, profils):
+    """La désambiguïsation ne doit pas enlaidir le cas courant."""
+    racine = faire_roms(tmp_path, ["snes/Chrono Trigger (USA).sfc"])
+    assert [r.title for r in scanner(racine, profils)] == ["Chrono Trigger"]
+
+
+def test_collision_sans_discriminant_retombe_sur_le_nom(tmp_path, profils):
+    """Deux fichiers sans fragment parenthésé mais de même titre : un titre
+    laid vaut mieux qu'un jeu absent."""
+    racine = faire_roms(tmp_path, ["snes/Jeu.sfc", "snes/Jeu.smc"])
+    titres = sorted(r.title for r in scanner(racine, profils))
+    assert len(set(titres)) == 2
+
+
+def test_marqueur_de_disque_sans_espace(tmp_path, profils):
+    """« (Disc1) » est une forme qu'on rencontre réellement."""
+    assert scan.clean_title("Jeu (Disc1).cue") == "Jeu (Disc1)"
+
+
 def test_le_resultat_est_deterministe(tmp_path, profils):
     """Deux scans du même disque doivent donner le même ordre, sinon
     l'inventaire diffère sans raison d'un passage à l'autre."""
@@ -1223,7 +1253,7 @@ _PARENTHESES = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]")
 # ... à une exception près : le marqueur de disque. Deux disques du même jeu
 # donneraient sinon le même titre, donc le même identifiant Steam, et une
 # seule entrée survivrait aux deux.
-_DISQUE = re.compile(r"\((Disc|Disk|CD)\s+[^\)]*\)", re.IGNORECASE)
+_DISQUE = re.compile(r"\((Disc|Disk|CD)\s*[^\)]*\)", re.IGNORECASE)
 
 
 class ScanError(RuntimeError):
@@ -1253,6 +1283,42 @@ def clean_title(filename: str) -> str:
         return base_title(filename)
     sans_disque = tige[: m.start()] + tige[m.end():]
     return f"{_PARENTHESES.sub('', sans_disque).strip()} {m.group(0)}".strip()
+
+
+def discriminant(filename: str) -> str:
+    """Le premier fragment parenthésé d'un nom de fichier — en pratique la
+    région. Sert à départager deux fichiers dont le titre nettoyé serait le
+    même, et seulement dans ce cas."""
+    tige = pathlib.PurePosixPath(filename).stem
+    m = _PARENTHESES.search(tige)
+    return m.group(0).strip(" ()[]") if m else ""
+
+
+def _desambiguiser(couples: list[tuple[str, str]]) -> list[str]:
+    """Rend les titres, en n'ajoutant un discriminant qu'aux titres en collision.
+
+    Sans cela, « Jeu (USA).sfc » et « Jeu (Europe).sfc » rendent tous deux
+    « Jeu », donc le même identifiant Steam, et un seul des deux survit — un
+    jeu qui disparaît de la bibliothèque sans que rien ne le signale. Mesuré le
+    2026-08-26 : trois régions, une seule entrée.
+
+    Les titres uniques ne sont jamais touchés : la bibliothèque reste propre
+    dans le cas courant, qui est de loin le plus fréquent.
+    """
+    comptes = {}
+    for _, titre in couples:
+        comptes[titre] = comptes.get(titre, 0) + 1
+    sortie = []
+    for nom, titre in couples:
+        if comptes[titre] == 1:
+            sortie.append(titre)
+            continue
+        d = discriminant(nom)
+        # Dernier recours : le nom de fichier, qui est unique par construction
+        # dans un dossier. Un titre laid vaut mieux qu'un jeu absent.
+        sortie.append(f"{titre} ({d})" if d
+                      else f"{titre} ({pathlib.PurePosixPath(nom).stem})")
+    return sortie
 
 
 def _systeme_par_dossier(profils):
@@ -1296,11 +1362,13 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
         # conserve.
         titres_m3u = {base_title(f.name) for f in fichiers
                       if f.suffix.lower() == ".m3u"}
-        for f in fichiers:
-            if f.suffix.lower() != ".m3u" and base_title(f.name) in titres_m3u:
-                continue
+        retenus = [f for f in fichiers
+                   if f.suffix.lower() == ".m3u"
+                   or base_title(f.name) not in titres_m3u]
+        titres = _desambiguiser([(f.name, clean_title(f.name)) for f in retenus])
+        for f, titre in zip(retenus, titres):
             inventaire.append(entry.RomEntry(
-                title=clean_title(f.name),
+                title=titre,
                 rom_path=f"{roms_root_windows}\\{dossier.name}\\{f.name}",
                 system_name=systeme.name,
                 emulator_exe=exe,
