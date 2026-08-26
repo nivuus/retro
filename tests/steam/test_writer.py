@@ -115,3 +115,32 @@ def test_la_garde_leve_une_erreur_explicite(monkeypatch):
     with pytest.raises(writer.SteamRunningError) as exc:
         writer.assert_steam_not_running()
     assert "steam" in str(exc.value).lower()
+
+
+def test_deux_ecritures_dans_la_meme_seconde_gardent_deux_sauvegardes(tmp_path, monkeypatch):
+    """L'horodatage a une résolution d'une seconde. Deux synchronisations
+    rapprochées visaient le même chemin de sauvegarde, et la seconde détruisait
+    la première en rendant un chemin qui avait l'air d'une sauvegarde fraîche.
+    """
+    monkeypatch.setattr(writer, "_horodatage", lambda: "20260826-120000")
+    p = tmp_path / "shortcuts.vdf"
+    p.write_bytes(vdf_io.dumps_shortcuts([dict(ENTREE, appname="Un")]))
+
+    bak1 = writer.write_shortcuts(p, [dict(ENTREE, appname="Deux")])
+    bak2 = writer.write_shortcuts(p, [dict(ENTREE, appname="Trois")])
+
+    assert bak1 != bak2, "les deux sauvegardes visent le même chemin"
+    assert vdf_io.load_shortcuts(bak1)[0]["appname"] == "Un"
+    assert vdf_io.load_shortcuts(bak2)[0]["appname"] == "Deux"
+
+
+def test_ecriture_identique_ne_sauvegarde_ni_n_ecrit(tmp_path):
+    """Sans cette garde, chaque synchronisation sans changement laissait un
+    .bak de plus, indéfiniment, et réécrivait le fichier pour rien."""
+    p = tmp_path / "shortcuts.vdf"
+    writer.write_shortcuts(p, [ENTREE])
+    avant = p.stat().st_mtime_ns
+
+    assert writer.write_shortcuts(p, [ENTREE]) is None
+    assert [f.name for f in tmp_path.iterdir()] == ["shortcuts.vdf"]
+    assert p.stat().st_mtime_ns == avant, "le fichier a été réécrit à l'identique"
