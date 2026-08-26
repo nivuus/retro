@@ -1,0 +1,39 @@
+# Le manifeste livré avec le paquet.
+#
+# Il ne référence que des émulateurs au statut juridique clair : ce dépôt est
+# public, et pointer vers un émulateur contesté est un acte de distribution.
+# Le propriétaire ajoute ce qu'il veut dans G:\retro\emulators.toml, hors dépôt.
+#
+# Toute empreinte ici est vérifiée avant extraction. Un sha256 faux fait
+# échouer l'installation sur la console, pas dans les tests.
+#
+# Les empreintes ci-dessous ont été calculées en téléchargeant l'archive et en
+# passant son contenu à hashlib.sha256(), le 2026-08-26. Aucune n'est reprise
+# d'une page tierce : une empreinte recopiée n'atteste que de la page.
+
+schema = 1
+
+[emulator.retroarch]
+name        = "RetroArch"
+version     = "1.22.2"
+url         = "https://buildbot.libretro.com/stable/1.22.2/windows/x86_64/RetroArch.7z"
+sha256      = "b2139b1d0f9d4526dc6b5ce23cbb3efdc766096fa6f2c3df016818b486ac6372"
+archive     = "7z"
+install_dir = "RetroArch"
+profile     = "retroarch"
+
+# L'archive n'a qu'un dossier racine, RetroArch-Win64\ : les chemins du profil
+# en tiennent compte. Elle contient retroarch.exe, les assets et les fichiers
+# info\*.info, mais AUCUN core — ceux-ci sont distribués à part
+# (RetroArch_cores.7z, ou le Core Updater intégré). Voir le rapport de tâche.
+
+[emulator.dolphin]
+name        = "Dolphin"
+version     = "2606a"
+url         = "https://dl.dolphin-emu.org/releases/2606a/dolphin-2606a-x64.7z"
+sha256      = "4c58045f9821cb63913f4df08ea86ece3cdda9f9e646154516000fa1547e0c37"
+archive     = "7z"
+install_dir = "Dolphin"
+profile     = "dolphin"
+
+# L'archive n'a qu'un dossier racine, Dolphin-x64\.
