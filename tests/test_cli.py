@@ -235,8 +235,13 @@ def test_sync_renseigne_le_champ_icon(tmp_path, capsys):
     _cmd_sync ne lui passait jamais grid_dir_windows : en production le champ
     restait vide, et Steam affichait un raccourci sans icône alors que le
     fichier était déposé à côté. Le dossier de grille se dérive de
-    --steam-root, qui EST le chemin Windows en production — aucun appel
-    réseau, aucune option nouvelle.
+    --steam-root-windows, le chemin par lequel la CONSOLE voit l'installation
+    — aucun appel réseau.
+
+    Ce test exigeait « {tmp_path}\\userdata\\... » : il figeait en résultat
+    attendu le chemin mi-POSIX mi-Windows que Steam n'ouvre jamais. Le seul
+    test de bout en bout du câblage documentait le défaut au lieu d'en
+    protéger.
     """
     config = tmp_path / "userdata" / "123" / "config"
     (config / "grid").mkdir(parents=True)
@@ -253,11 +258,12 @@ def test_sync_renseigne_le_champ_icon(tmp_path, capsys):
         "start_dir": "D:\\Emulation\\RetroArch",
     }]))
     code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--steam-root-windows", "D:\\Steam",
                      "--emulation-root", "D:\\Emulation",
                      "--inventory", str(inventaire)])
     assert code == 0, capsys.readouterr().err
     relu = vdf_io.load_shortcuts(config / "shortcuts.vdf")
-    attendu = f"{tmp_path}\\userdata\\123\\config\\grid\\{legacy}_icon.png"
+    attendu = f"D:\\Steam\\userdata\\123\\config\\grid\\{legacy}_icon.png"
     assert relu[0]["icon"] == attendu
 
 
@@ -281,3 +287,55 @@ def test_sync_laisse_le_champ_icon_vide_sans_fichier(tmp_path, capsys):
     assert code == 0, capsys.readouterr().err
     relu = vdf_io.load_shortcuts(config / "shortcuts.vdf")
     assert relu[0]["icon"] == ""
+
+
+# --- --steam-root local / --steam-root-windows -----------------------------
+
+
+def _inventaire_ct(tmp_path, exe="D:\\Emulation\\RetroArch\\retroarch.exe"):
+    inventaire = tmp_path / "inv.json"
+    inventaire.write_text(json.dumps([{
+        "title": "Chrono Trigger",
+        "rom_path": "G:\\ROMs\\snes\\ct.sfc",
+        "system_name": "Super Nintendo",
+        "emulator_exe": exe,
+        "launch_template": '-L "cores\\snes9x_libretro.dll" -f "{rom}"',
+        "start_dir": "D:\\Emulation\\RetroArch",
+    }]))
+    return inventaire
+
+
+def test_le_champ_icon_ne_melange_pas_les_separateurs(tmp_path, capsys):
+    """Mesuré : --steam-root /mnt/steam écrivait
+    « /mnt/steam\\userdata\\...\\grid\\..._icon.png », mi-POSIX mi-Windows.
+    Steam n'affichait jamais l'icône, et le rapport annonçait « + Chrono
+    Trigger » avec rc = 0. Le précédent est dans le même fichier : `scan` a
+    --roms et --roms-windows pour exactement cette distinction.
+    """
+    config = tmp_path / "userdata" / "123" / "config"
+    (config / "grid").mkdir(parents=True)
+    exe = "D:\\Emulation\\RetroArch\\retroarch.exe"
+    legacy = appid.legacy_appid(entry.quote(exe), "Chrono Trigger")
+    (config / "grid" / f"{legacy}_icon.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--steam-root-windows", "D:\\Steam",
+                     "--emulation-root", "D:\\Emulation",
+                     "--inventory", str(_inventaire_ct(tmp_path))])
+    assert code == 0, capsys.readouterr().err
+    icone = vdf_io.load_shortcuts(config / "shortcuts.vdf")[0]["icon"]
+    assert "/" not in icone, f"chemin bâtard : {icone}"
+    assert icone == f"D:\\Steam\\userdata\\123\\config\\grid\\{legacy}_icon.png"
+
+
+def test_une_racine_steam_windows_en_posix_est_refusee(tmp_path, capsys):
+    """Donner un chemin POSIX à --steam-root-windows reproduirait le défaut
+    en silence : Steam lirait un chemin qu'il ne sait pas ouvrir."""
+    (tmp_path / "userdata" / "123" / "config").mkdir(parents=True)
+    code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--steam-root-windows", "/mnt/steam",
+                     "--emulation-root", "D:\\Emulation",
+                     "--inventory", str(_inventaire_ct(tmp_path))])
+    assert code != 0
+    err = capsys.readouterr().err
+    assert "--steam-root-windows" in err
+    assert "Traceback" not in err

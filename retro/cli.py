@@ -44,22 +44,28 @@ def _load_inventory(path: pathlib.Path) -> list[entry.RomEntry]:
     ]
 
 
-def _grid_dir_windows(steam_root: str, account_id: str) -> str:
+def _grid_dir_windows(steam_root_windows: str, account_id: str) -> str:
     """Le dossier de grille d'un compte, en chemin WINDOWS.
 
     C'est ce que sync_account écrit dans le champ `icon` des raccourcis, donc
     il doit être lisible par Steam, pas par nous : une chaîne, jamais un
     pathlib.Path, qui sur Linux prendrait « D:\\Steam » pour un chemin relatif.
 
-    --steam-root EST ce chemin Windows en production, et Steam range toujours
-    la grille au même endroit : <steam-root>\\userdata\\<compte>\\config\\grid.
-    Rien d'autre n'est à demander à l'utilisateur.
+    La racine passée ici est --steam-root-windows, PAS --steam-root. Les deux
+    se confondaient, et une racine POSIX produisait
+    « /mnt/steam\\userdata\\123\\config\\grid\\..._icon.png » : mi-POSIX
+    mi-Windows, un chemin que Steam n'ouvre jamais — et rc = 0, « + Chrono
+    Trigger », pas un mot. `scan` distingue déjà --roms de --roms-windows pour
+    exactement cette raison ; c'est la même distinction.
 
-    L'antislash final de --steam-root est retiré : « D:\\Steam\\ » et
-    « D:\\Steam » doivent donner le même chemin. « D:\\ » se réduit à « D: »,
-    qui reste juste ici puisqu'un antislash suit immédiatement.
+    Steam range toujours la grille au même endroit :
+    <racine>\\userdata\\<compte>\\config\\grid.
+
+    L'antislash final est retiré : « D:\\Steam\\ » et « D:\\Steam » doivent
+    donner le même chemin. « D:\\ » se réduit à « D: », qui reste juste ici
+    puisqu'un antislash suit immédiatement.
     """
-    racine = steam_root.rstrip("\\")
+    racine = steam_root_windows.rstrip("\\")
     return f"{racine}\\userdata\\{account_id}\\config\\grid"
 
 
@@ -67,6 +73,23 @@ def _cmd_sync(args) -> int:
     inventaire_path = pathlib.Path(args.inventory)
     if not inventaire_path.exists():
         print(f"inventaire introuvable : {inventaire_path}", file=sys.stderr)
+        return 2
+
+    # Le champ `icon` des raccourcis est lu par Steam, sur la console : c'est
+    # un chemin Windows, toujours. Un chemin POSIX y produirait un raccourci
+    # sans icône, sans le moindre message — la panne exacte que la séparation
+    # --steam-root / --steam-root-windows corrige. On refuse avant d'écrire.
+    if "/" in args.steam_root_windows:
+        print(
+            f"--steam-root-windows {args.steam_root_windows} n'est pas un "
+            "chemin Windows. C'est le chemin que STEAM lira dans "
+            "shortcuts.vdf, sur la console — un chemin POSIX y donnerait des "
+            "raccourcis sans icône, sans qu'aucun message ne le dise. "
+            "--steam-root est le chemin par lequel CETTE machine atteint la "
+            "même installation ; les deux ne se confondent que sur la console "
+            "elle-même.",
+            file=sys.stderr,
+        )
         return 2
 
     # Steam ne tourne jamais quand on écrit : sinon il réécrirait
@@ -110,7 +133,7 @@ def _cmd_sync(args) -> int:
         rapports = [
             sync.sync_account(
                 c, voulu, args.emulation_root, client,
-                grid_dir_windows=_grid_dir_windows(args.steam_root, c.account_id),
+                grid_dir_windows=_grid_dir_windows(args.steam_root_windows, c.account_id),
             )
             for c in comptes
         ]
@@ -261,7 +284,16 @@ def main(argv: list[str] | None = None) -> int:
     sous = parser.add_subparsers(dest="commande", required=True)
 
     p = sous.add_parser("sync", help="fait remonter les ROMs dans Steam")
-    p.add_argument("--steam-root", default=DEFAULT_STEAM_ROOT)
+    # Deux chemins, comme --roms et --roms-windows de `scan`, et pour la même
+    # raison : celui par lequel CETTE machine lit shortcuts.vdf, et celui par
+    # lequel la CONSOLE verra la même installation. Confondus, le champ `icon`
+    # sortait mi-POSIX mi-Windows et Steam n'affichait jamais l'icône.
+    p.add_argument("--steam-root", required=True,
+                   help="chemin par lequel cette machine atteint "
+                        "l'installation Steam (lecture de shortcuts.vdf)")
+    p.add_argument("--steam-root-windows", default=DEFAULT_STEAM_ROOT,
+                   help="chemin par lequel la console voit la même "
+                        "installation ; c'est lui que Steam relira")
     p.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
     p.add_argument("--inventory", required=True,
                    help="inventaire JSON produit par le scanner (sous-projet A)")
