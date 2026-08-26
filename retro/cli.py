@@ -41,11 +41,11 @@ def _cmd_sync(args) -> int:
     try:
         writer.assert_steam_not_running()
         comptes = accounts.discover_accounts(pathlib.Path(args.steam_root))
+        voulu = _load_inventory(inventaire_path)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
         print(str(exc), file=sys.stderr)
         return 3
 
-    voulu = _load_inventory(inventaire_path)
     client = artwork.ArtworkClient(api_key=args.steamgriddb_key)
     rapports = [
         sync.sync_account(c, voulu, args.emulation_root, client) for c in comptes
@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--steam-root", default=DEFAULT_STEAM_ROOT)
     p.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
     p.add_argument("--inventory", required=True,
-                    help="inventaire JSON produit par le scanner (sous-projet A)")
+                   help="inventaire JSON produit par le scanner (sous-projet A)")
     p.add_argument("--steamgriddb-key", default=None)
     p.set_defaults(func=_cmd_sync)
 

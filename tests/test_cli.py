@@ -21,6 +21,17 @@ def test_sync_sans_compte_steam_echoue_proprement(tmp_path, capsys):
     assert "connect" in capsys.readouterr().err.lower()
 
 
+def test_inventaire_malforme_ne_leve_pas_de_trace(tmp_path, capsys):
+    """Une console sans clavier ni écran ne doit jamais rendre de trace Python."""
+    (tmp_path / "userdata" / "123" / "config").mkdir(parents=True)
+    mauvais = tmp_path / "inv.json"
+    mauvais.write_text("{ceci n'est pas du JSON")
+    code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--inventory", str(mauvais)])
+    assert code != 0
+    assert "Traceback" not in capsys.readouterr().err
+
+
 def test_sync_complet(tmp_path, capsys):
     (tmp_path / "userdata" / "123" / "config").mkdir(parents=True)
     inventaire = tmp_path / "inv.json"
