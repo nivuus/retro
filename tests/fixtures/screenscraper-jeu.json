@@ -1,0 +1,12 @@
+{
+  "response": {
+    "jeu": {
+      "noms": [{"region": "wor", "text": "Chrono Trigger"}],
+      "dates": [{"region": "wor", "text": "1995-03-11"}],
+      "genres": [{"noms": [{"langue": "fr", "text": "RPG"}]}],
+      "joueurs": {"text": "1"},
+      "editeur": {"text": "Square"},
+      "synopsis": [{"langue": "fr", "text": "Un jeu de rôle."}]
+    }
+  }
+}
