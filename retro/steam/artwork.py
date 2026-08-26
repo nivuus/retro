@@ -90,6 +90,19 @@ class ArtworkClient:
             return []
 
 
+def missing_assets(grid_dir: pathlib.Path, legacy_appid: int) -> list[str]:
+    """Les préfixes des assets encore absents après un passage.
+
+    fetch_for avale toute exception — l'artwork est un ornement, pas une raison
+    de faire échouer une synchronisation. Mais « 0 récupéré » disait alors la
+    même chose pour une bibliothèque déjà complète et pour une clé d'API
+    expirée, et ce second cas ne se répare jamais tout seul. Ce compteur est ce
+    qui les distingue dans le rapport.
+    """
+    return [pre for pre in appid_mod.grid_prefixes(legacy_appid).values()
+            if appid_mod.existing_asset(grid_dir, pre) is None]
+
+
 def prune_orphans(grid_dir: pathlib.Path, orphaned: list[int]) -> list[str]:
     """Supprime l'artwork des identifiants abandonnés.
 

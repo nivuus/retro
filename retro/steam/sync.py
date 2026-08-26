@@ -16,6 +16,7 @@ class SyncReport:
     kept: list[str]
     artwork_written: int
     artwork_pruned: int
+    artwork_missing: int
     backup: pathlib.Path | None
 
 
@@ -31,11 +32,15 @@ def sync_account(
     # L'artwork AVANT l'écriture : un jeu sans vignette vaut mieux qu'une
     # vignette sans jeu, et une panne réseau ne doit pas empêcher l'écriture.
     ecrits = 0
+    manquants = 0
     for raccourci in resultat.entries:
         if not entry.is_owned(raccourci, emulation_root):
             continue
         legacy = appid_mod.to_unsigned(raccourci["appid"])
         ecrits += len(artwork_client.fetch_for(raccourci["appname"], legacy, account.grid_dir))
+        # Compté APRÈS le passage : ce qui manque encore est ce qu'une panne a
+        # laissé derrière elle. On le signale, on ne bloque pas.
+        manquants += len(artwork.missing_assets(account.grid_dir, legacy))
 
     purges = len(artwork.prune_orphans(account.grid_dir, resultat.orphaned_appids))
 
@@ -46,6 +51,7 @@ def sync_account(
         removed=resultat.removed,
         kept=resultat.kept,
         artwork_written=ecrits,
+        artwork_missing=manquants,
         artwork_pruned=purges,
         backup=sauvegarde,
     )
@@ -62,7 +68,8 @@ def format_report(reports: list[SyncReport]) -> str:
         for titre in r.removed:
             lignes.append(f"  - {titre}")
         lignes.append(
-            f"  artwork : {r.artwork_written} récupéré(s), {r.artwork_pruned} purgé(s)"
+            f"  artwork : {r.artwork_written} récupéré(s), "
+            f"{r.artwork_pruned} purgé(s), {r.artwork_missing} manquant(s)"
         )
         if r.backup:
             lignes.append(f"  sauvegarde : {r.backup.name}")

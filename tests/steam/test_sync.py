@@ -1,7 +1,7 @@
 """Synchronisation d'un compte, de bout en bout, sans Steam ni réseau."""
 import pathlib
 
-from retro.steam import accounts, artwork, entry, sync, vdf_io
+from retro.steam import accounts, appid, artwork, entry, sync, vdf_io
 
 
 class ArtworkMuet(artwork.ArtworkClient):
@@ -124,3 +124,57 @@ def test_l_entree_etrangere_est_relue_dans_le_fichier_ecrit(tmp_path):
     relu = vdf_io.load_shortcuts(compte.shortcuts_path)
     assert [e["appname"] for e in relu] == ["Mon jeu à moi", "Chrono Trigger"]
     assert relu[0] == mien, "l'entrée étrangère a été modifiée, pas seulement conservée"
+
+
+class ArtworkEnPanne(artwork.ArtworkClient):
+    """Clé d'API expirée : fetch_for avale l'exception et rend [].
+
+    Indiscernable, du point de vue du rapport, d'une bibliothèque déjà
+    complète — sauf si le rapport dit combien d'assets manquent encore.
+    """
+
+    def __init__(self):
+        super().__init__(api_key="cle-expiree")
+
+    def fetch_for(self, title, legacy_appid, grid_dir):
+        return []
+
+
+class ArtworkComplet(artwork.ArtworkClient):
+    """Récupère les cinq assets, comme une clé valide un jour de beau temps."""
+
+    def __init__(self):
+        super().__init__(api_key="cle-valide")
+
+    def fetch_for(self, title, legacy_appid, grid_dir):
+        grid_dir.mkdir(parents=True, exist_ok=True)
+        noms = [f"{p}.png" for p in appid.grid_prefixes(legacy_appid).values()]
+        for nom in noms:
+            (grid_dir / nom).write_bytes(b"\xff\xd8\xff")
+        return noms
+
+
+def test_une_panne_d_artwork_se_voit_dans_le_rapport(tmp_path):
+    """« 0 récupéré(s) » disait la même chose pour une bibliothèque complète et
+    pour une clé d'API expirée. Le second cas ne se répare jamais tout seul."""
+    compte = faire_compte(tmp_path)
+    r = sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkEnPanne())
+    assert r.artwork_missing == 5
+    assert "5 manquant(s)" in sync.format_report([r])
+
+
+def test_une_panne_d_artwork_ne_bloque_pas_la_synchronisation(tmp_path):
+    """On signale, on ne bloque pas : les raccourcis sont écrits quand même."""
+    compte = faire_compte(tmp_path)
+    r = sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkEnPanne())
+    assert r.created == ["Chrono Trigger"]
+    assert vdf_io.load_shortcuts(compte.shortcuts_path)
+
+
+def test_artwork_complet_ne_signale_rien_de_manquant(tmp_path):
+    """Sans ce test, un compteur bloqué sur une constante passerait le test
+    de la panne."""
+    compte = faire_compte(tmp_path)
+    r = sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkComplet())
+    assert r.artwork_written == 5 and r.artwork_missing == 0
+    assert "0 manquant(s)" in sync.format_report([r])
