@@ -601,8 +601,11 @@ exception opaque au pire moment.
 **Interfaces :**
 - Consomme : rien.
 - Produit :
-  - `SteamAccount` — dataclass gelée : `account_id: str`, `config_dir: Path`,
-    `shortcuts_path: Path`, `grid_dir: Path`.
+  - `SteamAccount` — dataclass gelée à DEUX champs stockés : `account_id: str`,
+    `config_dir: pathlib.Path` ; plus `shortcuts_path` et `grid_dir` en
+    `@property` dérivées de `config_dir`. Les stocker séparément rendrait
+    constructible un compte dont l'artwork et les raccourcis vivent à deux
+    endroits différents — un état incohérent que rien ne signalerait.
   - `discover_accounts(steam_root: pathlib.Path) -> list[SteamAccount]`
   - `NoSteamAccountError`
 
