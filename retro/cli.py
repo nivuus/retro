@@ -279,7 +279,10 @@ def _cmd_status(args) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
+    """L'analyseur, à part de `main` : le README doit pouvoir se vérifier
+    contre les commandes réellement offertes, plutôt que contre une liste
+    tenue à la main qui vieillit en silence (`retro status` y a manqué)."""
     parser = argparse.ArgumentParser(prog="retro")
     sous = parser.add_subparsers(dest="commande", required=True)
 
@@ -333,7 +336,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="dossier où le propriétaire dépose ses BIOS")
     st.set_defaults(func=_cmd_status)
 
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
     return args.func(args)
 
 

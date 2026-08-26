@@ -235,3 +235,121 @@ def test_les_identifiants_de_systeme_sont_uniques_entre_profils():
         for s in p.systems:
             assert s.id not in vus, f"{s.id} revendiqué par {vus.get(s.id)} et {pid}"
             vus[s.id] = pid
+
+
+# --- Le dépôt est public : une promesse fausse est un échec déguisé --------
+
+README = RACINE / "README.md"
+NOMBRES = {1: "une", 2: "deux", 3: "trois", 4: "quatre", 5: "cinq", 6: "six"}
+
+
+def _commandes() -> set[str]:
+    """Les sous-commandes réellement offertes, lues de l'analyseur lui-même."""
+    import argparse
+    sous = next(a for a in cli._build_parser()._actions
+                if isinstance(a, argparse._SubParsersAction))
+    return set(sous.choices)
+
+
+def test_le_readme_annonce_toutes_les_commandes():
+    """`retro status` était absente du README, et c'est la seule commande
+    faite pour un humain. Une commande que rien n'annonce n'existe pour
+    personne."""
+    texte = README.read_text(encoding="utf-8")
+    commandes = _commandes()
+    oubliees = sorted(c for c in commandes if f"`retro {c}`" not in texte)
+    assert oubliees == [], f"commandes absentes du README : {oubliees}"
+
+
+def test_le_readme_compte_juste_ses_commandes():
+    """« Trois commandes » alors qu'il y en a quatre : le compte lui-même
+    doit suivre l'analyseur."""
+    texte = README.read_text(encoding="utf-8").lower()
+    n = len(_commandes())
+    assert f"{NOMBRES[n]} commandes" in texte, (
+        f"le README doit annoncer « {NOMBRES[n]} commandes »"
+    )
+    faux = [m for k, m in NOMBRES.items() if k != n and f"{m} commandes" in texte]
+    assert faux == [], f"compte faux dans le README : {faux}"
+
+
+def test_le_readme_dit_a_quoi_sert_la_verification_des_bios():
+    """Le cœur de ce sous-projet n'était mentionné nulle part."""
+    texte = README.read_text(encoding="utf-8").lower()
+    assert "bios" in texte.split("## ce que ça fait")[1].split("##")[0], (
+        "la vérification des BIOS n'est pas décrite avec les commandes"
+    )
+
+
+def test_le_readme_ne_promet_pas_un_classement_que_rien_ne_produit():
+    """`retro/metadata.py` n'est importé par aucun module de production, et
+    `scan` écrit `extra_tags=()` en dur : les seuls tags écrits sont « Rétro »
+    et le système. Le README promettait pourtant un classement « par décennie
+    et par genre ». Sur un dépôt public, la promesse elle-même est un échec
+    déguisé en réussite.
+
+    Ce test se désarme tout seul le jour où le module est câblé.
+    """
+    production = [f for f in sorted((RACINE / "retro").rglob("*.py"))
+                  if f.name != "metadata.py"]
+    cable = any("metadata" in f.read_text(encoding="utf-8") for f in production)
+    if cable:
+        return
+    lignes = README.read_text(encoding="utf-8").splitlines()
+    for i, ligne in enumerate(lignes):
+        if "décennie" not in ligne.lower() and "genre" not in ligne.lower():
+            continue
+        contexte = " ".join(lignes[max(0, i - 3):i + 4]).lower()
+        assert "pas encore actif" in contexte or "n'est pas actif" in contexte, (
+            f"README ligne {i + 1} : promesse de classement sans mention que "
+            f"ce n'est pas encore actif — « {ligne.strip()} »"
+        )
+
+
+def test_le_depot_porte_le_texte_de_sa_licence():
+    """pyproject déclare MIT et le README dit « MIT. », mais le dépôt n'en
+    contenait aucun texte. La licence MIT exige la distribution de sa notice :
+    sans elle, la licence annoncée n'est pas concédée."""
+    licence = RACINE / "LICENSE"
+    assert licence.is_file(), "aucun fichier LICENSE à la racine du dépôt"
+    texte = licence.read_text(encoding="utf-8")
+    for attendu in ("MIT", "Maxime Allanic", "2026", "WITHOUT WARRANTY"):
+        assert attendu in texte, f"LICENSE : « {attendu} » absent"
+    conf = tomllib.loads((RACINE / "pyproject.toml").read_text(encoding="utf-8"))
+    assert conf["project"]["license"]["text"] == "MIT"
+
+
+def test_la_licence_est_versionnee():
+    """Un LICENSE non versionné ne protège que la copie de travail."""
+    sortie = subprocess.run(["git", "ls-files", "-z", "LICENSE"], cwd=RACINE,
+                            capture_output=True, text=True, check=True).stdout
+    assert [f for f in sortie.split("\0") if f] == ["LICENSE"]
+
+
+def test_les_bios_playstation_sont_interchangeables():
+    """Un des trois suffit, celui de la région des jeux — c'est ce que dit le
+    commentaire du profil depuis toujours. Déclarés `required = true` un par
+    un, le rapport disait « MANQUANT : scph5500.bin » et « MANQUANT :
+    scph5502.bin » à quelqu'un qui venait de déposer scph5501.bin, le bon.
+    """
+    psx = next(s for s in profiles.load_profiles(PROFILS)["retroarch"].systems
+               if s.id == "psx")
+    groupes = {b.get("group") for b in psx.bios}
+    assert groupes == {"psx-region"}, (
+        f"les trois BIOS PlayStation ne forment pas un groupe : {groupes}"
+    )
+    assert all(b.get("region") for b in psx.bios), (
+        "sans region, le rapport ne peut pas dire lequel des trois déposer"
+    )
+
+
+def test_toute_region_declaree_appartient_a_un_groupe():
+    """`region` n'a de sens que pour départager les membres d'un groupe :
+    ailleurs, c'est une clé que personne ne lit."""
+    orphelines = [
+        f"{pid}/{s.id}/{b['file']}"
+        for pid, p in profiles.load_profiles(PROFILS).items()
+        for s in p.systems for b in s.bios
+        if b.get("region") and not b.get("group")
+    ]
+    assert orphelines == [], f"region sans group : {orphelines}"
