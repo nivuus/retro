@@ -1,5 +1,8 @@
 """Interface en ligne de commande."""
 import json
+import pathlib
+import subprocess
+import sys
 
 from retro import cli
 
@@ -90,3 +93,13 @@ def test_emulation_root_juste_ne_bloque_pas(tmp_path, capsys):
     assert cli.main(["sync", "--steam-root", str(tmp_path),
                      "--emulation-root", "D:\\Emulation",
                      "--inventory", str(inventaire)]) == 0
+
+
+def test_invocation_en_module_ne_reussit_pas_sans_rien_faire():
+    """`python -m retro.cli` est ce qu'un contributeur essaie avant d'installer
+    le paquet. Sans bloc __main__, il rendait 0 sans rien faire ni rien dire."""
+    racine = pathlib.Path(__file__).parent.parent
+    r = subprocess.run([sys.executable, "-m", "retro.cli"],
+                       cwd=racine, capture_output=True, text=True)
+    assert r.returncode != 0, f"réussite muette : {r.stdout!r}"
+    assert "retro" in r.stderr
