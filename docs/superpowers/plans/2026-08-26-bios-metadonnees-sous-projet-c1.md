@@ -192,6 +192,62 @@ def test_le_nom_de_fichier_est_insensible_a_la_casse(contexte, tmp_path):
     assert psx.ok
 
 
+def test_un_bios_illisible_ne_leve_pas(contexte):
+    """La garantie centrale du module. Un fichier présent mais illisible —
+    permissions refusées, partage qui répond sans servir — ne doit pas faire
+    échouer le rapport ENTIER pour un seul fichier.
+
+    En root les permissions ne bloquent rien : le test saute plutôt que de
+    prétendre vérifier ce qu'il ne vérifie pas.
+    """
+    import os
+    if os.geteuid() == 0:
+        pytest.skip("root ignore les permissions : ce test ne prouverait rien")
+    profils, racine, a, b = contexte
+    illisible = racine / "scph5501.bin"
+    illisible.write_bytes(a)
+    illisible.chmod(0o000)
+    try:
+        psx = next(s for s in bios.check_bios(profils, racine)
+                   if s.system_id == "psx")
+        requis = next(f for f in psx.files if f.name == "scph5501.bin")
+        assert requis.state == "corrompu"
+    finally:
+        illisible.chmod(0o644)
+
+
+def test_une_racine_illisible_ne_leve_pas(contexte):
+    import os
+    if os.geteuid() == 0:
+        pytest.skip("root ignore les permissions : ce test ne prouverait rien")
+    profils, racine, _, _ = contexte
+    racine.chmod(0o000)
+    try:
+        psx = next(s for s in bios.check_bios(profils, racine)
+                   if s.system_id == "psx")
+        assert all(f.state == "absent" for f in psx.files)
+    finally:
+        racine.chmod(0o755)
+
+
+def test_une_racine_qui_est_un_fichier_ne_leve_pas(contexte, tmp_path):
+    """Cas réel : le propriétaire crée un fichier au lieu d'un dossier."""
+    profils, _, _, _ = contexte
+    faux = tmp_path / "BIOS-fichier"
+    faux.write_text("pas un dossier", encoding="utf-8")
+    psx = next(s for s in bios.check_bios(profils, faux) if s.system_id == "psx")
+    assert all(f.state == "absent" for f in psx.files)
+
+
+def test_un_dossier_portant_le_nom_d_un_bios_ne_compte_pas(contexte):
+    profils, racine, _, b = contexte
+    (racine / "scph5501.bin").mkdir()
+    (racine / "scph5502.bin").write_bytes(b)
+    psx = next(s for s in bios.check_bios(profils, racine) if s.system_id == "psx")
+    requis = next(f for f in psx.files if f.name == "scph5501.bin")
+    assert requis.state == "absent"
+
+
 def test_tous_les_systemes_sont_rendus(contexte):
     profils, racine, _, _ = contexte
     assert {s.system_id for s in bios.check_bios(profils, racine)} == {"psx", "snes"}
@@ -257,15 +313,20 @@ def _trouver(racine: pathlib.Path, nom: str) -> pathlib.Path | None:
     Le propriétaire dépose ses BIOS depuis Windows, qui ne distingue pas la
     casse ; ce code tourne peut-être sur un système qui la distingue.
     """
-    direct = racine / nom
-    if direct.is_file():
-        return direct
-    if not racine.is_dir():
+    try:
+        direct = racine / nom
+        if direct.is_file():
+            return direct
+        if not racine.is_dir():
+            return None
+        cible = nom.lower()
+        for f in racine.iterdir():
+            if f.is_file() and f.name.lower() == cible:
+                return f
+    except OSError:
+        # Un dossier illisible est indiscernable d'un dossier absent du point de
+        # vue du propriétaire : dans les deux cas, ses BIOS ne servent à rien.
         return None
-    cible = nom.lower()
-    for f in racine.iterdir():
-        if f.is_file() and f.name.lower() == cible:
-            return f
     return None
 
 
@@ -283,8 +344,17 @@ def check_bios(profils: dict, bios_root: pathlib.Path) -> list[SystemBios]:
                 if chemin is None:
                     etat = "absent"
                 else:
-                    obtenu = hashlib.md5(chemin.read_bytes()).hexdigest()
-                    etat = "ok" if obtenu == attendu else "corrompu"
+                    try:
+                        obtenu = hashlib.md5(chemin.read_bytes()).hexdigest()
+                    except OSError:
+                        # Présent mais illisible — permissions refusées, partage
+                        # qui répond sans servir. « Corrompu » est exactement ce
+                        # que c'est pour le propriétaire : le fichier est là et
+                        # ne sert à rien. Lever ici ferait échouer le rapport
+                        # entier pour un seul fichier.
+                        etat = "corrompu"
+                    else:
+                        etat = "ok" if obtenu == attendu else "corrompu"
                 fichiers.append(BiosFile(
                     name=nom, expected_md5=attendu,
                     required=bool(declare.get("required", True)), state=etat,
