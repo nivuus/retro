@@ -45,15 +45,20 @@ def _trouver(racine: pathlib.Path, nom: str) -> pathlib.Path | None:
     Le propriétaire dépose ses BIOS depuis Windows, qui ne distingue pas la
     casse ; ce code tourne peut-être sur un système qui la distingue.
     """
-    direct = racine / nom
-    if direct.is_file():
-        return direct
-    if not racine.is_dir():
+    try:
+        direct = racine / nom
+        if direct.is_file():
+            return direct
+        if not racine.is_dir():
+            return None
+        cible = nom.lower()
+        for f in racine.iterdir():
+            if f.is_file() and f.name.lower() == cible:
+                return f
+    except OSError:
+        # Un dossier illisible est indiscernable d'un dossier absent du point de
+        # vue du propriétaire : dans les deux cas, ses BIOS ne servent à rien.
         return None
-    cible = nom.lower()
-    for f in racine.iterdir():
-        if f.is_file() and f.name.lower() == cible:
-            return f
     return None
 
 
@@ -71,8 +76,17 @@ def check_bios(profils: dict, bios_root: pathlib.Path) -> list[SystemBios]:
                 if chemin is None:
                     etat = "absent"
                 else:
-                    obtenu = hashlib.md5(chemin.read_bytes()).hexdigest()
-                    etat = "ok" if obtenu == attendu else "corrompu"
+                    try:
+                        obtenu = hashlib.md5(chemin.read_bytes()).hexdigest()
+                    except OSError:
+                        # Présent mais illisible — permissions refusées, partage
+                        # qui répond sans servir. « Corrompu » est exactement ce
+                        # que c'est pour le propriétaire : le fichier est là et
+                        # ne sert à rien. Lever ici ferait échouer le rapport
+                        # entier pour un seul fichier.
+                        etat = "corrompu"
+                    else:
+                        etat = "ok" if obtenu == attendu else "corrompu"
                 fichiers.append(BiosFile(
                     name=nom, expected_md5=attendu,
                     required=bool(declare.get("required", True)), state=etat,
