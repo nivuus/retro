@@ -81,6 +81,23 @@ def load_profile(path: pathlib.Path) -> Profile:
                 "L'émulateur s'ouvrirait sur son propre menu, sans jeu, et la "
                 "console aurait l'air de fonctionner."
             )
+        # Un BIOS déclaré sans empreinte n'est pas vérifiable. Rien ne le
+        # signalerait : une faute de frappe sur la clé (« md5s » pour « md5 »)
+        # désactiverait la vérification sans un mot, et le propriétaire
+        # croirait ses BIOS validés. L'empreinte est un MD5 parce que ce sont
+        # les seules publiquement citables pour ces fichiers ; en calculer
+        # d'autres exigerait de faire entrer un BIOS dans le dépôt, ce que ce
+        # projet s'interdit.
+        for i, b in enumerate(brut.get("bios", ())):
+            manquants = [c for c in ("file", "md5") if c not in b]
+            if manquants:
+                raise ProfileError(
+                    f"{path} : profil '{data['id']}', système '{sid}', "
+                    f"bios[{i}] — champ(s) manquant(s) : {', '.join(manquants)}. "
+                    "Un BIOS sans 'file' et 'md5' ne serait jamais vérifié, "
+                    "en silence."
+                )
+
         systemes.append(System(
             id=sid, name=brut["name"], extensions=exts, launch=brut["launch"],
             bios=tuple(brut.get("bios", ())),

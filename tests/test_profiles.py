@@ -27,7 +27,7 @@ id = "psx"
 name = "PlayStation"
 extensions = [".cue", ".chd", ".m3u"]
 launch = '-L "cores\\\\swanstation_libretro.dll" -f "{rom}"'
-bios = [{ file = "scph5501.bin", sha1 = "abc", required = true }]
+bios = [{ file = "scph5501.bin", md5 = "abc", required = true }]
 
 [[system]]
 id = "snes"
@@ -64,6 +64,29 @@ def test_les_bios_sont_declares(tmp_path):
     assert psx.bios[0]["file"] == "scph5501.bin"
     snes = next(s for s in p.systems if s.id == "snes")
     assert snes.bios == ()
+
+
+def test_bios_sans_md5_refuse(tmp_path):
+    """Une faute de frappe sur la clé désactiverait la vérification en silence.
+
+    « md5s » au lieu de « md5 » se charge sans un mot : le BIOS n'est plus
+    vérifié, et le propriétaire croit ses BIOS validés. Le message doit nommer
+    le profil ET le système, sinon il faut relire tout le TOML pour trouver la
+    ligne.
+    """
+    mauvais = RETROARCH.replace('md5 = "abc"', 'md5s = "abc"')
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profile(ecrire(tmp_path, "r.toml", mauvais))
+    message = str(exc.value)
+    assert "md5" in message and "psx" in message and "retroarch" in message
+
+
+def test_bios_sans_file_refuse(tmp_path):
+    """Une empreinte sans nom de fichier ne désigne rien à vérifier."""
+    mauvais = RETROARCH.replace('file = "scph5501.bin", ', "")
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profile(ecrire(tmp_path, "r.toml", mauvais))
+    assert "file" in str(exc.value) and "psx" in str(exc.value)
 
 
 def test_la_sortie_est_declaree(tmp_path):
