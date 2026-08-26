@@ -177,6 +177,33 @@ def test_champ_manquant_nomme_le_champ_et_l_emulateur(tmp_path):
     assert "sha256" in str(exc.value) and "retroarch" in str(exc.value)
 
 
+def test_une_panne_d_extraction_est_enveloppee(tmp_path):
+    """Une archive qu'aucun garde-fou ne rejette mais que la bibliothèque
+    refuse — lien symbolique échappant, en-tête corrompu — ne doit pas rendre
+    une trace Python sur une machine sans clavier ni écran."""
+    src = tmp_path / "corrompue.zip"
+    src.write_bytes(b"PK\x03\x04 ceci n'est pas une archive valide")
+    with pytest.raises(acquire.AcquireError) as exc:
+        acquire.safe_extract(src, "zip", tmp_path / "cible")
+    assert "corrompue.zip" in str(exc.value)
+
+
+def test_lien_symbolique_echappant_est_enveloppe(tmp_path):
+    """Le cas mesuré : un lien dont la cible sort de la destination, suivi d'un
+    membre imbriqué. zipfile lève NotADirectoryError ; l'appelant doit voir une
+    AcquireError qui nomme l'archive."""
+    import stat
+    src = tmp_path / "lien.zip"
+    with zipfile.ZipFile(src, "w") as z:
+        info = zipfile.ZipInfo("lien")
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        z.writestr(info, "../../dehors")
+        z.writestr("lien/evade.txt", "contenu")
+    with pytest.raises(acquire.AcquireError):
+        acquire.safe_extract(src, "zip", tmp_path / "cible")
+    assert not (tmp_path.parent / "dehors").exists()
+
+
 def test_archive_inconnue_refusee(tmp_path):
     mauvais = NOYAU.replace('archive = "7z"', 'archive = "rar"')
     with pytest.raises(manifest.ManifestError) as exc:
@@ -782,6 +809,33 @@ def test_extraction_normale_passe(tmp_path):
     assert (cible / "a" / "b" / "c.txt").read_text() == "dedans"
 
 
+def test_une_panne_d_extraction_est_enveloppee(tmp_path):
+    """Une archive qu'aucun garde-fou ne rejette mais que la bibliothèque
+    refuse — lien symbolique échappant, en-tête corrompu — ne doit pas rendre
+    une trace Python sur une machine sans clavier ni écran."""
+    src = tmp_path / "corrompue.zip"
+    src.write_bytes(b"PK\x03\x04 ceci n'est pas une archive valide")
+    with pytest.raises(acquire.AcquireError) as exc:
+        acquire.safe_extract(src, "zip", tmp_path / "cible")
+    assert "corrompue.zip" in str(exc.value)
+
+
+def test_lien_symbolique_echappant_est_enveloppe(tmp_path):
+    """Le cas mesuré : un lien dont la cible sort de la destination, suivi d'un
+    membre imbriqué. zipfile lève NotADirectoryError ; l'appelant doit voir une
+    AcquireError qui nomme l'archive."""
+    import stat
+    src = tmp_path / "lien.zip"
+    with zipfile.ZipFile(src, "w") as z:
+        info = zipfile.ZipInfo("lien")
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        z.writestr(info, "../../dehors")
+        z.writestr("lien/evade.txt", "contenu")
+    with pytest.raises(acquire.AcquireError):
+        acquire.safe_extract(src, "zip", tmp_path / "cible")
+    assert not (tmp_path.parent / "dehors").exists()
+
+
 def test_archive_inconnue_refusee(tmp_path):
     src = tmp_path / "ok.zip"
     faire_zip(src, {"a.txt": "x"})
@@ -860,21 +914,42 @@ def _membres_surs(noms, destination: pathlib.Path):
 
 def safe_extract(archive: pathlib.Path, kind: str,
                  destination: pathlib.Path) -> None:
-    destination.mkdir(parents=True, exist_ok=True)
-    if kind == "zip":
-        with zipfile.ZipFile(archive) as z:
-            _membres_surs(z.namelist(), destination)
-            z.extractall(destination)
-    elif kind == "7z":
-        try:
-            import py7zr
-        except ImportError as exc:  # pragma: no cover - dépendance déclarée
-            raise AcquireError("py7zr est requis pour les archives 7z") from exc
-        with py7zr.SevenZipFile(archive) as z:
-            _membres_surs(z.getnames(), destination)
-            z.extractall(destination)
-    else:
+    """Extrait une archive sans la laisser écrire hors de sa destination.
+
+    `_membres_surs` ne regarde que les NOMS de membres. La protection contre un
+    lien symbolique dont la cible sort de la destination repose, elle, sur les
+    bibliothèques d'extraction : zipfile ne matérialise jamais de vrai lien, et
+    py7zr refuse lui-même « Symlink point out of target directory ». C'est de la
+    défense en profondeur réelle, mais elle est portée par du code que nous
+    n'écrivons pas — d'où cette note, pour qu'un futur changement de
+    bibliothèque ne rouvre pas le trou en silence.
+
+    Toute exception est enveloppée : sur une machine de provisionnement sans
+    clavier ni écran, une trace Python brute remplace le message qui nommerait
+    l'archive fautive.
+    """
+    if kind not in ("zip", "7z"):
         raise AcquireError(f"format d'archive inconnu : {kind!r}")
+    destination.mkdir(parents=True, exist_ok=True)
+    try:
+        if kind == "zip":
+            with zipfile.ZipFile(archive) as z:
+                _membres_surs(z.namelist(), destination)
+                z.extractall(destination)
+        else:
+            try:
+                import py7zr
+            except ImportError as exc:  # pragma: no cover - dépendance déclarée
+                raise AcquireError("py7zr est requis pour les archives 7z") from exc
+            with py7zr.SevenZipFile(archive) as z:
+                _membres_surs(z.getnames(), destination)
+                z.extractall(destination)
+    except AcquireError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - volontairement large, voir docstring
+        raise AcquireError(
+            f"extraction de {archive.name} impossible : {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> str:
