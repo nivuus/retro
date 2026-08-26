@@ -39,6 +39,39 @@ bios = []
     assert d[0]["system_name"] == "Super Nintendo"
 
 
+def test_scan_vers_un_dossier_absent_echoue_proprement(tmp_path, capsys):
+    """L'écriture de l'inventaire est aussi faillible que le scan.
+
+    Hors du try, un --output dont le dossier parent n'existe pas levait
+    FileNotFoundError telle quelle : sur une console sans clavier ni écran, une
+    trace Python n'est lisible par personne.
+    """
+    profils = tmp_path / "profiles"
+    profils.mkdir()
+    (profils / "p.toml").write_text("""
+schema = 1
+id = "retroarch"
+exe = "retroarch.exe"
+[[system]]
+id = "snes"
+name = "Super Nintendo"
+extensions = [".sfc"]
+launch = '-f "{rom}"'
+bios = []
+""", encoding="utf-8")
+    roms = tmp_path / "ROMs" / "snes"
+    roms.mkdir(parents=True)
+    (roms / "Jeu.sfc").write_bytes(b"x")
+    sortie = tmp_path / "jamais-cree" / "inv.json"
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils), "--output", str(sortie),
+                     "--emulation-root", "D:\\Emulation"])
+    assert code != 0
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert "inventaire" in err
+
+
 def test_scan_sur_racine_absente_echoue_proprement(tmp_path, capsys):
     profils = tmp_path / "profiles"
     profils.mkdir()

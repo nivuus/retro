@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.resources
 import json
 import pathlib
 import sys
@@ -13,13 +14,18 @@ from retro.steam import accounts, artwork, entry, sync, writer
 DEFAULT_STEAM_ROOT = "D:\\Steam"
 DEFAULT_EMULATION_ROOT = "D:\\Emulation"
 
-# manifests/ et profiles/ vivent à la racine du dépôt, hors du paquet Python
-# (voir pyproject.toml). Un import éditable (pip install -e) garde __file__
-# pointé sur la source du dépôt, donc ce calcul résout correctement dans les
-# deux cas : dépôt nu et paquet installé en mode éditable.
-_RACINE_DEPOT = pathlib.Path(__file__).parent.parent
-DEFAULT_MANIFEST = _RACINE_DEPOT / "manifests" / "core.toml"
-DEFAULT_PROFILES = _RACINE_DEPOT / "profiles"
+# Le manifeste et les profils vivent DANS le paquet (retro/data/), et on les
+# atteint par importlib.resources plutôt que par __file__ : c'est la seule voie
+# qui résout dans les deux modes. Un calcul relatif à __file__ visait
+# site-packages/manifests/, un dossier que rien n'installe — le mode éditable,
+# où __file__ reste dans le dépôt, masquait la panne jusqu'au premier wheel.
+#
+# files() rend un Traversable ; le paquet est toujours installé décompressé
+# (setuptools, pas de zipimport), donc c'est un chemin du système de fichiers
+# et la conversion est exacte. Le reste du code manipule des pathlib.Path.
+_DONNEES = pathlib.Path(str(importlib.resources.files("retro"))) / "data"
+DEFAULT_MANIFEST = _DONNEES / "manifests" / "core.toml"
+DEFAULT_PROFILES = _DONNEES / "profiles"
 
 
 def _load_inventory(path: pathlib.Path) -> list[entry.RomEntry]:
@@ -135,9 +141,17 @@ def _cmd_scan(args) -> int:
         }
         for rom in inventaire
     ]
-    pathlib.Path(args.output).write_text(
-        json.dumps(donnees, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    # L'écriture est aussi faillible que le scan : un --output dont le dossier
+    # parent n'existe pas, un volume plein, un fichier en lecture seule. Hors
+    # de ce try, la trace Python remontait telle quelle — sur une console sans
+    # clavier ni écran, elle n'est lisible par personne.
+    try:
+        pathlib.Path(args.output).write_text(
+            json.dumps(donnees, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError as exc:
+        print(f"écriture de l'inventaire impossible : {exc}", file=sys.stderr)
+        return 2
     print(f"{len(donnees)} ROM(s) répertoriée(s) dans {args.output}")
     return 0
 
