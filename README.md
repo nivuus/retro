@@ -63,9 +63,16 @@ bibliothèque Steam de quelqu'un. Trois protections :
 - **Écriture atomique** — le rendu est complet en mémoire avant que le disque
   soit touché, puis un fichier temporaire est basculé d'un coup. Une écriture
   interrompue ne laisse pas de bibliothèque tronquée.
-- **Sauvegarde horodatée** de l'ancien fichier avant chaque écriture.
+- **Sauvegarde horodatée** de l'ancien fichier avant chaque écriture qui change
+  quelque chose. Une sauvegarde n'en écrase jamais une autre, même à la seconde
+  près ; et une synchronisation sans changement n'écrit ni ne sauvegarde rien,
+  donc les `.bak` ne s'accumulent pas.
 - **Refus si Steam tourne**, parce qu'écrire alors perdrait le travail sans
   rien signaler.
+- **Refus si `--emulation-root` ne contient pas les émulateurs de
+  l'inventaire**, parce qu'alors le paquet ne reconnaît plus ses propres
+  entrées et recrée les mêmes raccourcis à chaque passage en rapportant des
+  ajouts réussis.
 
 ## Développement
 
@@ -75,10 +82,11 @@ python3 -m pytest
 ```
 
 Les tests ne touchent ni au réseau, ni à Steam, ni à Windows : tout tourne sous
-Linux. Les fixtures viennent d'une installation Steam réelle et ont été
-neutralisées à la main — voir `tests/fixtures/README.md`. Elles ne doivent pas
-être régénérées par ce dépôt : leur valeur tient précisément à ce qu'elles n'en
-proviennent pas.
+Linux. La fixture `shortcuts-reel.vdf` vient d'une installation Steam
+réelle ; seuls ses `appid` et sa forme en subsistent, tout le reste — titres,
+chemins, tags — a été réécrit — voir `tests/fixtures/README.md`. Elle ne doit
+pas être régénérée par ce dépôt : sa valeur tient précisément à ce qu'elle n'en
+provient pas.
 
 ## Licence
 
