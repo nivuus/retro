@@ -119,6 +119,77 @@ def test_emulation_root_avec_espace_est_acceptee(tmp_path, capsys):
     assert code == 0, capsys.readouterr().err
 
 
+def _profil_minimal(tmp_path):
+    profils = tmp_path / "profiles"
+    profils.mkdir()
+    (profils / "p.toml").write_text("""
+schema = 1
+id = "r"
+exe = "r.exe"
+[[system]]
+id = "snes"
+name = "SNES"
+extensions = [".sfc"]
+launch = '-f "{rom}"'
+bios = []
+""", encoding="utf-8")
+    return profils
+
+
+def test_status_bios_qui_leve_ne_rend_pas_de_trace(tmp_path, monkeypatch, capsys):
+    """_cmd_status annonce dans sa propre docstring couvrir tout ce qui
+    empêche de PRODUIRE le rapport, mais bios.check_bios et les appels à
+    status.build_report/format_report vivaient hors du bloc try/except.
+    Toute exception qu'ils lèvent remontait donc telle quelle — une trace
+    Python sur la seule commande du paquet faite pour être lue par un
+    humain, depuis son canapé, sans clavier ni écran.
+    """
+    profils = _profil_minimal(tmp_path)
+    roms = tmp_path / "ROMs"
+    roms.mkdir()
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+
+    def _casse(*a, **k):
+        raise RuntimeError("panne simulée dans check_bios")
+
+    monkeypatch.setattr(cli.bios, "check_bios", _casse)
+    code = cli.main(["status", "--roms", str(roms), "--profiles", str(profils),
+                     "--emulation-root", "D:\\Emulation", "--bios", str(bios_dir)])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "Traceback" not in err
+    assert "panne simulée dans check_bios" in err
+
+
+def test_status_avec_bios_md5_non_textuel_echoue_proprement(tmp_path, capsys):
+    """Reproduction du relecteur : md5 sans guillemets se parse en entier
+    TOML, et sans validation de type au chargement du profil, `retro status`
+    rendait une trace Python complète au lieu du code 2 attendu."""
+    profils = tmp_path / "profiles"
+    profils.mkdir()
+    (profils / "p.toml").write_text("""
+schema = 1
+id = "r"
+exe = "r.exe"
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".chd"]
+launch = '-f "{rom}"'
+bios = [{ file = "scph5501.bin", md5 = 5501, required = true }]
+""", encoding="utf-8")
+    roms = tmp_path / "ROMs"
+    roms.mkdir()
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+    code = cli.main(["status", "--roms", str(roms), "--profiles", str(profils),
+                     "--emulation-root", "D:\\Emulation", "--bios", str(bios_dir)])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "Traceback" not in err
+
+
 def test_invocation_en_module_ne_reussit_pas_sans_rien_faire():
     """`python -m retro.cli` est ce qu'un contributeur essaie avant d'installer
     le paquet. Sans bloc __main__, il rendait 0 sans rien faire ni rien dire."""

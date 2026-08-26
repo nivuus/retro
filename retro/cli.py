@@ -191,24 +191,33 @@ def _cmd_status(args) -> int:
             pathlib.Path(args.roms), profils, args.emulation_root, install_dirs,
             roms_root_windows=args.roms_windows,
         )
+
+        comptes: dict[str, int] = {}
+        for rom in inventaire:
+            comptes[rom.system_name] = comptes.get(rom.system_name, 0) + 1
+        systemes = sorted(comptes.items())
+
+        # bios.check_bios, build_report et format_report font partie de la
+        # PRODUCTION du rapport au même titre que le scan qui précède : la
+        # docstring de cette fonction promet de couvrir tout ce qui l'en
+        # empêche. Les en laisser hors du filet rendait une trace Python nue
+        # sur la seule commande du paquet faite pour être lue par un humain,
+        # depuis son canapé, sans clavier ni écran — par exemple sur un profil
+        # dont le md5 d'un BIOS a été écrit sans guillemets (bios.py suppose
+        # une chaîne et .lower() explose sur l'entier que TOML en tire).
+        etat_bios = bios.check_bios(profils, pathlib.Path(args.bios))
+        rapport = status.build_report(
+            install_dirs=install_dirs,
+            emulation_root=pathlib.Path(args.emulation_root),
+            systems=systemes,
+            bios_status=etat_bios,
+        )
+        texte = status.format_report(rapport)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
         print(str(exc), file=sys.stderr)
         return 2
 
-    comptes: dict[str, int] = {}
-    for rom in inventaire:
-        comptes[rom.system_name] = comptes.get(rom.system_name, 0) + 1
-    systemes = sorted(comptes.items())
-
-    etat_bios = bios.check_bios(profils, pathlib.Path(args.bios))
-
-    rapport = status.build_report(
-        install_dirs=install_dirs,
-        emulation_root=pathlib.Path(args.emulation_root),
-        systems=systemes,
-        bios_status=etat_bios,
-    )
-    print(status.format_report(rapport))
+    print(texte)
     return 0
 
 
