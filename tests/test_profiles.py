@@ -150,3 +150,38 @@ def test_dossier_vide_leve(tmp_path):
     d.mkdir()
     with pytest.raises(profiles.ProfileError):
         profiles.load_profiles(d)
+
+
+def test_systeme_sans_id_refuse(tmp_path):
+    """Un système sans 'id' recevait l'identifiant littéral « ? ».
+
+    Le profil se chargeait sans un mot, mais aucun dossier de ROMs ne s'appelle
+    « ? » : le système entier n'apparaissait jamais dans Steam et le scan
+    rendait zéro. Même famille que la faute de frappe sur une clé de BIOS.
+    """
+    sans_id = RETROARCH.replace('id = "snes"\n', "")
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profile(ecrire(tmp_path, "r.toml", sans_id))
+    assert "id" in str(exc.value)
+    assert "?" not in str(exc.value)
+
+
+def test_deux_profils_de_meme_id_refuses(tmp_path):
+    """Deux profils de même 'id' s'effaçaient l'un l'autre en silence.
+
+    Le dernier chargé gagnait et l'autre disparaissait entièrement : un profil
+    copié sans changer son 'id' a remplacé les neuf systèmes de RetroArch par
+    deux, le scan a rendu 0, et la synchronisation a supprimé les entrées
+    devenues orphelines. Ajouter des profils par copie est le chemin nominal.
+    """
+    d = tmp_path / "profiles"
+    d.mkdir()
+    (d / "retroarch.toml").write_text(RETROARCH, encoding="utf-8")
+    copie = RETROARCH.replace('id = "psx"', 'id = "ps2"').replace(
+        'id = "snes"', 'id = "gc"')
+    (d / "zz-copie.toml").write_text(copie, encoding="utf-8")
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profiles(d)
+    message = str(exc.value)
+    assert "retroarch" in message
+    assert "retroarch.toml" in message and "zz-copie.toml" in message

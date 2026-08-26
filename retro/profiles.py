@@ -55,8 +55,22 @@ def load_profile(path: pathlib.Path) -> Profile:
 
     systemes = []
     vus = set()
-    for brut in data.get("system", []):
-        sid = brut.get("id", "?")
+    for rang, brut in enumerate(data.get("system", [])):
+        # 'id' est OBLIGATOIRE, et vérifié avant tout le reste : il nommait
+        # les messages d'erreur suivants. Absent, il valait le littéral « ? »
+        # et le profil se chargeait sans un mot — mais aucun dossier de ROMs
+        # ne s'appelle « ? », donc le système entier n'apparaissait jamais
+        # dans Steam et le scan rendait zéro. Même famille que la faute de
+        # frappe sur une clé de BIOS : la faute est muette et le résultat
+        # ressemble à une bibliothèque simplement vide.
+        if "id" not in brut:
+            raise ProfileError(
+                f"{path} : le [[system]] n°{rang + 1} n'a pas de champ 'id'. "
+                "L'identifiant est le nom du dossier de ROMs à chercher : "
+                "sans lui, ce système n'apparaîtrait jamais dans Steam et le "
+                "scan rendrait zéro, sans rien signaler."
+            )
+        sid = brut["id"]
         if sid in vus:
             raise ProfileError(f"{path} : le système '{sid}' est déclaré deux fois")
         vus.add(sid)
@@ -117,10 +131,32 @@ def load_profile(path: pathlib.Path) -> Profile:
 
 
 def load_profiles(directory: pathlib.Path) -> dict[str, Profile]:
+    """Tous les profils d'un dossier, indexés par identifiant.
+
+    Deux profils de même 'id' sont REFUSÉS. L'affectation seule laissait le
+    dernier chargé écraser l'autre, qui disparaissait entièrement : un profil
+    copié sans changer son 'id' a remplacé les neuf systèmes de RetroArch par
+    deux, `retro scan` a rendu 0 en annonçant un inventaire plus court, puis la
+    synchronisation a supprimé les entrées devenues orphelines. Ajouter des
+    profils par copie est le chemin nominal, donc l'oubli l'est aussi.
+
+    `load_profile` refuse déjà deux systèmes de même 'id' à l'intérieur d'un
+    profil ; c'est la même garde, entre profils.
+    """
     profils = {}
+    origines: dict[str, pathlib.Path] = {}
     for f in sorted(directory.glob("*.toml")):
         p = load_profile(f)
+        if p.id in profils:
+            raise ProfileError(
+                f"le profil '{p.id}' est déclaré deux fois : {origines[p.id].name} "
+                f"et {f.name}. Le second effacerait le premier en silence, avec "
+                "tous ses systèmes — les ROMs correspondantes disparaîtraient de "
+                "Steam sans qu'aucun message ne le dise. Donner un 'id' distinct "
+                "à chaque profil."
+            )
         profils[p.id] = p
+        origines[p.id] = f
     if not profils:
         raise ProfileError(
             f"aucun profil dans {directory} : aucun jeu ne pourrait être lancé"
