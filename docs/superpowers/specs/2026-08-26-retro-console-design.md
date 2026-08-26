@@ -421,7 +421,29 @@ Le shell teste `C:\nivuus\state\steam.hold` avant de relancer, et affiche « mis
 **expire d'elle-même au bout de cinq minutes** : un `retro sync` qui plante ne
 doit pas immobiliser la console sur un écran sans Steam.
 
-### 3. `provision/32-retro.ps1` — nouvelle étape
+### 3. Deux prérequis mesurés, sans lesquels la console n'a aucun émulateur
+
+Ces deux contraintes ont été découvertes en exécutant réellement l'installation,
+et non en la concevant. Les oublier ne produit pas une dégradation : cela
+produit une console sans un seul émulateur rétro.
+
+**`7zr.exe` doit être présent sur la machine.** Les archives de RetroArch — et
+elles seules parmi celles du manifeste — utilisent le filtre de compression
+BCJ2, que la bibliothèque Python d'extraction ne sait pas lire ; elle le marque
+« Unsupported » dans son propre code. Aucune variante `.zip` n'existe chez
+l'éditeur. Le paquet retombe donc sur un binaire 7-Zip du système, et son
+absence lève une erreur explicite plutôt qu'un silence. `7zr.exe` pèse environ
+600 Ko, est redistribuable, et se télécharge sur `https://www.7-zip.org/a/7zr.exe`.
+
+**Le dossier temporaire du système doit disposer d'au moins 1,5 Gio libre.**
+L'installation extrait dans un dossier temporaire avant de basculer vers le
+volume d'émulation — ce qui garantit qu'une extraction interrompue ne laisse
+pas d'installation à moitié écrasée. RetroArch et ses cores y transitent
+ensemble : environ 1,3 Gio mesuré. Ce dossier vit sur la partition système, qui
+n'est pas celle des jeux, et une VM au disque système étroit échoue sur un
+manque d'espace au milieu du provisionnement.
+
+### 4. `provision/32-retro.ps1` — nouvelle étape
 
 Environ quarante lignes, entre `30-steam.ps1` et `35-shares.ps1` :
 installer Python, installer le paquet `retro`, exécuter `retro install`.
