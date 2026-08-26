@@ -185,3 +185,84 @@ def test_un_dossier_portant_le_nom_d_un_bios_ne_compte_pas(contexte):
 def test_tous_les_systemes_sont_rendus(contexte):
     profils, racine, _, _ = contexte
     assert {s.system_id for s in bios.check_bios(profils, racine)} == {"psx", "snes"}
+
+
+# --- Groupes : « un parmi ceux-ci suffit » --------------------------------
+
+PROFIL_GROUPE = """
+schema = 1
+id = "retroarch"
+exe = "retroarch.exe"
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-f "{rom}"'
+bios = [
+  { file = "scph5500.bin", md5 = "{md5_a}", required = true, group = "region", region = "Japon" },
+  { file = "scph5501.bin", md5 = "{md5_b}", required = true, group = "region", region = "Amerique du Nord" },
+  { file = "scph5502.bin", md5 = "{md5_c}", required = true, group = "region", region = "Europe" },
+]
+"""
+
+
+@pytest.fixture
+def contexte_groupe(tmp_path):
+    a, b, c = b"jp", b"us", b"eu"
+    p = tmp_path / "retroarch.toml"
+    p.write_text(
+        PROFIL_GROUPE.replace("{md5_a}", empreinte(a))
+                     .replace("{md5_b}", empreinte(b))
+                     .replace("{md5_c}", empreinte(c)),
+        encoding="utf-8",
+    )
+    racine = tmp_path / "BIOS"
+    racine.mkdir()
+    return {"retroarch": profiles.load_profile(p)}, racine, a, b, c
+
+
+def test_un_seul_bios_du_groupe_suffit(contexte_groupe):
+    """Le cœur du défaut : quelqu'un qui dépose scph5501.bin — le bon — lisait
+    « MANQUANT : scph5500.bin » et « MANQUANT : scph5502.bin », et partait
+    chercher deux fichiers dont il n'a pas besoin."""
+    profils, racine, a, b, c = contexte_groupe
+    (racine / "scph5501.bin").write_bytes(b)
+    psx = next(s for s in bios.check_bios(profils, racine) if s.system_id == "psx")
+    assert psx.ok
+    assert psx.missing_required == ()
+
+
+def test_aucun_bios_du_groupe_est_un_seul_manque(contexte_groupe):
+    """Le vrai cas « aucun BIOS PlayStation » ne doit pas être masqué."""
+    profils, racine, *_ = contexte_groupe
+    psx = next(s for s in bios.check_bios(profils, racine) if s.system_id == "psx")
+    assert not psx.ok
+    assert psx.missing_required == ("scph5500.bin", "scph5501.bin", "scph5502.bin")
+    besoins = [n for n in psx.needs if not n.satisfied]
+    assert len(besoins) == 1, "trois manques distincts au lieu d'un seul besoin"
+    assert besoins[0].group == "region"
+
+
+def test_un_membre_corrompu_ne_masque_pas_un_membre_valide(contexte_groupe):
+    profils, racine, a, b, c = contexte_groupe
+    (racine / "scph5500.bin").write_bytes(b"ce n'est pas le bon fichier")
+    (racine / "scph5502.bin").write_bytes(c)
+    psx = next(s for s in bios.check_bios(profils, racine) if s.system_id == "psx")
+    assert psx.ok
+
+
+def test_les_besoins_hors_groupe_restent_individuels(contexte):
+    """Un BIOS sans groupe reste un besoin à lui seul."""
+    profils, racine, a, b = contexte
+    psx = next(s for s in bios.check_bios(profils, racine) if s.system_id == "psx")
+    assert [n.group for n in psx.needs] == [None, None]
+    assert [tuple(f.name for f in n.files) for n in psx.needs] == [
+        ("scph5501.bin",), ("scph5502.bin",)]
+
+
+def test_la_region_est_portee_jusqu_au_resultat(contexte_groupe):
+    """La clé `region` du profil n'était lue par personne : elle sert
+    maintenant à nommer, dans le rapport, lequel des trois déposer."""
+    profils, racine, *_ = contexte_groupe
+    psx = next(s for s in bios.check_bios(profils, racine) if s.system_id == "psx")
+    assert [f.region for f in psx.files] == ["Japon", "Amerique du Nord", "Europe"]

@@ -210,3 +210,66 @@ def test_deux_profils_de_meme_id_refuses(tmp_path):
     message = str(exc.value)
     assert "retroarch" in message
     assert "retroarch.toml" in message and "zz-copie.toml" in message
+
+
+# --- Groupes de BIOS : « un parmi ceux-ci suffit » ------------------------
+#
+# Les trois BIOS PlayStation sont interchangeables : celui de la région des
+# jeux suffit. Déclarés `required = true` un par un, le rapport accusait de
+# deux fichiers manquants quelqu'un qui avait déposé le bon.
+
+GROUPE = """
+schema = 1
+id = "retroarch"
+exe = "retroarch.exe"
+
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-f "{rom}"'
+bios = [
+  { file = "a.bin", md5 = "aa", required = true, group = "region", region = "Japon" },
+  { file = "b.bin", md5 = "bb", required = true, group = "region", region = "Europe" },
+]
+"""
+
+
+def test_un_groupe_de_bios_est_charge(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "r.toml", GROUPE))
+    psx = p.systems[0]
+    assert [b.get("group") for b in psx.bios] == ["region", "region"]
+    assert [b.get("region") for b in psx.bios] == ["Japon", "Europe"]
+
+
+def test_groupe_non_textuel_refuse(tmp_path):
+    contenu = GROUPE.replace('group = "region", region = "Japon"',
+                             "group = 1, region = \"Japon\"")
+    with pytest.raises(profiles.ProfileError, match="group"):
+        profiles.load_profile(ecrire(tmp_path, "r.toml", contenu))
+
+
+def test_region_non_textuelle_refusee(tmp_path):
+    contenu = GROUPE.replace('region = "Japon"', "region = 1")
+    with pytest.raises(profiles.ProfileError, match="region"):
+        profiles.load_profile(ecrire(tmp_path, "r.toml", contenu))
+
+
+def test_groupe_a_un_seul_membre_refuse(tmp_path):
+    """Une faute de frappe sur le nom du groupe le scinde en silence, et le
+    membre resté seul redevient exigé à lui tout seul — exactement le défaut
+    que les groupes corrigent. Un groupe d'un seul membre n'a aucun sens :
+    il est refusé plutôt que toléré."""
+    contenu = GROUPE.replace('group = "region", region = "Europe"',
+                             'group = "regionn", region = "Europe"')
+    with pytest.raises(profiles.ProfileError, match="seul"):
+        profiles.load_profile(ecrire(tmp_path, "r.toml", contenu))
+
+
+def test_groupe_aux_exigences_contradictoires_refuse(tmp_path):
+    """« un parmi ceux-ci » n'a pas de sens si les membres ne s'accordent pas
+    sur le fait d'être exigés."""
+    contenu = GROUPE.replace('md5 = "bb", required = true',
+                             'md5 = "bb", required = false')
+    with pytest.raises(profiles.ProfileError, match="required"):
+        profiles.load_profile(ecrire(tmp_path, "r.toml", contenu))

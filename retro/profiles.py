@@ -39,6 +39,49 @@ class Profile:
     steam_input: str
 
 
+def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
+                     declares: tuple[dict, ...]) -> None:
+    """Un groupe de BIOS dit « un parmi ceux-ci suffit ».
+
+    Les trois BIOS PlayStation sont interchangeables : celui de la région des
+    jeux suffit. Déclarés `required = true` un par un, quelqu'un qui déposait
+    scph5501.bin — le bon — lisait « MANQUANT : scph5500.bin » et
+    « MANQUANT : scph5502.bin » et partait chercher deux fichiers dont il
+    n'avait pas besoin. Les basculer tous les trois en `required = false`
+    aurait masqué le vrai cas, « aucun BIOS PlayStation ».
+
+    Deux gardes, parce que l'une et l'autre erreur sont muettes :
+
+    - un groupe d'UN SEUL membre n'a aucun sens, et c'est exactement ce que
+      produit une faute de frappe sur le nom du groupe : le membre resté seul
+      redevient exigé à lui tout seul, soit le défaut d'origine ;
+    - des membres qui ne s'accordent pas sur `required` rendent « un parmi
+      ceux-ci » indécidable — le groupe est-il exigé, ou non ?
+    """
+    groupes: dict[str, list[dict]] = {}
+    for b in declares:
+        if b.get("group"):
+            groupes.setdefault(b["group"], []).append(b)
+    for nom, membres in groupes.items():
+        if len(membres) < 2:
+            raise ProfileError(
+                f"{path} : profil '{pid}', système '{sid}' — le groupe de BIOS "
+                f"'{nom}' n'a qu'un seul membre ({membres[0]['file']}). Un "
+                "groupe dit « un parmi ceux-ci suffit » : à un seul membre il "
+                "ne dit rien, et c'est ce qu'une faute de frappe sur le nom du "
+                "groupe produit — le fichier resté seul redevient exigé pour "
+                "lui-même, en silence."
+            )
+        exigences = {bool(m.get("required", True)) for m in membres}
+        if len(exigences) > 1:
+            raise ProfileError(
+                f"{path} : profil '{pid}', système '{sid}' — les membres du "
+                f"groupe de BIOS '{nom}' ne s'accordent pas sur 'required'. "
+                "« Un parmi ceux-ci suffit » ne veut alors plus rien dire : le "
+                "groupe entier est exigé, ou il ne l'est pas."
+            )
+
+
 def load_profile(path: pathlib.Path) -> Profile:
     try:
         with path.open("rb") as f:
@@ -121,6 +164,11 @@ def load_profile(path: pathlib.Path) -> Profile:
             # commande faite pour expliquer les pannes, plutôt qu'un message
             # qui nomme le profil, le système et le champ à corriger.
             non_textuels = [c for c in ("file", "md5") if not isinstance(b[c], str)]
+            # 'group' et 'region' sont facultatifs, mais s'ils sont là ils
+            # sont lus : un entier y traverserait le chargement et casserait
+            # le rapport, comme le md5 sans guillemets ci-dessus.
+            non_textuels += [c for c in ("group", "region")
+                             if c in b and not isinstance(b[c], str)]
             if non_textuels:
                 raise ProfileError(
                     f"{path} : profil '{data['id']}', système '{sid}', "
@@ -131,6 +179,8 @@ def load_profile(path: pathlib.Path) -> Profile:
                     "numérique sans guillemets désactiverait la vérification "
                     "sans un mot."
                 )
+
+        _valider_groupes(path, data["id"], sid, brut.get("bios", ()))
 
         systemes.append(System(
             id=sid, name=brut["name"], extensions=exts, launch=brut["launch"],
