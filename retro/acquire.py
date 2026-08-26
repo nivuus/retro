@@ -45,21 +45,42 @@ def _membres_surs(noms, destination: pathlib.Path):
 
 def safe_extract(archive: pathlib.Path, kind: str,
                  destination: pathlib.Path) -> None:
-    destination.mkdir(parents=True, exist_ok=True)
-    if kind == "zip":
-        with zipfile.ZipFile(archive) as z:
-            _membres_surs(z.namelist(), destination)
-            z.extractall(destination)
-    elif kind == "7z":
-        try:
-            import py7zr
-        except ImportError as exc:  # pragma: no cover - dépendance déclarée
-            raise AcquireError("py7zr est requis pour les archives 7z") from exc
-        with py7zr.SevenZipFile(archive) as z:
-            _membres_surs(z.getnames(), destination)
-            z.extractall(destination)
-    else:
+    """Extrait une archive sans la laisser écrire hors de sa destination.
+
+    `_membres_surs` ne regarde que les NOMS de membres. La protection contre un
+    lien symbolique dont la cible sort de la destination repose, elle, sur les
+    bibliothèques d'extraction : zipfile ne matérialise jamais de vrai lien, et
+    py7zr refuse lui-même « Symlink point out of target directory ». C'est de la
+    défense en profondeur réelle, mais elle est portée par du code que nous
+    n'écrivons pas — d'où cette note, pour qu'un futur changement de
+    bibliothèque ne rouvre pas le trou en silence.
+
+    Toute exception est enveloppée : sur une machine de provisionnement sans
+    clavier ni écran, une trace Python brute remplace le message qui nommerait
+    l'archive fautive.
+    """
+    if kind not in ("zip", "7z"):
         raise AcquireError(f"format d'archive inconnu : {kind!r}")
+    destination.mkdir(parents=True, exist_ok=True)
+    try:
+        if kind == "zip":
+            with zipfile.ZipFile(archive) as z:
+                _membres_surs(z.namelist(), destination)
+                z.extractall(destination)
+        else:
+            try:
+                import py7zr
+            except ImportError as exc:  # pragma: no cover - dépendance déclarée
+                raise AcquireError("py7zr est requis pour les archives 7z") from exc
+            with py7zr.SevenZipFile(archive) as z:
+                _membres_surs(z.getnames(), destination)
+                z.extractall(destination)
+    except AcquireError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - volontairement large, voir docstring
+        raise AcquireError(
+            f"extraction de {archive.name} impossible : {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> str:

@@ -103,6 +103,33 @@ def test_extraction_normale_passe(tmp_path):
     assert (cible / "a" / "b" / "c.txt").read_text() == "dedans"
 
 
+def test_une_panne_d_extraction_est_enveloppee(tmp_path):
+    """Une archive qu'aucun garde-fou ne rejette mais que la bibliothèque
+    refuse — lien symbolique échappant, en-tête corrompu — ne doit pas rendre
+    une trace Python sur une machine sans clavier ni écran."""
+    src = tmp_path / "corrompue.zip"
+    src.write_bytes(b"PK\x03\x04 ceci n'est pas une archive valide")
+    with pytest.raises(acquire.AcquireError) as exc:
+        acquire.safe_extract(src, "zip", tmp_path / "cible")
+    assert "corrompue.zip" in str(exc.value)
+
+
+def test_lien_symbolique_echappant_est_enveloppe(tmp_path):
+    """Le cas mesuré : un lien dont la cible sort de la destination, suivi d'un
+    membre imbriqué. zipfile lève NotADirectoryError ; l'appelant doit voir une
+    AcquireError qui nomme l'archive."""
+    import stat
+    src = tmp_path / "lien.zip"
+    with zipfile.ZipFile(src, "w") as z:
+        info = zipfile.ZipInfo("lien")
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        z.writestr(info, "../../dehors")
+        z.writestr("lien/evade.txt", "contenu")
+    with pytest.raises(acquire.AcquireError):
+        acquire.safe_extract(src, "zip", tmp_path / "cible")
+    assert not (tmp_path.parent / "dehors").exists()
+
+
 def test_archive_inconnue_refusee(tmp_path):
     src = tmp_path / "ok.zip"
     faire_zip(src, {"a.txt": "x"})
