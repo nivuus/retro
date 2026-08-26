@@ -234,6 +234,47 @@ archive = "7z"
     assert "sha256" in str(exc.value) and "parts" in str(exc.value)
 
 
+def test_le_secours_7z_prend_le_relais(tmp_path, monkeypatch):
+    """py7zr ne lit pas le filtre BCJ2, celui des archives de RetroArch. Sans
+    ce secours, l'émulateur qui couvre l'essentiel de la bibliothèque rétro ne
+    s'installe pas — et aucun test en .zip ne le verrait."""
+    binaire = shutil.which("7z") or shutil.which("7za") or shutil.which("7zr")
+    if not binaire:
+        pytest.skip("aucun binaire 7-Zip sur cette machine")
+    src = tmp_path / "vrai.7z"
+    contenu = tmp_path / "dedans"
+    contenu.mkdir()
+    (contenu / "fichier.txt").write_text("contenu")
+    subprocess.run([binaire, "a", str(src), str(contenu / "fichier.txt")],
+                   capture_output=True, check=True)
+
+    # py7zr rendu inopérant, comme il l'est réellement face au filtre BCJ2.
+    import py7zr
+
+    def refuse(*a, **k):
+        raise RuntimeError("Unsupported compression method BCJ2")
+
+    monkeypatch.setattr(py7zr, "SevenZipFile", refuse)
+    cible = tmp_path / "cible"
+    acquire.safe_extract(src, "7z", cible)
+    assert (cible / "fichier.txt").read_text() == "contenu"
+
+
+def test_sans_py7zr_ni_binaire_le_message_dit_quoi_faire(tmp_path, monkeypatch):
+    import py7zr
+
+    def refuse(*a, **k):
+        raise RuntimeError("Unsupported compression method BCJ2")
+
+    monkeypatch.setattr(py7zr, "SevenZipFile", refuse)
+    monkeypatch.setattr(acquire.shutil, "which", lambda b: None)
+    src = tmp_path / "x.7z"
+    src.write_bytes(b"peu importe")
+    with pytest.raises(acquire.AcquireError) as exc:
+        acquire.safe_extract(src, "7z", tmp_path / "cible")
+    assert "7zr" in str(exc.value)
+
+
 def test_archive_inconnue_refusee(tmp_path):
     mauvais = NOYAU.replace('archive = "7z"', 'archive = "rar"')
     with pytest.raises(manifest.ManifestError) as exc:
@@ -765,6 +806,8 @@ Fichier `tests/test_acquire.py` :
 import dataclasses
 import hashlib
 import pathlib
+import shutil
+import subprocess
 import zipfile
 
 import pytest
@@ -894,6 +937,47 @@ def test_lien_symbolique_echappant_est_enveloppe(tmp_path):
     assert not (tmp_path.parent / "dehors").exists()
 
 
+def test_le_secours_7z_prend_le_relais(tmp_path, monkeypatch):
+    """py7zr ne lit pas le filtre BCJ2, celui des archives de RetroArch. Sans
+    ce secours, l'émulateur qui couvre l'essentiel de la bibliothèque rétro ne
+    s'installe pas — et aucun test en .zip ne le verrait."""
+    binaire = shutil.which("7z") or shutil.which("7za") or shutil.which("7zr")
+    if not binaire:
+        pytest.skip("aucun binaire 7-Zip sur cette machine")
+    src = tmp_path / "vrai.7z"
+    contenu = tmp_path / "dedans"
+    contenu.mkdir()
+    (contenu / "fichier.txt").write_text("contenu")
+    subprocess.run([binaire, "a", str(src), str(contenu / "fichier.txt")],
+                   capture_output=True, check=True)
+
+    # py7zr rendu inopérant, comme il l'est réellement face au filtre BCJ2.
+    import py7zr
+
+    def refuse(*a, **k):
+        raise RuntimeError("Unsupported compression method BCJ2")
+
+    monkeypatch.setattr(py7zr, "SevenZipFile", refuse)
+    cible = tmp_path / "cible"
+    acquire.safe_extract(src, "7z", cible)
+    assert (cible / "fichier.txt").read_text() == "contenu"
+
+
+def test_sans_py7zr_ni_binaire_le_message_dit_quoi_faire(tmp_path, monkeypatch):
+    import py7zr
+
+    def refuse(*a, **k):
+        raise RuntimeError("Unsupported compression method BCJ2")
+
+    monkeypatch.setattr(py7zr, "SevenZipFile", refuse)
+    monkeypatch.setattr(acquire.shutil, "which", lambda b: None)
+    src = tmp_path / "x.7z"
+    src.write_bytes(b"peu importe")
+    with pytest.raises(acquire.AcquireError) as exc:
+        acquire.safe_extract(src, "7z", tmp_path / "cible")
+    assert "7zr" in str(exc.value)
+
+
 def test_archive_inconnue_refusee(tmp_path):
     src = tmp_path / "ok.zip"
     faire_zip(src, {"a.txt": "x"})
@@ -972,6 +1056,7 @@ from __future__ import annotations
 import hashlib
 import pathlib
 import shutil
+import subprocess
 import tempfile
 import zipfile
 
@@ -1001,6 +1086,52 @@ def _membres_surs(noms, destination: pathlib.Path):
             )
 
 
+# Binaires 7-Zip acceptés, par ordre de préférence. 7zr est l'extracteur
+# autonome officiel : ~600 Ko, redistribuable, et il lit tous les filtres.
+_BINAIRES_7Z = ("7zz", "7z", "7za", "7zr", "7zr.exe", "7z.exe")
+
+
+def _extraire_7z(archive: pathlib.Path, destination: pathlib.Path) -> None:
+    """Extrait une archive 7z, avec py7zr d'abord et un binaire 7-Zip ensuite.
+
+    py7zr ne sait PAS lire le filtre BCJ2 — il le marque « Unsupported » dans
+    son propre code — et c'est précisément celui qu'utilisent les archives de
+    RetroArch, mesuré le 2026-08-26 sur les archives réelles. Sans ce secours,
+    l'émulateur qui couvre l'essentiel de la bibliothèque rétro ne s'installe
+    pas du tout, et aucun test en .zip ne peut le voir.
+    """
+    erreur_py7zr = None
+    try:
+        import py7zr
+        with py7zr.SevenZipFile(archive) as z:
+            _membres_surs(z.getnames(), destination)
+            z.extractall(destination)
+        return
+    except AcquireError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - py7zr lève des types variés
+        erreur_py7zr = exc
+
+    binaire = next((b for b in _BINAIRES_7Z if shutil.which(b)), None)
+    if binaire is None:
+        raise AcquireError(
+            f"{archive.name} : py7zr a échoué ({erreur_py7zr}) et aucun binaire "
+            f"7-Zip n'est disponible. Installer l'un de {', '.join(_BINAIRES_7Z)} "
+            "— 7zr suffit et se télécharge sur https://www.7-zip.org/a/7zr.exe"
+        )
+    # -bb0 : silencieux. -y : ne pose aucune question, il n'y a personne pour
+    # y répondre. Le binaire refuse lui-même d'écrire hors de -o.
+    r = subprocess.run(
+        [binaire, "x", str(archive), f"-o{destination}", "-y", "-bb0"],
+        capture_output=True, text=True, check=False,
+    )
+    if r.returncode != 0:
+        raise AcquireError(
+            f"{archive.name} : py7zr a échoué ({erreur_py7zr}) et {binaire} "
+            f"aussi (code {r.returncode}) : {r.stderr.strip()[:400]}"
+        )
+
+
 def safe_extract(archive: pathlib.Path, kind: str,
                  destination: pathlib.Path) -> None:
     """Extrait une archive sans la laisser écrire hors de sa destination.
@@ -1026,13 +1157,7 @@ def safe_extract(archive: pathlib.Path, kind: str,
                 _membres_surs(z.namelist(), destination)
                 z.extractall(destination)
         else:
-            try:
-                import py7zr
-            except ImportError as exc:  # pragma: no cover - dépendance déclarée
-                raise AcquireError("py7zr est requis pour les archives 7z") from exc
-            with py7zr.SevenZipFile(archive) as z:
-                _membres_surs(z.getnames(), destination)
-                z.extractall(destination)
+            _extraire_7z(archive, destination)
     except AcquireError:
         raise
     except Exception as exc:  # noqa: BLE001 - volontairement large, voir docstring
