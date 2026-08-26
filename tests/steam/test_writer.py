@@ -1,4 +1,8 @@
 """Écriture de shortcuts.vdf : atomicité, sauvegarde, garde Steam."""
+import os
+import pathlib
+import types
+
 import pytest
 
 from retro.steam import vdf_io, writer
@@ -50,6 +54,56 @@ def test_l_ancien_fichier_survit_a_un_echec(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         writer.write_shortcuts(p, [ENTREE])
     assert p.read_bytes() == original
+
+
+def test_l_ecriture_passe_reellement_par_un_fichier_temporaire(tmp_path, monkeypatch):
+    """Ne teste pas seulement « rendre avant d'écrire » (déjà couvert par
+    test_l_ancien_fichier_survit_a_un_echec) mais l'atomicité elle-même :
+    le nouveau contenu doit être écrit intégralement AILLEURS, et le fichier
+    final ne doit changer qu'au moment d'un unique os.replace(). Une
+    implémentation qui écrirait directement dans path (perdant l'atomicité)
+    ferait passer les autres tests mais pas celui-ci."""
+    p = tmp_path / "shortcuts.vdf"
+    p.write_bytes(vdf_io.dumps_shortcuts([ENTREE]))
+    original = p.read_bytes()
+
+    os_replace_reel = os.replace
+    appels = []
+
+    def replace_espion(src, dst):
+        src, dst = pathlib.Path(src), pathlib.Path(dst)
+        # Au moment du remplacement : la nouvelle version est déjà écrite en
+        # entier ailleurs, et le fichier final n'a pas encore été touché.
+        assert src != dst, "le remplacement doit basculer depuis un autre fichier"
+        assert src.exists() and src.read_bytes() == vdf_io.dumps_shortcuts(
+            [dict(ENTREE, appname="Nouveau")]
+        )
+        assert dst.read_bytes() == original, "le fichier final a été modifié avant le replace"
+        appels.append((src, dst))
+        os_replace_reel(src, dst)
+
+    monkeypatch.setattr(writer.os, "replace", replace_espion)
+    writer.write_shortcuts(p, [dict(ENTREE, appname="Nouveau")])
+
+    assert appels, "os.replace n'a jamais été appelé : l'écriture n'est pas atomique"
+
+
+def test_running_processes_parse_la_sortie_de_tasklist_sous_windows(monkeypatch):
+    """La branche Windows de _running_processes() doit être exercée sans
+    Windows : son mode de panne va dans le mauvais sens (une liste vide fait
+    croire que Steam ne tourne jamais), donc une régression y serait un échec
+    muet — précisément ce que ce module existe pour empêcher."""
+    monkeypatch.setattr(writer.os, "name", "nt")
+    sortie_tasklist = (
+        '"steam.exe","1234","Console","1","50 000 Ko"\r\n'
+        '"explorer.exe","5678","Console","1","30 000 Ko"\r\n'
+    )
+
+    def faux_run(*args, **kwargs):
+        return types.SimpleNamespace(stdout=sortie_tasklist)
+
+    monkeypatch.setattr(writer.subprocess, "run", faux_run)
+    assert writer._running_processes() == ["steam.exe", "explorer.exe"]
 
 
 def test_steam_detecte_comme_actif():
