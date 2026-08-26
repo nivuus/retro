@@ -46,6 +46,23 @@ def _cmd_sync(args) -> int:
         print(str(exc), file=sys.stderr)
         return 3
 
+    # Une racine d'émulation erronée ne lève rien : is_owned devient faux pour
+    # NOS PROPRES entrées, donc chaque passage les recrée sans les reconnaître,
+    # en rapportant « + <titre> » comme si tout allait bien. Mesuré : trois
+    # passages, trois entrées identiques. On refuse avant d'écrire.
+    hors_racine = [rom.emulator_exe for rom in voulu
+                   if not entry.is_under_root(rom.emulator_exe, args.emulation_root)]
+    if hors_racine:
+        print(
+            f"--emulation-root {args.emulation_root} ne contient pas les "
+            f"émulateurs de l'inventaire : {', '.join(sorted(set(hors_racine)))}. "
+            "Synchroniser ainsi recréerait les mêmes raccourcis à chaque "
+            "passage sans jamais les reconnaître. Corriger --emulation-root ou "
+            "l'inventaire.",
+            file=sys.stderr,
+        )
+        return 4
+
     client = artwork.ArtworkClient(api_key=args.steamgriddb_key)
     rapports = [
         sync.sync_account(c, voulu, args.emulation_root, client) for c in comptes

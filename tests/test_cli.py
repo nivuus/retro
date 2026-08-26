@@ -48,3 +48,45 @@ def test_sync_complet(tmp_path, capsys):
                      "--inventory", str(inventaire)])
     assert code == 0
     assert "Chrono Trigger" in capsys.readouterr().out
+
+
+def test_emulation_root_erronee_est_refusee(tmp_path, capsys):
+    """Sans cette garde, is_owned est faux pour NOS PROPRES entrées : chaque
+    passage les réécrit sans les reconnaître, et trois passages produisent trois
+    fois la même entrée en annonçant « + Chrono Trigger » à chaque fois.
+    """
+    config = tmp_path / "userdata" / "123" / "config"
+    config.mkdir(parents=True)
+    inventaire = tmp_path / "inv.json"
+    inventaire.write_text(json.dumps([{
+        "title": "Chrono Trigger",
+        "rom_path": "G:\\ROMs\\snes\\ct.sfc",
+        "system_name": "Super Nintendo",
+        "emulator_exe": "E:\\Autre\\RetroArch\\retroarch.exe",
+        "launch_template": '-L "cores\\snes9x_libretro.dll" -f "{rom}"',
+        "start_dir": "E:\\Autre\\RetroArch",
+    }]))
+    code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--emulation-root", "D:\\Emulation",
+                     "--inventory", str(inventaire)])
+    assert code != 0
+    err = capsys.readouterr().err
+    assert "--emulation-root" in err and "E:\\Autre\\RetroArch\\retroarch.exe" in err
+    assert not (config / "shortcuts.vdf").exists(), "écrit malgré le refus"
+
+
+def test_emulation_root_juste_ne_bloque_pas(tmp_path, capsys):
+    """La garde ne doit pas refuser le cas nominal."""
+    (tmp_path / "userdata" / "123" / "config").mkdir(parents=True)
+    inventaire = tmp_path / "inv.json"
+    inventaire.write_text(json.dumps([{
+        "title": "Chrono Trigger",
+        "rom_path": "G:\\ROMs\\snes\\ct.sfc",
+        "system_name": "Super Nintendo",
+        "emulator_exe": "D:\\Emulation\\RetroArch\\retroarch.exe",
+        "launch_template": '-L "cores\\snes9x_libretro.dll" -f "{rom}"',
+        "start_dir": "D:\\Emulation\\RetroArch",
+    }]))
+    assert cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--emulation-root", "D:\\Emulation",
+                     "--inventory", str(inventaire)]) == 0

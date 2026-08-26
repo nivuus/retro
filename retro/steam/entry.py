@@ -84,6 +84,23 @@ def exe_path(exe_field: str) -> str:
     return exe_field.split(" ", 1)[0]
 
 
+def is_under_root(exe_field: str, emulation_root: str) -> bool:
+    """La moitié « chemin » du test de propriété, isolée pour être réutilisable.
+
+    La ligne de commande s'en sert pour vérifier AVANT d'écrire que la racine
+    d'émulation qu'on lui a donnée contient bien les émulateurs de l'inventaire.
+    Sans cette vérification, une racine erronée rend is_owned faux pour nos
+    propres entrées : chaque passage les recrée sans les reconnaître.
+
+    PureWindowsPath compare segment par segment et sans casse : « D:\EmulationAutre »
+    n'est donc pas sous « D:\Emulation », alors qu'une comparaison de préfixe
+    de chaîne l'aurait accepté à tort.
+    """
+    chemin = pathlib.PureWindowsPath(exe_path(exe_field))
+    racine = pathlib.PureWindowsPath(emulation_root.strip('"'))
+    return racine in chemin.parents
+
+
 def is_owned(shortcut: dict, emulation_root: str) -> bool:
     """Vrai seulement si les DEUX conditions tiennent."""
     tags = shortcut.get("tags")
@@ -92,9 +109,4 @@ def is_owned(shortcut: dict, emulation_root: str) -> bool:
     exe = shortcut.get("exe")
     if not exe:
         return False
-    # PureWindowsPath compare segment par segment et sans casse : « D:\EmulationAutre »
-    # n'est donc pas sous « D:\Emulation », alors qu'une comparaison de préfixe
-    # de chaîne l'aurait accepté à tort.
-    chemin = pathlib.PureWindowsPath(exe_path(exe))
-    racine = pathlib.PureWindowsPath(emulation_root.strip('"'))
-    return racine in chemin.parents
+    return is_under_root(exe, emulation_root)
