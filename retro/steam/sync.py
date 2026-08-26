@@ -25,7 +25,14 @@ def sync_account(
     wanted: list[entry.RomEntry],
     emulation_root: str,
     artwork_client,
+    grid_dir_windows: str | None = None,
 ) -> SyncReport:
+    # L'antislash final est retiré une fois pour toutes : « ...\\grid\\ » et
+    # « ...\\grid » doivent produire le MÊME champ icon, sinon deux écritures
+    # d'un même chemin sous deux formes font une différence de fichier
+    # gratuite à chaque synchronisation.
+    grille = grid_dir_windows.rstrip("\\") if grid_dir_windows is not None else None
+
     existant = vdf_io.load_shortcuts(account.shortcuts_path)
     resultat = reconcile.reconcile(existant, wanted, emulation_root)
 
@@ -41,6 +48,16 @@ def sync_account(
         # Compté APRÈS le passage : ce qui manque encore est ce qu'une panne a
         # laissé derrière elle. On le signale, on ne bloque pas.
         manquants += len(artwork.missing_assets(account.grid_dir, legacy))
+        # Le champ icon est renseigné dans ce même passage, pas avant : il lui
+        # faut le résultat du fetch qui précède. Il ne participe jamais au
+        # calcul de l'identifiant (appid), qui reste dérivé de (exe, appname)
+        # seul — sinon tout l'artwork déjà déposé deviendrait orphelin d'un
+        # coup, sur toute la bibliothèque, dès qu'une icône serait renseignée.
+        if grille is not None:
+            prefixe = appid_mod.grid_prefixes(legacy)["icone"]
+            fichier = appid_mod.existing_asset(account.grid_dir, prefixe)
+            if fichier is not None:
+                raccourci["icon"] = f"{grille}\\{fichier.name}"
 
     purges = len(artwork.prune_orphans(account.grid_dir, resultat.orphaned_appids))
 
@@ -62,7 +79,11 @@ def format_report(reports: list[SyncReport]) -> str:
     for r in reports:
         lignes.append(f"Compte {r.account_id}")
         if not r.created and not r.removed:
-            lignes.append(f"  aucun changement ({len(r.kept)} jeux déjà à jour)")
+            n = len(r.kept)
+            lignes.append(
+                f"  aucun changement ({n} {'jeu' if n <= 1 else 'jeux'} "
+                "déjà à jour)"
+            )
         for titre in r.created:
             lignes.append(f"  + {titre}")
         for titre in r.removed:

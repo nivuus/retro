@@ -9,7 +9,8 @@ Vous la lancez à la manette.
 
 ## Ce que ça fait
 
-Trois commandes, dans cet ordre :
+Quatre commandes. Les trois premières dans cet ordre, la quatrième quand vous
+voulez :
 
 - **`retro install`** installe les émulateurs du manifeste sous la racine
   d'émulation. Il les **télécharge depuis Internet** et les extrait — voir
@@ -20,13 +21,38 @@ Trois commandes, dans cet ordre :
   commande lance un jeu.
 - **`retro sync`** lit cet inventaire, écrit les entrées correspondantes dans
   le `shortcuts.vdf` de Steam, et récupère les cinq assets d'artwork depuis
-  SteamGridDB. La bibliothèque se range toute seule par système, par décennie
-  et par genre — ces catégories sont natives dans Steam et filtrables à la
-  manette.
+  SteamGridDB. Chaque jeu reçoit deux tags — `Rétro` et le nom de son système —
+  qui deviennent des catégories natives, filtrables à la manette.
+- **`retro status`** est la seule commande faite pour un humain : elle écrit un
+  rapport lisible depuis le canapé. Quels émulateurs sont installés et en
+  quelle version, combien de jeux par système, **quels BIOS manquent**, et la
+  liste des problèmes — chacun avec le chemin concerné et le geste à faire.
+  Elle ne modifie rien.
 
-Ce que Steam ne sait pas afficher pour un jeu non-Steam : description, date de
-sortie, éditeur. Le format `shortcuts.vdf` n'a aucun champ pour ça. Toute la
-richesse passe donc par l'artwork et les tags.
+### Les BIOS
+
+Certains systèmes ne jouent rien sans un BIOS que vous devez fournir. Sans lui,
+le jeu apparaît dans Steam, se lance, écran noir : rien n'explique pourquoi.
+C'est ce que `retro status --bios <dossier>` dit à votre place. Il distingue
+trois états, parce qu'ils appellent trois gestes différents : **présent et
+valide**, **absent**, et **présent mais corrompu** — un fichier renommé depuis
+un autre BIOS, que vous croyez avoir déposé.
+
+Quand plusieurs BIOS sont interchangeables — les trois BIOS PlayStation, un par
+région — le rapport le dit : un seul suffit, celui de la région de vos jeux. Il
+ne réclame pas les deux autres.
+
+### Ce que Steam ne sait pas afficher
+
+Pour un jeu non-Steam : description, date de sortie, éditeur. Le format
+`shortcuts.vdf` n'a aucun champ pour ça. Toute la richesse passe donc par
+l'artwork et les tags.
+
+Le classement automatique en catégories de décennie et de genre est **prévu et
+pas encore actif** : le module qui interroge une base de métadonnées existe
+(`retro/metadata.py`), mais rien ne l'appelle et aucune option ne permet de
+fournir une clé d'API. Aujourd'hui, les seuls tags écrits sont `Rétro` et le
+nom du système.
 
 ## Ce que ça ne fait pas
 
@@ -56,15 +82,26 @@ retro scan --roms /mnt/roms \
            --output inventaire.json
 
 # 3. faire remonter le tout dans Steam
-retro sync --steam-root 'D:\Steam' \
+retro sync --steam-root /mnt/steam \
+           --steam-root-windows 'D:\Steam' \
            --emulation-root 'D:\Emulation' \
            --inventory inventaire.json \
            --steamgriddb-key VOTRE_CLE
+
+# 4. lire ce qui va et ce qui manque (dans la machine virtuelle : les deux
+#    chemins de la paire --roms/--roms-windows s'y confondent)
+retro status --roms 'G:\ROMs' \
+             --roms-windows 'G:\ROMs' \
+             --emulation-root 'D:\Emulation' \
+             --bios 'G:\ROMs\bios'
 ```
 
 `--roms` est le chemin par lequel la machine qui scanne atteint les ROMs ;
-`--roms-windows` celui par lequel la console les verra. Les deux diffèrent dès
-que le scan ne tourne pas sur la console elle-même.
+`--roms-windows` celui par lequel la console les verra. `--steam-root` et
+`--steam-root-windows` sont la même distinction pour l'installation Steam : le
+premier sert à lire et écrire `shortcuts.vdf`, le second est ce que **Steam**
+relira — notamment le chemin des icônes. Dans chaque paire, les deux ne se
+confondent que lorsque la commande tourne sur la console elle-même.
 
 `--manifest` et `--user-manifest` sont passés à `install` **et** à `scan`, avec
 les mêmes valeurs : c'est le manifeste qui décide où chaque émulateur
@@ -183,4 +220,4 @@ provient pas.
 
 ## Licence
 
-MIT.
+MIT — le texte complet est dans [LICENSE](LICENSE).

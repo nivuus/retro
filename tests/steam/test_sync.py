@@ -178,3 +178,72 @@ def test_artwork_complet_ne_signale_rien_de_manquant(tmp_path):
     r = sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkComplet())
     assert r.artwork_written == 5 and r.artwork_missing == 0
     assert "0 manquant(s)" in sync.format_report([r])
+
+
+# --- champ icon ---
+
+def test_icone_renseignee_quand_le_fichier_existe_et_la_racine_est_fournie(tmp_path):
+    """Mesuré sur une installation réelle : le champ icon des raccourcis
+    d'émulateurs porte un chemin absolu vers <grid_dir_windows>\\<appid>_icon.png."""
+    compte = faire_compte(tmp_path)
+    grid_windows = "D:\\Steam\\userdata\\123\\config\\grid"
+    sync.sync_account(
+        compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkComplet(),
+        grid_dir_windows=grid_windows,
+    )
+    relu = vdf_io.load_shortcuts(compte.shortcuts_path)
+    assert len(relu) == 1
+    legacy = appid.to_unsigned(relu[0]["appid"])
+    nom_attendu = f"{legacy}_icon.png"
+    assert relu[0]["icon"] == f"{grid_windows}\\{nom_attendu}"
+
+
+def test_icone_vide_sans_racine_windows(tmp_path):
+    """Par défaut, grid_dir_windows est None : le champ icon reste vide, même
+    quand l'artwork a été récupéré."""
+    compte = faire_compte(tmp_path)
+    sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkComplet())
+    relu = vdf_io.load_shortcuts(compte.shortcuts_path)
+    assert relu[0]["icon"] == ""
+
+
+def test_icone_vide_quand_le_fichier_manque(tmp_path):
+    """La racine Windows est fournie, mais l'artwork n'a pas pu être récupéré :
+    rien à référencer, le champ reste vide."""
+    compte = faire_compte(tmp_path)
+    sync.sync_account(
+        compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkEnPanne(),
+        grid_dir_windows="D:\\Steam\\userdata\\123\\config\\grid",
+    )
+    relu = vdf_io.load_shortcuts(compte.shortcuts_path)
+    assert relu[0]["icon"] == ""
+
+
+def test_la_racine_de_grille_terminee_par_un_antislash_est_normalisee(tmp_path):
+    """« ...\\grid\\ » et « ...\\grid » doivent donner le même champ icon.
+
+    Windows tolère l'antislash doublé hors préfixe UNC, donc ce n'est pas un
+    défaut fonctionnel — mais le champ icon est comparé tel quel d'une
+    synchronisation à l'autre, et deux écritures d'un même chemin sous deux
+    formes sont une différence de fichier gratuite.
+    """
+    compte = faire_compte(tmp_path)
+    sync.sync_account(
+        compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkComplet(),
+        grid_dir_windows="D:\\Steam\\userdata\\123\\config\\grid\\",
+    )
+    relu = vdf_io.load_shortcuts(compte.shortcuts_path)
+    legacy = appid.to_unsigned(relu[0]["appid"])
+    assert relu[0]["icon"] == (
+        f"D:\\Steam\\userdata\\123\\config\\grid\\{legacy}_icon.png")
+
+
+def test_un_seul_jeu_deja_a_jour_s_accorde_au_singulier(tmp_path):
+    """« 1 jeux déjà à jour » : même famille que le « 1 jeux » du rapport de
+    `retro status`."""
+    compte = faire_compte(tmp_path)
+    sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkMuet())
+    r = sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkMuet())
+    texte = sync.format_report([r])
+    assert "1 jeu déjà à jour" in texte
+    assert "1 jeux" not in texte

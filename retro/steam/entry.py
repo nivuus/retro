@@ -39,7 +39,10 @@ def quote(path: str) -> str:
     return path if path.startswith('"') else f'"{path}"'
 
 
-def build_shortcut(entry: RomEntry) -> dict:
+def build_shortcut(entry: RomEntry, icon_path: str = "") -> dict:
+    """`icon_path` ne participe jamais au calcul de l'identifiant : celui-ci
+    dérive uniquement de (exe, appname). Le renseigner après coup — une fois
+    l'artwork récupéré — ne doit jamais orpheliner l'artwork déjà déposé."""
     exe = quote(entry.emulator_exe)
     tags = [OWNER_TAG, entry.system_name, *entry.extra_tags]
     legacy = appid_mod.legacy_appid(exe, entry.title)
@@ -48,7 +51,7 @@ def build_shortcut(entry: RomEntry) -> dict:
         "appname": entry.title,
         "exe": exe,
         "StartDir": quote(entry.start_dir),
-        "icon": "",
+        "icon": icon_path,
         "ShortcutPath": "",
         "LaunchOptions": entry.launch_template.replace("{rom}", entry.rom_path),
         "IsHidden": 0,

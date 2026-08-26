@@ -137,6 +137,25 @@ def test_les_champs_recents_de_steam_sont_ecrits():
     assert s["FlatpakAppID"] == "" and s["sortas"] == ""
 
 
+def test_l_icone_est_renseignee_quand_elle_est_fournie():
+    """Mesuré sur une installation réelle : le champ icon porte un chemin
+    absolu vers le fichier déposé dans grid\\."""
+    s = entry.build_shortcut(ROM, icon_path="D:\\Steam\\...\\grid\\123_icon.png")
+    assert s["icon"] == "D:\\Steam\\...\\grid\\123_icon.png"
+
+
+def test_sans_icone_le_champ_reste_vide():
+    assert entry.build_shortcut(ROM)["icon"] == ""
+
+
+def test_l_icone_ne_change_pas_l_identifiant():
+    """L'identifiant dérive de (exe, appname) : renseigner l'icône plus tard ne
+    doit pas orpheliner l'artwork déjà déposé."""
+    sans = entry.build_shortcut(ROM)
+    avec = entry.build_shortcut(ROM, icon_path="D:\\x\\123_icon.png")
+    assert sans["appid"] == avec["appid"]
+
+
 # --- propriété, éprouvée contre l'installation réelle ---
 
 @pytest.mark.parametrize("raccourci", REELS, ids=lambda r: r["appname"])

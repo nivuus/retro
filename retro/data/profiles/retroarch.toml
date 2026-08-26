@@ -93,10 +93,16 @@ launch     = '-L "RetroArch-Win64\cores\mednafen_psx_hw_libretro.dll" -f "{rom}"
 # OpenBIOS, dont la compatibilité est partielle et échoue jeu par jeu — le
 # genre de panne qu'on ne diagnostique pas depuis un canapé. Un des trois
 # suffit, celui de la région des jeux.
+#
+# C'est ce que dit `group` : les trois portent le même, donc le rapport les
+# traite comme UN besoin — « aucun des trois n'est présent, un seul suffit »
+# plutôt que trois lignes accusatrices pour quelqu'un qui a déposé le bon.
+# `region` est le texte que le rapport affiche pour dire lequel déposer ; il
+# est écrit ici, en clair, plutôt que traduit d'un code par du code.
 bios       = [
-  { file = "scph5500.bin", md5 = "8dd7d5296a650fac7319bce665a6a53c", required = true, region = "jp" },
-  { file = "scph5501.bin", md5 = "490f666e1afb15b7362b406ed1cea246", required = true, region = "us" },
-  { file = "scph5502.bin", md5 = "32736f17079d0b2b7024407c39bd3050", required = true, region = "eu" },
+  { file = "scph5500.bin", md5 = "8dd7d5296a650fac7319bce665a6a53c", required = true, group = "psx-region", region = "Japon" },
+  { file = "scph5501.bin", md5 = "490f666e1afb15b7362b406ed1cea246", required = true, group = "psx-region", region = "Amérique du Nord" },
+  { file = "scph5502.bin", md5 = "32736f17079d0b2b7024407c39bd3050", required = true, group = "psx-region", region = "Europe" },
 ]
 
 [[system]]
