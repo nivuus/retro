@@ -533,7 +533,7 @@ id = "psx"
 name = "PlayStation"
 extensions = [".cue", ".chd", ".m3u"]
 launch = '-L "cores\\\\swanstation_libretro.dll" -f "{rom}"'
-bios = [{ file = "scph5501.bin", sha1 = "abc", required = true }]
+bios = [{ file = "scph5501.bin", md5 = "abc", required = true }]
 
 [[system]]
 id = "snes"

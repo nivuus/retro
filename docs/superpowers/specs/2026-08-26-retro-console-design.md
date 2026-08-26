@@ -163,7 +163,7 @@ name       = "PlayStation"
 extensions = [".cue", ".chd", ".pbp", ".m3u"]
 launch     = '-L "cores\\swanstation_libretro.dll" -f "{rom}"'
 bios       = [
-  { file = "scph5501.bin", sha1 = "…", required = true },
+  { file = "scph5501.bin", md5 = "…", required = true },
 ]
 ```
 
@@ -374,7 +374,14 @@ Sans BIOS, un jeu PS1 ou Saturn apparaît dans Steam, se lance, écran noir. Rie
 n'explique pourquoi, et le propriétaire n'a aucun moyen de le diagnostiquer
 depuis son canapé.
 
-Chaque profil déclare les BIOS requis avec leurs empreintes SHA-1. `retro status`
+Chaque profil déclare les BIOS requis avec leurs empreintes **MD5**.
+
+Le choix de MD5 n'est pas un oubli : les empreintes de BIOS publiquement
+citables sont des MD5, et calculer un SHA-1 aurait exigé de faire entrer un
+BIOS dans le dépôt — ce que ce projet s'interdit. Une empreinte citable vaut
+mieux qu'une empreinte inventée, et le module qui les lira doit donc lire `md5`.
+Un profil qui écrirait `md5s` par mégarde désactiverait la vérification sans un
+mot : les clés BIOS sont validées au chargement du profil, pas à l'usage. `retro status`
 répond :
 
 ```
