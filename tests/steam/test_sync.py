@@ -217,3 +217,22 @@ def test_icone_vide_quand_le_fichier_manque(tmp_path):
     )
     relu = vdf_io.load_shortcuts(compte.shortcuts_path)
     assert relu[0]["icon"] == ""
+
+
+def test_la_racine_de_grille_terminee_par_un_antislash_est_normalisee(tmp_path):
+    """« ...\\grid\\ » et « ...\\grid » doivent donner le même champ icon.
+
+    Windows tolère l'antislash doublé hors préfixe UNC, donc ce n'est pas un
+    défaut fonctionnel — mais le champ icon est comparé tel quel d'une
+    synchronisation à l'autre, et deux écritures d'un même chemin sous deux
+    formes sont une différence de fichier gratuite.
+    """
+    compte = faire_compte(tmp_path)
+    sync.sync_account(
+        compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkComplet(),
+        grid_dir_windows="D:\\Steam\\userdata\\123\\config\\grid\\",
+    )
+    relu = vdf_io.load_shortcuts(compte.shortcuts_path)
+    legacy = appid.to_unsigned(relu[0]["appid"])
+    assert relu[0]["icon"] == (
+        f"D:\\Steam\\userdata\\123\\config\\grid\\{legacy}_icon.png")

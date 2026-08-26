@@ -27,6 +27,12 @@ def sync_account(
     artwork_client,
     grid_dir_windows: str | None = None,
 ) -> SyncReport:
+    # L'antislash final est retiré une fois pour toutes : « ...\\grid\\ » et
+    # « ...\\grid » doivent produire le MÊME champ icon, sinon deux écritures
+    # d'un même chemin sous deux formes font une différence de fichier
+    # gratuite à chaque synchronisation.
+    grille = grid_dir_windows.rstrip("\\") if grid_dir_windows is not None else None
+
     existant = vdf_io.load_shortcuts(account.shortcuts_path)
     resultat = reconcile.reconcile(existant, wanted, emulation_root)
 
@@ -47,11 +53,11 @@ def sync_account(
         # calcul de l'identifiant (appid), qui reste dérivé de (exe, appname)
         # seul — sinon tout l'artwork déjà déposé deviendrait orphelin d'un
         # coup, sur toute la bibliothèque, dès qu'une icône serait renseignée.
-        if grid_dir_windows is not None:
+        if grille is not None:
             prefixe = appid_mod.grid_prefixes(legacy)["icone"]
             fichier = appid_mod.existing_asset(account.grid_dir, prefixe)
             if fichier is not None:
-                raccourci["icon"] = f"{grid_dir_windows}\\{fichier.name}"
+                raccourci["icon"] = f"{grille}\\{fichier.name}"
 
     purges = len(artwork.prune_orphans(account.grid_dir, resultat.orphaned_appids))
 
