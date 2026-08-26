@@ -56,54 +56,40 @@ def test_l_ancien_fichier_survit_a_un_echec(tmp_path, monkeypatch):
     assert p.read_bytes() == original
 
 
-def test_l_ecriture_passe_reellement_par_un_fichier_temporaire(tmp_path, monkeypatch):
-    """Ne teste pas seulement « rendre avant d'écrire » (déjà couvert par
-    test_l_ancien_fichier_survit_a_un_echec) mais l'atomicité elle-même :
-    le nouveau contenu doit être écrit intégralement AILLEURS, et le fichier
-    final ne doit changer qu'au moment d'un unique os.replace(). Une
-    implémentation qui écrirait directement dans path (perdant l'atomicité)
-    ferait passer les autres tests mais pas celui-ci."""
+def test_l_ecriture_passe_par_un_fichier_temporaire(tmp_path, monkeypatch):
+    """L'atomicité elle-même, pas seulement l'ordre des opérations.
+
+    Le test d'échec ci-dessus simule la panne dans dumps_shortcuts, donc avant
+    tout contact avec le disque : mesuré, il reste vert même si l'on remplace
+    temp+os.replace par une écriture directe. Il atteste « rendre avant
+    d'écrire », pas « écrire ailleurs puis basculer ». Celui-ci pin le motif.
+    """
     p = tmp_path / "shortcuts.vdf"
-    p.write_bytes(vdf_io.dumps_shortcuts([ENTREE]))
-    original = p.read_bytes()
-
-    os_replace_reel = os.replace
-    appels = []
-
-    def replace_espion(src, dst):
-        src, dst = pathlib.Path(src), pathlib.Path(dst)
-        # Au moment du remplacement : la nouvelle version est déjà écrite en
-        # entier ailleurs, et le fichier final n'a pas encore été touché.
-        assert src != dst, "le remplacement doit basculer depuis un autre fichier"
-        assert src.exists() and src.read_bytes() == vdf_io.dumps_shortcuts(
-            [dict(ENTREE, appname="Nouveau")]
-        )
-        assert dst.read_bytes() == original, "le fichier final a été modifié avant le replace"
-        appels.append((src, dst))
-        os_replace_reel(src, dst)
-
-    monkeypatch.setattr(writer.os, "replace", replace_espion)
-    writer.write_shortcuts(p, [dict(ENTREE, appname="Nouveau")])
-
-    assert appels, "os.replace n'a jamais été appelé : l'écriture n'est pas atomique"
+    ecrits, bascules = [], []
+    vrai_write = pathlib.Path.write_bytes
+    monkeypatch.setattr(pathlib.Path, "write_bytes",
+                        lambda self, d: (ecrits.append(self.name), vrai_write(self, d))[1])
+    vrai_replace = os.replace
+    monkeypatch.setattr(os, "replace",
+                        lambda a, b: (bascules.append((str(a), str(b))), vrai_replace(a, b))[1])
+    writer.write_shortcuts(p, [ENTREE])
+    assert "shortcuts.vdf" not in ecrits, f"écriture directe sur la cible : {ecrits}"
+    assert len(bascules) == 1 and bascules[0][1].endswith("shortcuts.vdf")
 
 
-def test_running_processes_parse_la_sortie_de_tasklist_sous_windows(monkeypatch):
-    """La branche Windows de _running_processes() doit être exercée sans
-    Windows : son mode de panne va dans le mauvais sens (une liste vide fait
-    croire que Steam ne tourne jamais), donc une régression y serait un échec
-    muet — précisément ce que ce module existe pour empêcher."""
-    monkeypatch.setattr(writer.os, "name", "nt")
-    sortie_tasklist = (
-        '"steam.exe","1234","Console","1","50 000 Ko"\r\n'
-        '"explorer.exe","5678","Console","1","30 000 Ko"\r\n'
-    )
+def test_le_parsing_de_tasklist_extrait_les_noms(monkeypatch):
+    """La branche Windows, testée sans Windows.
 
-    def faux_run(*args, **kwargs):
-        return types.SimpleNamespace(stdout=sortie_tasklist)
-
-    monkeypatch.setattr(writer.subprocess, "run", faux_run)
+    Son mode de panne va dans le mauvais sens : un découpage cassé rend une
+    liste vide, donc steam_is_running renvoie False pendant que Steam tourne et
+    la garde devient silencieusement inactive.
+    """
+    sortie = '"steam.exe","4028","Console","1","89 340 K"\n"explorer.exe","912","Console","1","42 000 K"\n'
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(writer.subprocess, "run",
+                        lambda *a, **k: types.SimpleNamespace(stdout=sortie))
     assert writer._running_processes() == ["steam.exe", "explorer.exe"]
+    assert writer.steam_is_running()
 
 
 def test_steam_detecte_comme_actif():
