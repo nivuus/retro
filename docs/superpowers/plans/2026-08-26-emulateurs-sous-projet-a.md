@@ -204,6 +204,36 @@ def test_lien_symbolique_echappant_est_enveloppe(tmp_path):
     assert not (tmp_path.parent / "dehors").exists()
 
 
+def test_les_archives_supplementaires_sont_chargees(tmp_path):
+    """RetroArch a besoin d'une seconde archive : la principale ne contient
+    aucun core, et un émulateur sans core ne lance aucun jeu."""
+    avec = NOYAU + """
+[[emulator.retroarch.parts]]
+url = "https://exemple.invalid/cores.7z"
+sha256 = "dd"
+archive = "7z"
+"""
+    m = manifest.load_manifest(ecrire(tmp_path, "c.toml", avec))
+    assert len(m["retroarch"].parts) == 1
+    assert m["retroarch"].parts[0].url.endswith("cores.7z")
+
+
+def test_sans_parts_la_liste_est_vide(tmp_path):
+    m = manifest.load_manifest(ecrire(tmp_path, "core.toml", NOYAU))
+    assert m["retroarch"].parts == ()
+
+
+def test_une_archive_supplementaire_incomplete_est_refusee(tmp_path):
+    mauvais = NOYAU + """
+[[emulator.retroarch.parts]]
+url = "https://exemple.invalid/cores.7z"
+archive = "7z"
+"""
+    with pytest.raises(manifest.ManifestError) as exc:
+        manifest.load_manifest(ecrire(tmp_path, "c.toml", mauvais))
+    assert "sha256" in str(exc.value) and "parts" in str(exc.value)
+
+
 def test_archive_inconnue_refusee(tmp_path):
     mauvais = NOYAU.replace('archive = "7z"', 'archive = "rar"')
     with pytest.raises(manifest.ManifestError) as exc:
@@ -283,6 +313,16 @@ class ManifestError(RuntimeError):
 
 
 @dataclasses.dataclass(frozen=True)
+class Part:
+    """Une archive supplémentaire, extraite dans le même dossier que la
+    principale. RetroArch en a besoin : son archive ne contient AUCUN core, et
+    un émulateur sans core ne lance aucun jeu."""
+    url: str
+    sha256: str
+    archive: str
+
+
+@dataclasses.dataclass(frozen=True)
 class Emulator:
     key: str
     name: str
@@ -292,6 +332,7 @@ class Emulator:
     archive: str
     install_dir: str
     profile: str
+    parts: tuple[Part, ...] = ()
 
 
 def _lire(path: pathlib.Path, obligatoire: bool) -> dict:
@@ -362,7 +403,23 @@ def load_manifest(core: pathlib.Path,
                 f"connu(s) {', '.join(ARCHIVES)}"
             )
         _valider_install_dir(cle, champs["install_dir"])
-        emulateurs[cle] = Emulator(key=cle, **{c: champs[c] for c in _CHAMPS})
+        parts = []
+        for i, brut in enumerate(champs.get("parts", ())):
+            manquants = [c for c in ("url", "sha256", "archive") if c not in brut]
+            if manquants:
+                raise ManifestError(
+                    f"[emulator.{cle}] parts[{i}] : champ(s) manquant(s) "
+                    f"{', '.join(manquants)}"
+                )
+            if brut["archive"] not in ARCHIVES:
+                raise ManifestError(
+                    f"[emulator.{cle}] parts[{i}] archive = "
+                    f"{brut['archive']!r} : connu(s) {', '.join(ARCHIVES)}"
+                )
+            parts.append(Part(url=brut["url"], sha256=brut["sha256"],
+                              archive=brut["archive"]))
+        emulateurs[cle] = Emulator(key=cle, parts=tuple(parts),
+                                   **{c: champs[c] for c in _CHAMPS})
     return emulateurs
 ```
 
@@ -705,6 +762,7 @@ Fichier `tests/test_acquire.py` :
 
 ```python
 """Téléchargement, vérification et extraction des émulateurs."""
+import dataclasses
 import hashlib
 import pathlib
 import zipfile
@@ -843,6 +901,37 @@ def test_archive_inconnue_refusee(tmp_path):
         acquire.safe_extract(src, "rar", tmp_path / "cible")
 
 
+def test_les_archives_supplementaires_se_deversent_dans_le_meme_dossier(tmp_path):
+    """Sans cela, RetroArch s'installe sans un seul core et ne lance rien."""
+    principal = faire_zip(tmp_path / "p.zip", {"retroarch.exe": "binaire"})
+    cores = faire_zip(tmp_path / "c.zip", {"cores/snes9x.dll": "core"})
+    e = dataclasses.replace(
+        emu(hashlib.sha256(principal).hexdigest()),
+        parts=(manifest.Part(url="https://exemple.invalid/c.zip",
+                             sha256=hashlib.sha256(cores).hexdigest(),
+                             archive="zip"),),
+    )
+    racine = tmp_path / "Emulation"
+    acquire.acquire(e, racine, fetch=lambda u: cores if u.endswith("c.zip") else principal)
+    assert (racine / "Truc" / "retroarch.exe").exists()
+    assert (racine / "Truc" / "cores" / "snes9x.dll").exists()
+
+
+def test_une_archive_supplementaire_fausse_n_installe_rien(tmp_path):
+    """Un émulateur amputé de ses cores est pire qu'un émulateur absent : il
+    apparaît installé et ne lance rien."""
+    principal = faire_zip(tmp_path / "p.zip", {"retroarch.exe": "binaire"})
+    e = dataclasses.replace(
+        emu(hashlib.sha256(principal).hexdigest()),
+        parts=(manifest.Part(url="https://exemple.invalid/c.zip",
+                             sha256="0" * 64, archive="zip"),),
+    )
+    racine = tmp_path / "Emulation"
+    with pytest.raises(acquire.AcquireError):
+        acquire.acquire(e, racine, fetch=lambda u: principal)
+    assert not (racine / "Truc").exists()
+
+
 def test_panne_de_telechargement_nomme_l_emulateur(tmp_path):
     e = emu("aa")
 
@@ -979,13 +1068,43 @@ def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> str:
             "Rien n'a été installé."
         )
 
+    # Les archives supplémentaires sont téléchargées et vérifiées AVANT que
+    # quoi que ce soit ne touche à l'installation existante : une seconde
+    # archive dont l'empreinte est fausse ne doit pas laisser un émulateur
+    # amputé. RetroArch en dépend — son archive principale ne contient aucun
+    # core, et un émulateur sans core ne lance aucun jeu.
+    supplements = []
+    for i, part in enumerate(emu.parts):
+        try:
+            b = fetch(part.url)
+        except Exception as exc:  # noqa: BLE001
+            raise AcquireError(
+                f"{emu.name} : téléchargement de l'archive supplémentaire "
+                f"{i + 1} impossible ({exc})"
+            ) from exc
+        h = hashlib.sha256(b).hexdigest()
+        if h != part.sha256:
+            raise AcquireError(
+                f"{emu.name} {emu.version}, archive supplémentaire {i + 1} : "
+                f"empreinte SHA256 inattendue.\n  attendue : {part.sha256}\n"
+                f"  obtenue  : {h}\nRien n'a été installé."
+            )
+        supplements.append((b, part.archive))
+
     with tempfile.TemporaryDirectory() as tmp:
-        archive = pathlib.Path(tmp) / f"{emu.key}.{emu.archive}"
-        archive.write_bytes(blob)
-        extrait = pathlib.Path(tmp) / "extrait"
+        racine = pathlib.Path(tmp)
+        extrait = racine / "extrait"
         # Extraire à côté, puis basculer : une extraction qui échoue à
         # mi-chemin ne doit pas laisser une installation à moitié écrasée.
-        safe_extract(archive, emu.archive, extrait)
+        principale = racine / f"{emu.key}.{emu.archive}"
+        principale.write_bytes(blob)
+        safe_extract(principale, emu.archive, extrait)
+        # Les supplémentaires se déversent dans le MÊME dossier : c'est ce qui
+        # fait cohabiter l'émulateur et ses cores.
+        for i, (b, kind) in enumerate(supplements):
+            sup = racine / f"{emu.key}-part{i}.{kind}"
+            sup.write_bytes(b)
+            safe_extract(sup, kind, extrait)
         if cible.exists():
             shutil.rmtree(cible)
         cible.parent.mkdir(parents=True, exist_ok=True)
