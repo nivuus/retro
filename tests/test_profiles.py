@@ -245,7 +245,12 @@ def test_un_groupe_de_bios_est_charge(tmp_path):
 def test_groupe_non_textuel_refuse(tmp_path):
     contenu = GROUPE.replace('group = "region", region = "Japon"',
                              "group = 1, region = \"Japon\"")
-    with pytest.raises(profiles.ProfileError, match="group"):
+    # match resserré sur « non textuel » : avec seulement match="group", ce
+    # test restait vert même sans la vérification de type de 'group' — le
+    # groupe à un seul membre que produit group = 1 (b.bin reste seul dans
+    # le groupe "region") lève un ProfileError dont le message, « le groupe
+    # de BIOS '1' [...] », contient "group" comme sous-chaîne de « groupe ».
+    with pytest.raises(profiles.ProfileError, match="non textuel"):
         profiles.load_profile(ecrire(tmp_path, "r.toml", contenu))
 
 
