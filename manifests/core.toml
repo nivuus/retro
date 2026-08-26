@@ -22,10 +22,18 @@ archive     = "7z"
 install_dir = "RetroArch"
 profile     = "retroarch"
 
-# L'archive n'a qu'un dossier racine, RetroArch-Win64\ : les chemins du profil
-# en tiennent compte. Elle contient retroarch.exe, les assets et les fichiers
-# info\*.info, mais AUCUN core — ceux-ci sont distribués à part
-# (RetroArch_cores.7z, ou le Core Updater intégré). Voir le rapport de tâche.
+# L'archive principale n'a qu'un dossier racine, RetroArch-Win64\ : les chemins
+# du profil en tiennent compte. Elle contient retroarch.exe, les assets et les
+# fichiers info\*.info, mais AUCUN core (15 646 entrées, 0 *_libretro.dll).
+# Les 197 cores vivent dans une archive à part, déclarée ci-dessous : elle
+# s'extrait dans le MÊME install_dir et y dépose RetroArch-Win64\cores\.
+# Sans elle, RetroArch s'installe, la console affiche ses jeux, et chaque
+# lancement échoue — un émulateur amputé est pire qu'un émulateur absent.
+
+[[emulator.retroarch.parts]]
+url         = "https://buildbot.libretro.com/stable/1.22.2/windows/x86_64/RetroArch_cores.7z"
+sha256      = "86b871e11b9b4772ac644b40a38f2c8e9449da1f355eae7da08aa061148547b0"
+archive     = "7z"
 
 [emulator.dolphin]
 name        = "Dolphin"

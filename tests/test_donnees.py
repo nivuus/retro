@@ -44,15 +44,25 @@ def test_chaque_profil_a_son_emulateur():
 
 
 def test_les_empreintes_ont_la_bonne_forme():
-    """Un sha256 tronqué ou remplacé par un espace réservé ne protège de rien."""
+    """Un sha256 tronqué ou remplacé par un espace réservé ne protège de rien.
+
+    Les archives supplémentaires sont vérifiées de la même façon : celle qui
+    porte les cores de RetroArch pèse plus que l'archive principale, et une
+    empreinte fantaisiste y serait tout aussi aveugle.
+    """
     for e in manifest.load_manifest(CORE).values():
-        assert len(e.sha256) == 64, f"{e.key} : sha256 de {len(e.sha256)} caractères"
-        assert all(c in "0123456789abcdef" for c in e.sha256.lower()), e.key
+        for quoi, sha in [(e.key, e.sha256)] + [
+            (f"{e.key} parts[{i}]", p.sha256) for i, p in enumerate(e.parts)
+        ]:
+            assert len(sha) == 64, f"{quoi} : sha256 de {len(sha)} caractères"
+            assert all(c in "0123456789abcdef" for c in sha.lower()), quoi
 
 
 def test_les_url_sont_en_https():
     for e in manifest.load_manifest(CORE).values():
         assert e.url.startswith("https://"), f"{e.key} : {e.url}"
+        for i, p in enumerate(e.parts):
+            assert p.url.startswith("https://"), f"{e.key} parts[{i}] : {p.url}"
 
 
 def test_aucun_emulateur_au_statut_conteste():
