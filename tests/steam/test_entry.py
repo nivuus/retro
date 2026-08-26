@@ -1,7 +1,13 @@
 """Construction d'un raccourci et test de propriété."""
-from retro.steam import appid, entry
+import pathlib
+
+import pytest
+
+from retro.steam import appid, entry, vdf_io
 
 EMU_ROOT = "D:\\Emulation"
+FIXTURE = pathlib.Path(__file__).parent.parent / "fixtures" / "shortcuts-reel.vdf"
+REELS = vdf_io.load_shortcuts(FIXTURE)
 
 ROM = entry.RomEntry(
     title="Chrono Trigger",
@@ -129,3 +135,23 @@ def test_exe_sans_guillemets_avec_arguments():
 def test_les_champs_recents_de_steam_sont_ecrits():
     s = entry.build_shortcut(ROM)
     assert s["FlatpakAppID"] == "" and s["sortas"] == ""
+
+
+# --- propriété, éprouvée contre l'installation réelle ---
+
+@pytest.mark.parametrize("raccourci", REELS, ids=lambda r: r["appname"])
+def test_aucun_raccourci_reel_ne_nous_appartient(raccourci):
+    """Le scénario que la double condition existe pour couvrir, sur du réel.
+
+    Huit des dix raccourcis mesurés ont leur exe sous D:\\Emulation : seule la
+    condition de tag les sauve. Jusqu'ici, ce cas n'était testé que sur des
+    entrées synthétiques fabriquées par build_shortcut.
+    """
+    assert not entry.is_owned(raccourci, EMU_ROOT)
+
+
+def test_la_fixture_met_bien_la_condition_de_tag_a_l_epreuve():
+    """Sans cette garde, une fixture dont aucun exe ne vit sous la racine ferait
+    passer le test ci-dessus sans jamais éprouver la condition de tag."""
+    sous_racine = [r for r in REELS if entry.is_under_root(r["exe"], EMU_ROOT)]
+    assert len(sous_racine) >= 8, [r["exe"] for r in REELS]

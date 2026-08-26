@@ -105,3 +105,22 @@ def test_rapport_vide_le_dit(tmp_path):
     compte = faire_compte(tmp_path)
     r = sync.sync_account(compte, [], "D:\\Emulation", ArtworkMuet())
     assert "aucun" in sync.format_report([r]).lower()
+
+
+def test_l_entree_etrangere_est_relue_dans_le_fichier_ecrit(tmp_path):
+    """La garantie centrale, vérifiée AU NIVEAU DE L'ÉCRITURE.
+
+    reconcile est couvert, mais rien ne relisait shortcuts.vdf après
+    sync_account. Mesuré — filtrer les entrées étrangères juste avant
+    write_shortcuts, c'est-à-dire effacer les jeux réels du propriétaire,
+    laissait toute la suite verte.
+    """
+    compte = faire_compte(tmp_path)
+    mien = etranger("Mon jeu à moi")
+    compte.shortcuts_path.write_bytes(vdf_io.dumps_shortcuts([mien]))
+
+    sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkMuet())
+
+    relu = vdf_io.load_shortcuts(compte.shortcuts_path)
+    assert [e["appname"] for e in relu] == ["Mon jeu à moi", "Chrono Trigger"]
+    assert relu[0] == mien, "l'entrée étrangère a été modifiée, pas seulement conservée"
