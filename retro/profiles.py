@@ -111,6 +111,26 @@ def load_profile(path: pathlib.Path) -> Profile:
                     "Un BIOS sans 'file' et 'md5' ne serait jamais vérifié, "
                     "en silence."
                 )
+            # Ces fichiers sont écrits à la main (docstring du module) : une
+            # valeur numérique sans guillemets (md5 = 5501 au lieu de
+            # md5 = "5501") est une faute de frappe naturelle que TOML rend
+            # licite en la parsant comme entier. Sans cette vérification de
+            # TYPE — la présence seule ne suffit pas — l'entier traverse le
+            # chargement du profil et bios.check_bios explose sur l'appel
+            # .lower() qu'il fait sur 'md5' : une trace Python sur la
+            # commande faite pour expliquer les pannes, plutôt qu'un message
+            # qui nomme le profil, le système et le champ à corriger.
+            non_textuels = [c for c in ("file", "md5") if not isinstance(b[c], str)]
+            if non_textuels:
+                raise ProfileError(
+                    f"{path} : profil '{data['id']}', système '{sid}', "
+                    f"bios[{i}] — champ(s) non textuel(s) : "
+                    f"{', '.join(non_textuels)}. Entourer la valeur de "
+                    "guillemets (ex. md5 = \"5501\" plutôt que md5 = 5501) : "
+                    "ces fichiers sont écrits à la main, et une valeur "
+                    "numérique sans guillemets désactiverait la vérification "
+                    "sans un mot."
+                )
 
         systemes.append(System(
             id=sid, name=brut["name"], extensions=exts, launch=brut["launch"],

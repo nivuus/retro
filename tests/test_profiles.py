@@ -89,6 +89,31 @@ def test_bios_sans_file_refuse(tmp_path):
     assert "file" in str(exc.value) and "psx" in str(exc.value)
 
 
+def test_bios_md5_non_textuel_refuse(tmp_path):
+    """Ces fichiers sont écrits à la main : un md5 sans guillemets se parse en
+    entier TOML. Sans validation de TYPE (pas seulement de présence),
+    l'entier traverse le chargement du profil et bios.check_bios explose sur
+    l'appel .lower() d'un entier — une trace Python sur la commande faite
+    pour expliquer les pannes. Le message doit nommer le profil, le système
+    et le champ.
+    """
+    mauvais = RETROARCH.replace('md5 = "abc"', "md5 = 5501")
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profile(ecrire(tmp_path, "r.toml", mauvais))
+    message = str(exc.value)
+    assert "md5" in message and "psx" in message and "retroarch" in message
+
+
+def test_bios_file_non_textuel_refuse(tmp_path):
+    """Même défaut, même remède, pour 'file' : un nom de fichier numérique
+    sans guillemets (ex. un modèle de console) se parse aussi en entier."""
+    mauvais = RETROARCH.replace('file = "scph5501.bin"', "file = 5501")
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profile(ecrire(tmp_path, "r.toml", mauvais))
+    message = str(exc.value)
+    assert "file" in message and "psx" in message and "retroarch" in message
+
+
 def test_la_sortie_est_declaree(tmp_path):
     """Sans hotkey de sortie, un émulateur lancé à la manette immobilise la
     console jusqu'au redémarrage de la VM."""
