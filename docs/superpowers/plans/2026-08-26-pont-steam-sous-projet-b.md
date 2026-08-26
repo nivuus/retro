@@ -87,7 +87,7 @@ aller-retour infidèle corromprait la bibliothèque Steam du propriétaire.
 plan en dépendent.
 
 ```bash
-cd /home/mallanic/Projects/Nivuus/packages/retro
+cd packages/retro   # depuis la racine du monorepo
 git init
 git add docs/
 git commit -m "docs: conception de la console de retrogaming"
