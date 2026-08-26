@@ -52,6 +52,17 @@ def test_le_rapport_compte_les_jeux_par_systeme():
     assert "142" in status.format_report(r)
 
 
+def test_un_seul_jeu_accorde_au_singulier():
+    """« 1 jeux » : c'est le seul texte du projet qu'un humain lira, depuis son
+    canapé. Le test précédent ne mord pas sur l'accord — 142 est pluriel dans
+    les deux formes. Celui-ci utilise 1, qui distingue « jeu » de « jeux »."""
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("."),
+        systems=[("Game Boy", 1)], bios_status=[]))
+    assert "1 jeu" in texte
+    assert "1 jeux" not in texte
+
+
 def test_sans_probleme_le_rapport_le_dit():
     texte = status.format_report(status.build_report(
         install_dirs={}, emulation_root=pathlib.Path("."),

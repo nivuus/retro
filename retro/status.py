@@ -118,7 +118,7 @@ def format_report(report: Report) -> str:
 
     largeur_sys = max((len(nom) for nom, _ in report.systems), default=0)
     lignes_sys = [
-        f"  {nom.ljust(largeur_sys)}  {nb:>4} jeux"
+        f"  {nom.ljust(largeur_sys)}  {nb:>4} {'jeu' if nb == 1 else 'jeux'}"
         for nom, nb in report.systems
     ]
     sections += _section("Systèmes", lignes_sys, "aucun système avec des ROMs")
