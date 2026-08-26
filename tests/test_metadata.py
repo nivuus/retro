@@ -9,8 +9,6 @@ Aucun test ne touche le réseau.
 import json
 import pathlib
 
-import pytest
-
 from retro import metadata
 from retro.steam import entry
 
@@ -138,3 +136,64 @@ def test_les_dimensions_sont_configurables(tmp_path):
     c = metadata.MetadataClient(api_key="cle", cache_dir=tmp_path, fetch_json=fj)
     seul_genre = metadata.enrich([rom()], c, dimensions=("genre",))[0]
     assert seul_genre.extra_tags == ("RPG",)
+
+
+# --- aucune erreur ne remonte : les chemins hors du filet ---
+
+def test_un_nom_de_rom_non_encodable_ne_leve_pas(tmp_path):
+    """Un demi-substitut dans un nom de ROM ne doit pas coûter le jeu.
+
+    C'est ce que produit couramment `surrogateescape` en listant un disque
+    sous POSIX : un octet non décodable devient « \\udce9 », et
+    `str.encode()` lève alors UnicodeEncodeError. Le hachage du cache est
+    la première chose que fait `metadata_for`, hors de tout filet.
+    """
+    fj, _ = faux_reseau()
+    c = metadata.MetadataClient(api_key="cle", cache_dir=tmp_path, fetch_json=fj)
+    tags = c.tags_for("Pok\udce9mon.sfc", "snes")
+    assert "1990s" in tags and "RPG" in tags
+
+
+def test_deux_noms_de_rom_non_encodables_ne_partagent_pas_leur_cache(tmp_path):
+    """Le hachage doit rester injectif : remplacer les substituts par un
+    caractère de repli ferait rendre la fiche du premier jeu pour le second."""
+    fj, _ = faux_reseau()
+    c = metadata.MetadataClient(api_key="cle", cache_dir=tmp_path, fetch_json=fj)
+    assert (c._chemin_cache("A\udce9.sfc", "snes")
+            != c._chemin_cache("A\udcea.sfc", "snes"))
+
+
+def test_un_cache_illisible_ne_leve_pas(tmp_path, monkeypatch):
+    """`Path.is_file()` avale ENOENT et ENOTDIR, PAS EACCES.
+
+    Sur un dossier de cache sans droit de traversée — un cache posé par un
+    autre utilisateur sur le volume de jeux — il lève donc PermissionError,
+    et l'appel vit hors du try/except de `metadata_for`. L'erreur est
+    injectée à l'endroit exact où le système la lèverait plutôt que
+    provoquée par un chmod : la suite tourne aussi sous root, qui ignore les
+    permissions et ferait passer ce test quelle que soit l'implémentation.
+    """
+    def is_file_interdit(self):
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(pathlib.Path, "is_file", is_file_interdit)
+    fj, _ = faux_reseau()
+    c = metadata.MetadataClient(api_key="cle", cache_dir=tmp_path, fetch_json=fj)
+    tags = c.tags_for("Chrono Trigger.sfc", "snes")
+    assert "1990s" in tags and "RPG" in tags
+
+
+def test_enrich_survit_a_un_nom_de_rom_non_encodable(tmp_path):
+    """La promesse du module vaut pour l'inventaire entier : un seul nom
+    exotique ne doit pas faire perdre les 2999 autres jeux."""
+    fj, _ = faux_reseau()
+    c = metadata.MetadataClient(api_key="cle", cache_dir=tmp_path, fetch_json=fj)
+    exotique = entry.RomEntry(
+        title="Pok\udce9mon", rom_path="G:\\ROMs\\snes\\Pok\udce9mon.sfc",
+        system_name="Super Nintendo",
+        emulator_exe="D:\\Emulation\\RetroArch\\retroarch.exe",
+        launch_template='-f "{rom}"', start_dir="D:\\Emulation\\RetroArch",
+    )
+    enrichies = metadata.enrich([exotique, rom()], c)
+    assert len(enrichies) == 2
+    assert "RPG" in enrichies[1].extra_tags
