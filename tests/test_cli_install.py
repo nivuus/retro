@@ -96,7 +96,15 @@ bios = []
 
 def test_l_inventaire_produit_est_lisible_par_sync(tmp_path):
     """Le contrat entre les deux sous-projets : ce que `scan` écrit, `sync`
-    doit savoir le relire sans adaptation."""
+    doit savoir le relire sans adaptation.
+
+    TOUS les champs sont vérifiés, pas seulement le titre. N'asserter que
+    `title` laissait passer la perte de n'importe quel autre : mesuré le
+    2026-08-26, forcer "launch_template": "" dans le JSON écrit gardait la
+    suite entière verte. Or c'est exactement ce que `load_profile` refuse au
+    niveau du profil — sans gabarit, l'émulateur s'ouvre sur son propre menu,
+    sans jeu, et la console a l'air de fonctionner.
+    """
     from retro.cli import _load_inventory
     profils = tmp_path / "profiles"
     profils.mkdir()
@@ -111,14 +119,44 @@ extensions = [".sfc"]
 launch = '-f "{rom}"'
 bios = []
 """, encoding="utf-8")
+    manifeste = tmp_path / "core.toml"
+    manifeste.write_text("""
+schema = 1
+[emulator.r]
+name        = "R"
+version     = "1.0"
+url         = "https://exemple.invalid/r.zip"
+sha256      = "00"
+archive     = "zip"
+install_dir = "R-1.0"
+profile     = "r"
+""", encoding="utf-8")
     roms = tmp_path / "ROMs" / "snes"
     roms.mkdir(parents=True)
     (roms / "Jeu.sfc").write_bytes(b"x")
     sortie = tmp_path / "inv.json"
     cli.main(["scan", "--roms", str(tmp_path / "ROMs"), "--profiles", str(profils),
+              "--manifest", str(manifeste), "--roms-windows", "G:\\ROMs",
               "--output", str(sortie), "--emulation-root", "D:\\Emulation"])
+
+    # Le JSON écrit porte exactement les clés que _load_inventory relit : une
+    # clé renommée d'un côté casserait le pont, et extra_tags est facultative
+    # à la relecture, donc son absence ne se verrait pas ici autrement.
+    brut = json.loads(sortie.read_text(encoding="utf-8"))
+    assert len(brut) == 1
+    assert set(brut[0]) == {"title", "rom_path", "system_name", "emulator_exe",
+                            "launch_template", "start_dir", "extra_tags"}
+
     entries = _load_inventory(sortie)
-    assert entries[0].title == "Jeu"
+    assert len(entries) == 1
+    e = entries[0]
+    assert e.title == "Jeu"
+    assert e.rom_path == "G:\\ROMs\\snes\\Jeu.sfc"
+    assert e.system_name == "SNES"
+    assert e.emulator_exe == "D:\\Emulation\\R-1.0\\r.exe"
+    assert e.launch_template == '-f "{rom}"'
+    assert e.start_dir == "D:\\Emulation\\R-1.0"
+    assert e.extra_tags == ()
 
 
 PROFIL_DUCKSTATION = """
