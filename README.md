@@ -88,11 +88,12 @@ retro sync --steam-root /mnt/steam \
            --inventory inventaire.json \
            --steamgriddb-key VOTRE_CLE
 
-# 4. lire ce qui va et ce qui manque
-retro status --roms /mnt/roms \
+# 4. lire ce qui va et ce qui manque (dans la machine virtuelle : les deux
+#    chemins de la paire --roms/--roms-windows s'y confondent)
+retro status --roms 'G:\ROMs' \
              --roms-windows 'G:\ROMs' \
              --emulation-root 'D:\Emulation' \
-             --bios /mnt/roms/bios
+             --bios 'G:\ROMs\bios'
 ```
 
 `--roms` est le chemin par lequel la machine qui scanne atteint les ROMs ;
