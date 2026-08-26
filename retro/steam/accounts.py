@@ -18,8 +18,14 @@ class NoSteamAccountError(RuntimeError):
 class SteamAccount:
     account_id: str
     config_dir: pathlib.Path
-    shortcuts_path: pathlib.Path
-    grid_dir: pathlib.Path
+
+    @property
+    def shortcuts_path(self) -> pathlib.Path:
+        return self.config_dir / "shortcuts.vdf"
+
+    @property
+    def grid_dir(self) -> pathlib.Path:
+        return self.config_dir / "grid"
 
 
 def discover_accounts(steam_root: pathlib.Path) -> list[SteamAccount]:
@@ -38,14 +44,7 @@ def discover_accounts(steam_root: pathlib.Path) -> list[SteamAccount]:
                 continue
             config = entree / "config"
             if config.is_dir():
-                comptes.append(
-                    SteamAccount(
-                        account_id=entree.name,
-                        config_dir=config,
-                        shortcuts_path=config / "shortcuts.vdf",
-                        grid_dir=config / "grid",
-                    )
-                )
+                comptes.append(SteamAccount(account_id=entree.name, config_dir=config))
     if not comptes:
         raise NoSteamAccountError(
             f"aucun compte Steam local trouvé sous {userdata} : ouvrir Steam et "
