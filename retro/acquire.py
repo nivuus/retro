@@ -20,10 +20,14 @@ from __future__ import annotations
 import hashlib
 import pathlib
 import shutil
+import subprocess
 import tempfile
 import zipfile
 
 TEMOIN = ".retro-version"
+# Binaires 7-Zip acceptés, par ordre de préférence. 7zr est l'extracteur
+# autonome officiel : ~600 Ko, redistribuable, et il lit tous les filtres.
+_BINAIRES_7Z = ("7zz", "7z", "7za", "7zr", "7zr.exe", "7z.exe")
 
 
 class AcquireError(RuntimeError):
@@ -49,6 +53,51 @@ def _membres_surs(noms, destination: pathlib.Path):
             )
 
 
+def _extraire_7z(archive: pathlib.Path, destination: pathlib.Path) -> None:
+    """Extrait une archive 7z, avec py7zr d'abord et un binaire 7-Zip ensuite.
+
+    py7zr ne sait PAS lire le filtre BCJ2 — il le marque « Unsupported » dans
+    son propre code — et c'est précisément celui qu'utilisent les archives de
+    RetroArch, mesuré le 2026-08-26 sur les archives réelles. Sans ce secours,
+    l'émulateur qui couvre l'essentiel de la bibliothèque rétro ne s'installe
+    pas du tout, et aucun test en .zip ne peut le voir.
+    """
+    erreur_py7zr = None
+    try:
+        import py7zr
+        with py7zr.SevenZipFile(archive) as z:
+            _membres_surs(z.getnames(), destination)
+            z.extractall(destination)
+        return
+    except AcquireError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - py7zr lève des types variés
+        erreur_py7zr = exc
+
+    binaire = next((b for b in _BINAIRES_7Z if shutil.which(b)), None)
+    if binaire is None:
+        raise AcquireError(
+            f"{archive.name} : py7zr a échoué ({erreur_py7zr}) et aucun binaire "
+            f"7-Zip n'est disponible. Installer l'un de {', '.join(_BINAIRES_7Z)} "
+            "— 7zr suffit et se télécharge sur https://www.7-zip.org/a/7zr.exe"
+        )
+    # -bb0 : silencieux. -y : ne pose aucune question, il n'y a personne pour
+    # y répondre. Le binaire garde l'extraction sous -o : mesuré le 2026-08-26
+    # avec 7-Zip 25.01, un membre nommé « ../../evade.txt » atterrit DANS la
+    # destination, pas au-dessus. Attention à la nuance : il assainit le chemin
+    # là où py7zr, lui, fait rejeter l'archive par _membres_surs. Rien ne
+    # s'échappe dans les deux cas, mais seul le premier chemin est bavard.
+    r = subprocess.run(
+        [binaire, "x", str(archive), f"-o{destination}", "-y", "-bb0"],
+        capture_output=True, text=True, check=False,
+    )
+    if r.returncode != 0:
+        raise AcquireError(
+            f"{archive.name} : py7zr a échoué ({erreur_py7zr}) et {binaire} "
+            f"aussi (code {r.returncode}) : {r.stderr.strip()[:400]}"
+        )
+
+
 def safe_extract(archive: pathlib.Path, kind: str,
                  destination: pathlib.Path) -> None:
     """Extrait une archive sans la laisser écrire hors de sa destination.
@@ -59,7 +108,10 @@ def safe_extract(archive: pathlib.Path, kind: str,
     py7zr refuse lui-même « Symlink point out of target directory ». C'est de la
     défense en profondeur réelle, mais elle est portée par du code que nous
     n'écrivons pas — d'où cette note, pour qu'un futur changement de
-    bibliothèque ne rouvre pas le trou en silence.
+    bibliothèque ne rouvre pas le trou en silence. Le secours binaire de
+    `_extraire_7z` s'appuie, lui, sur 7-Zip lui-même, qui maintient
+    l'extraction sous son `-o` — vérifié, mais par du code qui n'est pas le
+    nôtre non plus.
 
     Toute exception est enveloppée : sur une machine de provisionnement sans
     clavier ni écran, une trace Python brute remplace le message qui nommerait
@@ -74,13 +126,7 @@ def safe_extract(archive: pathlib.Path, kind: str,
                 _membres_surs(z.namelist(), destination)
                 z.extractall(destination)
         else:
-            try:
-                import py7zr
-            except ImportError as exc:  # pragma: no cover - dépendance déclarée
-                raise AcquireError("py7zr est requis pour les archives 7z") from exc
-            with py7zr.SevenZipFile(archive) as z:
-                _membres_surs(z.getnames(), destination)
-                z.extractall(destination)
+            _extraire_7z(archive, destination)
     except AcquireError:
         raise
     except Exception as exc:  # noqa: BLE001 - volontairement large, voir docstring

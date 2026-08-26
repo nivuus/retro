@@ -2,6 +2,8 @@
 import dataclasses
 import hashlib
 import pathlib
+import shutil
+import subprocess
 import zipfile
 
 import pytest
@@ -129,6 +131,47 @@ def test_lien_symbolique_echappant_est_enveloppe(tmp_path):
     with pytest.raises(acquire.AcquireError):
         acquire.safe_extract(src, "zip", tmp_path / "cible")
     assert not (tmp_path.parent / "dehors").exists()
+
+
+def test_le_secours_7z_prend_le_relais(tmp_path, monkeypatch):
+    """py7zr ne lit pas le filtre BCJ2, celui des archives de RetroArch. Sans
+    ce secours, l'émulateur qui couvre l'essentiel de la bibliothèque rétro ne
+    s'installe pas — et aucun test en .zip ne le verrait."""
+    binaire = shutil.which("7z") or shutil.which("7za") or shutil.which("7zr")
+    if not binaire:
+        pytest.skip("aucun binaire 7-Zip sur cette machine")
+    src = tmp_path / "vrai.7z"
+    contenu = tmp_path / "dedans"
+    contenu.mkdir()
+    (contenu / "fichier.txt").write_text("contenu")
+    subprocess.run([binaire, "a", str(src), str(contenu / "fichier.txt")],
+                   capture_output=True, check=True)
+
+    # py7zr rendu inopérant, comme il l'est réellement face au filtre BCJ2.
+    import py7zr
+
+    def refuse(*a, **k):
+        raise RuntimeError("Unsupported compression method BCJ2")
+
+    monkeypatch.setattr(py7zr, "SevenZipFile", refuse)
+    cible = tmp_path / "cible"
+    acquire.safe_extract(src, "7z", cible)
+    assert (cible / "fichier.txt").read_text() == "contenu"
+
+
+def test_sans_py7zr_ni_binaire_le_message_dit_quoi_faire(tmp_path, monkeypatch):
+    import py7zr
+
+    def refuse(*a, **k):
+        raise RuntimeError("Unsupported compression method BCJ2")
+
+    monkeypatch.setattr(py7zr, "SevenZipFile", refuse)
+    monkeypatch.setattr(acquire.shutil, "which", lambda b: None)
+    src = tmp_path / "x.7z"
+    src.write_bytes(b"peu importe")
+    with pytest.raises(acquire.AcquireError) as exc:
+        acquire.safe_extract(src, "7z", tmp_path / "cible")
+    assert "7zr" in str(exc.value)
 
 
 def test_archive_inconnue_refusee(tmp_path):
