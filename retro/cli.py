@@ -7,8 +7,8 @@ import json
 import pathlib
 import sys
 
-from retro import install as install_mod
-from retro import manifest, profiles, scan
+from retro import bios, install as install_mod
+from retro import manifest, profiles, scan, status
 from retro.steam import accounts, artwork, entry, sync, writer
 
 DEFAULT_STEAM_ROOT = "D:\\Steam"
@@ -175,6 +175,43 @@ def _cmd_scan(args) -> int:
     return 0
 
 
+def _cmd_status(args) -> int:
+    """Le rapport lisible. Une consultation, jamais une validation : elle ne
+    modifie rien et rend 0 même quand des problèmes sont signalés — les
+    problèmes eux-mêmes sont le contenu utile du rapport, pas un motif
+    d'échec de la commande. Seul un échec qui empêche de PRODUIRE le rapport
+    (manifeste illisible, profils absents, racine des ROMs non montée) rend
+    un code non nul."""
+    try:
+        profils = profiles.load_profiles(pathlib.Path(args.profiles))
+        utilisateur = pathlib.Path(args.user_manifest) if args.user_manifest else None
+        emulateurs = manifest.load_manifest(pathlib.Path(args.manifest), utilisateur)
+        install_dirs = _install_dirs_pour(profils, emulateurs)
+        inventaire = scan.scan(
+            pathlib.Path(args.roms), profils, args.emulation_root, install_dirs,
+            roms_root_windows=args.roms_windows,
+        )
+    except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    comptes: dict[str, int] = {}
+    for rom in inventaire:
+        comptes[rom.system_name] = comptes.get(rom.system_name, 0) + 1
+    systemes = sorted(comptes.items())
+
+    etat_bios = bios.check_bios(profils, pathlib.Path(args.bios))
+
+    rapport = status.build_report(
+        install_dirs=install_dirs,
+        emulation_root=pathlib.Path(args.emulation_root),
+        systems=systemes,
+        bios_status=etat_bios,
+    )
+    print(status.format_report(rapport))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="retro")
     sous = parser.add_subparsers(dest="commande", required=True)
@@ -206,6 +243,19 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
     s.add_argument("--output", required=True)
     s.set_defaults(func=_cmd_scan)
+
+    st = sous.add_parser(
+        "status", help="rapport lisible : émulateurs, jeux, BIOS, problèmes"
+    )
+    st.add_argument("--roms", required=True)
+    st.add_argument("--roms-windows", default="G:\\ROMs")
+    st.add_argument("--profiles", default=str(DEFAULT_PROFILES))
+    st.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
+    st.add_argument("--user-manifest", default=None)
+    st.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
+    st.add_argument("--bios", required=True,
+                    help="dossier où le propriétaire dépose ses BIOS")
+    st.set_defaults(func=_cmd_status)
 
     args = parser.parse_args(argv)
     return args.func(args)
