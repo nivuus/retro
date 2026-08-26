@@ -1319,6 +1319,10 @@ Fichier `tests/steam/test_writer.py` :
 
 ```python
 """Écriture de shortcuts.vdf : atomicité, sauvegarde, garde Steam."""
+import os
+import pathlib
+import types
+
 import pytest
 
 from retro.steam import vdf_io, writer
@@ -1388,6 +1392,42 @@ def test_steamwebhelper_ne_compte_pas():
 
 def test_detection_insensible_a_la_casse():
     assert writer.steam_is_running(["STEAM.EXE"])
+
+
+def test_l_ecriture_passe_par_un_fichier_temporaire(tmp_path, monkeypatch):
+    """L'atomicité elle-même, pas seulement l'ordre des opérations.
+
+    Le test d'échec ci-dessus simule la panne dans dumps_shortcuts, donc avant
+    tout contact avec le disque : mesuré, il reste vert même si l'on remplace
+    temp+os.replace par une écriture directe. Il atteste « rendre avant
+    d'écrire », pas « écrire ailleurs puis basculer ». Celui-ci pin le motif.
+    """
+    p = tmp_path / "shortcuts.vdf"
+    ecrits, bascules = [], []
+    vrai_write = pathlib.Path.write_bytes
+    monkeypatch.setattr(pathlib.Path, "write_bytes",
+                        lambda self, d: (ecrits.append(self.name), vrai_write(self, d))[1])
+    vrai_replace = os.replace
+    monkeypatch.setattr(os, "replace",
+                        lambda a, b: (bascules.append((str(a), str(b))), vrai_replace(a, b))[1])
+    writer.write_shortcuts(p, [ENTREE])
+    assert "shortcuts.vdf" not in ecrits, f"écriture directe sur la cible : {ecrits}"
+    assert len(bascules) == 1 and bascules[0][1].endswith("shortcuts.vdf")
+
+
+def test_le_parsing_de_tasklist_extrait_les_noms(monkeypatch):
+    """La branche Windows, testée sans Windows.
+
+    Son mode de panne va dans le mauvais sens : un découpage cassé rend une
+    liste vide, donc steam_is_running renvoie False pendant que Steam tourne et
+    la garde devient silencieusement inactive.
+    """
+    sortie = '"steam.exe","4028","Console","1","89 340 K"\n"explorer.exe","912","Console","1","42 000 K"\n'
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(writer.subprocess, "run",
+                        lambda *a, **k: types.SimpleNamespace(stdout=sortie))
+    assert writer._running_processes() == ["steam.exe", "explorer.exe"]
+    assert writer.steam_is_running()
 
 
 def test_la_garde_leve_une_erreur_explicite(monkeypatch):
