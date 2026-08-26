@@ -85,7 +85,7 @@ def exe_path(exe_field: str) -> str:
 
 
 def is_under_root(exe_field: str, emulation_root: str) -> bool:
-    """La moitié « chemin » du test de propriété, isolée pour être réutilisable.
+    r"""La moitié « chemin » du test de propriété, isolée pour être réutilisable.
 
     La ligne de commande s'en sert pour vérifier AVANT d'écrire que la racine
     d'émulation qu'on lui a donnée contient bien les émulateurs de l'inventaire.
