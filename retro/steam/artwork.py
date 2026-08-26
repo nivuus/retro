@@ -50,16 +50,15 @@ class ArtworkClient:
         if not self.api_key:
             return []  # dégradation gracieuse, pas une erreur
         prefixes = appid_mod.grid_prefixes(legacy_appid)
-        # Dès qu'UN des cinq assets existe déjà (quelle que soit son extension,
-        # via existing_asset qui compare par stem), on considère ce jeu déjà
-        # synchronisé et on ne réinterroge pas SteamGridDB. Un renommage passe
-        # par prune_orphans, qui vide le dossier de l'ancien appid : la
-        # prochaine synchronisation repart alors de zéro pour le nouveau.
-        deja_synchronise = any(
-            appid_mod.existing_asset(grid_dir, pre) is not None
-            for pre in prefixes.values()
-        )
-        if deja_synchronise:
+        # Chaque asset se décide INDIVIDUELLEMENT, via existing_asset qui
+        # compare par stem (extension-agnostique). Un asset déjà présent ne
+        # doit ni être écrasé ni empêcher la récupération des autres : sauter
+        # globalement dès qu'un seul asset existe laisserait à jamais
+        # incomplète toute bibliothèque dont une synchronisation s'est
+        # interrompue en cours de boucle (panne réseau à mi-parcours, etc.).
+        manquants = {k: pre for k, pre in prefixes.items()
+                     if appid_mod.existing_asset(grid_dir, pre) is None}
+        if not manquants:
             return []
         entetes = {"Authorization": f"Bearer {self.api_key}"}
         try:
@@ -71,6 +70,8 @@ class ArtworkClient:
             grid_dir.mkdir(parents=True, exist_ok=True)
             ecrits = []
             for cle, endpoint, params in ASSETS:
+                if cle not in manquants:
+                    continue
                 suffixe = "".join(f"?{k}={v}" for k, v in params.items())
                 reponse = self._fetch_json(f"{BASE}/{endpoint}/game/{jeu_id}{suffixe}", entetes)
                 candidats = reponse.get("data") or []
@@ -81,7 +82,7 @@ class ArtworkClient:
                 # indifféremment, et la conserver évite de retélécharger à chaque
                 # passage un asset déjà présent sous un autre suffixe.
                 ext = pathlib.PurePosixPath(url).suffix or ".png"
-                nom = f"{prefixes[cle]}{ext}"
+                nom = f"{manquants[cle]}{ext}"
                 (grid_dir / nom).write_bytes(self._fetch_bytes(url))
                 ecrits.append(nom)
             return ecrits

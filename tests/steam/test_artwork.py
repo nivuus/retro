@@ -58,12 +58,25 @@ def test_asset_present_sous_une_autre_extension_non_retelecharge(tmp_path):
 
 
 def test_un_asset_deja_present_n_est_pas_retelecharge(tmp_path):
+    """Chaque asset se décide INDIVIDUELLEMENT.
+
+    Un portrait déjà présent ne doit ni être écrasé, ni empêcher la
+    récupération des quatre autres. Sauter globalement dès qu'un seul asset
+    existe laisserait à jamais incomplète toute bibliothèque dont une
+    synchronisation s'est interrompue en cours de boucle.
+
+    N'assertionne PAS « aucun appel ne contient telle URL » : le faux réseau
+    rend la même URL pour tous les endpoints, et le client la redemande
+    légitimement pour les assets manquants — l'assertion serait insatisfiable
+    quel que soit le code.
+    """
     (tmp_path / "2398962978p.jpg").write_bytes(b"deja-la")
-    fj, fb, appels = faux_reseau()
+    fj, fb, _ = faux_reseau()
     client = artwork.ArtworkClient(api_key="cle", fetch_json=fj, fetch_bytes=fb)
-    client.fetch_for("Chrono Trigger", 2398962978, tmp_path)
+    ecrits = client.fetch_for("Chrono Trigger", 2398962978, tmp_path)
     assert (tmp_path / "2398962978p.jpg").read_bytes() == b"deja-la"
-    assert not any("portrait.jpg" in a for a in appels)
+    assert not any(n.startswith("2398962978p.") for n in ecrits)
+    assert len(ecrits) == 4, f"les quatre autres assets doivent être récupérés : {ecrits}"
 
 
 def test_jeu_introuvable_ne_leve_pas(tmp_path):
