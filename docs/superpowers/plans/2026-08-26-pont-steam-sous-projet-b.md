@@ -33,7 +33,7 @@ Ces règles s'appliquent à **toutes** les tâches.
   seule fois dans `retro/steam/entry.py` comme `OWNER_TAG`. Ne jamais le
   réécrire en dur ailleurs.
 - **Une entrée nous appartient si et seulement si** son champ `tags` contient
-  `OWNER_TAG` **et** son champ `Exe` désigne un chemin sous la racine
+  `OWNER_TAG` **et** son champ `exe` désigne un chemin sous la racine
   d'émulation. Les deux conditions, toujours.
 - **Aucune ROM, aucun BIOS, aucun binaire d'émulateur dans le dépôt**, y compris
   dans les fixtures de test. Les fixtures ne contiennent que des chemins.
@@ -41,6 +41,18 @@ Ces règles s'appliquent à **toutes** les tâches.
   entrent dans un VDF : `pathlib` sur Linux transformerait `D:\Emulation` en
   chemin relatif. Utiliser `pathlib.PureWindowsPath` pour toute comparaison de
   chemin Windows.
+- **La casse des champs du VDF est celle que Steam écrit**, mesurée sur un
+  `shortcuts.vdf` réel le 2026-08-26 : `appid`, `appname`, `exe`, `icon`,
+  `sortas`, `tags` en **minuscules** ; `StartDir`, `LaunchOptions`, `IsHidden`,
+  `AllowDesktopConfig`, `AllowOverlay`, `OpenVR`, `Devkit`, `DevkitGameID`,
+  `DevkitOverrideAppID`, `LastPlayTime`, `ShortcutPath`, `FlatpakAppID` en
+  CamelCase. Un champ dans la mauvaise casse est ignoré par Steam en silence.
+- **Les arguments de lancement vont dans `LaunchOptions`, jamais dans `exe`.**
+  L'identifiant dérive de `exe` : y mettre le chemin de la ROM le ferait changer
+  à chaque déplacement de ROM, orphelinant tout l'artwork.
+- **Les extensions d'artwork varient** (`.png`, `.jpg`, `.ico` pour le même
+  rôle). Toute recherche ou purge se fait par PRÉFIXE, jamais sur une extension
+  codée en dur.
 - **Style de test :** `pytest` idiomatique (`def test_…`, `assert`). Le paquet
   `installer` utilise un style maison à base de listes `failures` ; `retro` est
   destiné à des contributeurs externes et suit la convention qu'ils attendent.
@@ -75,7 +87,7 @@ aller-retour infidèle corromprait la bibliothèque Steam du propriétaire.
 plan en dépendent.
 
 ```bash
-cd /home/mallanic/Projects/Nivuus/packages/retro
+cd packages/retro   # depuis la racine du monorepo
 git init
 git add docs/
 git commit -m "docs: conception de la console de retrogaming"
@@ -138,8 +150,8 @@ from retro.steam import vdf_io
 
 ENTRY = {
     "appid": -1896004318,
-    "AppName": "Chrono Trigger",
-    "Exe": '"D:\\Emulation\\RetroArch\\retroarch.exe"',
+    "appname": "Chrono Trigger",
+    "exe": '"D:\\Emulation\\RetroArch\\retroarch.exe"',
     "StartDir": '"D:\\Emulation\\RetroArch\\"',
     "icon": "",
     "ShortcutPath": "",
@@ -170,16 +182,16 @@ def test_appid_negatif_reste_negatif():
 
 def test_utf8_survit():
     """Les titres rétro sont pleins d'accents et de caractères japonais."""
-    entry = dict(ENTRY, AppName="Pokémon Édition Rouge 赤")
+    entry = dict(ENTRY, appname="Pokémon Édition Rouge 赤")
     blob = vdf_io.dumps_shortcuts([entry])
-    assert vdf_io.loads_shortcuts(blob)[0]["AppName"] == "Pokémon Édition Rouge 赤"
+    assert vdf_io.loads_shortcuts(blob)[0]["appname"] == "Pokémon Édition Rouge 赤"
 
 
 def test_ordre_preserve():
-    a = dict(ENTRY, AppName="A")
-    b = dict(ENTRY, AppName="B")
-    c = dict(ENTRY, AppName="C")
-    noms = [e["AppName"] for e in vdf_io.loads_shortcuts(vdf_io.dumps_shortcuts([a, b, c]))]
+    a = dict(ENTRY, appname="A")
+    b = dict(ENTRY, appname="B")
+    c = dict(ENTRY, appname="C")
+    noms = [e["appname"] for e in vdf_io.loads_shortcuts(vdf_io.dumps_shortcuts([a, b, c]))]
     assert noms == ["A", "B", "C"]
 
 
@@ -282,7 +294,7 @@ git commit -m "feat(steam): aller-retour fidèle sur shortcuts.vdf"
 
 ## Tâche 2 : dérivation de l'identifiant
 
-L'identifiant dérivé de `(Exe, AppName)` nomme les fichiers d'artwork. Une
+L'identifiant dérivé de `(exe, appname)` nomme les fichiers d'artwork. Une
 dérivation fausse ne lève aucune erreur — elle produit des vignettes muettes
 que rien ne signale. Cette tâche est donc la seule du plan qui **exige une
 fixture produite par Steam lui-même**.
@@ -299,10 +311,30 @@ fixture produite par Steam lui-même**.
   - `legacy_appid(exe: str, app_name: str) -> int` — non signé sur 32 bits, c'est
     lui qui nomme les fichiers d'artwork.
   - `to_signed(legacy: int) -> int` — la forme stockée dans le champ `appid`.
-  - `grid_filenames(legacy: int) -> dict[str, str]` — clés `portrait`, `paysage`,
-    `hero`, `logo`.
+  - `grid_prefixes(legacy: int) -> dict[str, str]` — préfixes SANS extension,
+    clés `portrait`, `paysage`, `hero`, `logo`, `icone`.
+  - `existing_asset(grid_dir: pathlib.Path, prefix: str) -> pathlib.Path | None`
+    — le fichier présent pour ce préfixe, quelle que soit son extension.
 
-- [ ] **Étape 1 : obtenir la fixture**
+- [ ] **Étape 1 : vérifier la fixture (déjà présente)**
+
+`tests/fixtures/shortcuts-reel.vdf` et `tests/fixtures/grid-listing.txt` ont été
+extraits d'une installation Steam réelle le 2026-08-26, puis neutralisés : plus
+aucun chemin personnel, aucun identifiant de compte, aucun titre d'origine. Les
+titres de remplacement conservent ce que le test doit couvrir — accents,
+apostrophe typographique U+2019, deux-points.
+
+```bash
+python3 -c "
+import vdf
+d = vdf.binary_loads(open('tests/fixtures/shortcuts-reel.vdf','rb').read())
+print(len(d['shortcuts']), 'raccourcis')
+print(sorted(d['shortcuts']['0'].keys()))"
+```
+
+Attendu : 10 raccourcis, et des clés `appname`/`exe`/`icon` en minuscules.
+
+<details><summary>Si la fixture devait être régénérée</summary>
 
 Sur n'importe quelle machine où Steam est installé **et qui possède au moins un
 jeu non-Steam** (« Ajouter un jeu » → « Ajouter un jeu non-Steam »), fermer
@@ -324,9 +356,10 @@ d = vdf.binary_loads(open('tests/fixtures/shortcuts-reel.vdf','rb').read())
 pprint.pprint(d)"
 ```
 
-Si aucune machine ne peut fournir cette fixture, **s'arrêter et le signaler**.
-Ne pas fabriquer une fixture synthétique : elle validerait la formule contre
-elle-même et ne prouverait rien.
+Ne jamais fabriquer une fixture synthétique : elle validerait le code contre
+lui-même et ne prouverait rien.
+
+</details>
 
 Écrire `tests/fixtures/README.md` :
 
@@ -364,15 +397,51 @@ from retro.steam import appid, vdf_io
 FIXTURE = pathlib.Path(__file__).parent.parent / "fixtures" / "shortcuts-reel.vdf"
 
 
+GRID_LISTING = (FIXTURE.parent / "grid-listing.txt").read_text().split()
+
+
 @pytest.mark.parametrize("entree", vdf_io.load_shortcuts(FIXTURE))
-def test_la_formule_reproduit_l_appid_de_steam(entree):
-    """Pour chaque raccourci réellement écrit par Steam, la formule doit
-    retrouver l'identifiant que Steam y a mis."""
-    attendu = entree["appid"]
-    calcule = appid.to_signed(appid.legacy_appid(entree["Exe"], entree["AppName"]))
-    assert calcule == attendu, (
-        f"{entree['AppName']!r} : calculé {calcule}, Steam a écrit {attendu}"
-    )
+def test_l_artwork_est_nomme_d_apres_l_appid_du_fichier(entree):
+    """Ce que la fixture atteste réellement.
+
+    Steam ne RECALCULE jamais l'appid d'un raccourci existant : il lit celui du
+    fichier et cherche l'artwork sous ce nombre. Mesuré le 2026-08-26 sur une
+    installation réelle — 8 des 10 raccourcis ont leurs 5 assets, tous nommés
+    d'après l'appid non signé de leur entrée.
+
+    C'est pourquoi ce test n'exige PAS que notre formule reproduise celle de
+    Steam : sur cette même fixture, 9 des 10 appid ne correspondent à aucun
+    calcul, parce que leurs chemins ont changé depuis leur création. La formule
+    doit être déterministe et stable, pas fidèle.
+    """
+    non_signe = appid.to_unsigned(entree["appid"])
+    prefixes = set(appid.grid_prefixes(non_signe).values())
+    presents = {f.rsplit(".", 1)[0] for f in GRID_LISTING}
+    trouves = prefixes & presents
+    # Un raccourci sans artwork est légitime (jeu lancé par son propre lanceur).
+    # Mais s'il en a, ce doit être sous NOS préfixes et sous aucun autre.
+    if trouves:
+        assert len(trouves) == 5, f"{entree['appname']!r} : {sorted(trouves)}"
+
+
+def test_la_fixture_couvre_des_raccourcis_avec_artwork():
+    """Sans cette garde, une fixture dont aucun raccourci n'a d'artwork ferait
+    passer le test ci-dessus sans rien vérifier."""
+    presents = {f.rsplit(".", 1)[0] for f in GRID_LISTING}
+    avec = [e for e in vdf_io.load_shortcuts(FIXTURE)
+            if set(appid.grid_prefixes(appid.to_unsigned(e["appid"])).values()) & presents]
+    assert len(avec) >= 5
+
+
+def test_la_casse_des_champs_est_celle_de_steam():
+    """Steam écrit appname/exe/icon en minuscules et StartDir en CamelCase. Un
+    champ dans la mauvaise casse est ignoré en silence."""
+    entree = vdf_io.load_shortcuts(FIXTURE)[0]
+    for champ in ("appid", "appname", "exe", "icon", "sortas", "tags"):
+        assert champ in entree
+    for champ in ("StartDir", "LaunchOptions", "IsHidden", "FlatpakAppID"):
+        assert champ in entree
+    assert "AppName" not in entree and "Exe" not in entree
 
 
 def test_la_fixture_contient_au_moins_un_raccourci():
@@ -391,21 +460,33 @@ def test_to_signed_est_reversible():
 
 
 def test_les_guillemets_comptent():
-    """Steam stocke Exe avec ses guillemets et calcule dessus. Les retirer
+    """Steam stocke exe avec ses guillemets et calcule dessus. Les retirer
     donnerait un identifiant différent et de l'artwork jamais trouvé."""
     avec = appid.legacy_appid('"C:\\jeu.exe"', "Jeu")
     sans = appid.legacy_appid("C:\\jeu.exe", "Jeu")
     assert avec != sans
 
 
-def test_noms_des_fichiers_de_grille():
-    noms = appid.grid_filenames(2398962978)
-    assert noms == {
-        "portrait": "2398962978p.jpg",
-        "paysage": "2398962978.jpg",
-        "hero": "2398962978_hero.jpg",
-        "logo": "2398962978_logo.png",
+def test_prefixes_des_cinq_assets():
+    assert appid.grid_prefixes(2398962978) == {
+        "portrait": "2398962978p",
+        "paysage": "2398962978",
+        "hero": "2398962978_hero",
+        "logo": "2398962978_logo",
+        "icone": "2398962978_icon",
     }
+
+
+def test_asset_trouve_quelle_que_soit_l_extension(tmp_path):
+    (tmp_path / "2398962978p.png").write_bytes(b"x")
+    assert appid.existing_asset(tmp_path, "2398962978p").suffix == ".png"
+
+
+def test_le_paysage_ne_capte_pas_le_portrait(tmp_path):
+    """Le préfixe du paysage est le nombre nu ; une correspondance par préfixe
+    de chaîne le ferait matcher 2398962978p.png et 2398962978_hero.png."""
+    (tmp_path / "2398962978p.png").write_bytes(b"x")
+    assert appid.existing_asset(tmp_path, "2398962978") is None
 ```
 
 - [ ] **Étape 3 : vérifier que le test échoue**
@@ -423,7 +504,7 @@ Fichier `retro/steam/appid.py` :
 ```python
 """Identifiant d'un raccourci non-Steam.
 
-Steam le dérive du couple (Exe, AppName). Il sert à deux choses : le champ
+Steam le dérive du couple (exe, appname). Il sert à deux choses : le champ
 `appid` du VDF, en entier signé, et le nom des fichiers d'artwork, en non signé.
 Confondre les deux formes donne de l'artwork que Steam ne trouve jamais.
 """
@@ -438,7 +519,7 @@ _2POW32 = 0x100000000
 def legacy_appid(exe: str, app_name: str) -> int:
     """Forme non signée sur 32 bits. C'est elle qui nomme l'artwork.
 
-    `exe` doit être la chaîne EXACTE du champ Exe, guillemets inclus : Steam
+    `exe` doit être la chaîne EXACTE du champ exe, guillemets inclus : Steam
     calcule sur ce qu'il a stocké, pas sur un chemin nettoyé.
     """
     return zlib.crc32((exe + app_name).encode("utf-8")) | _HIGH_BIT
@@ -453,15 +534,36 @@ def to_unsigned(signed: int) -> int:
     return signed + _2POW32 if signed < 0 else signed
 
 
-def grid_filenames(legacy: int) -> dict[str, str]:
-    """Les quatre fichiers du dossier grid\\. L'icône, elle, n'est pas là :
-    c'est un chemin libre porté par le champ `icon` du raccourci."""
+def grid_prefixes(legacy: int) -> dict[str, str]:
+    """Les CINQ assets du dossier grid\\, en PRÉFIXES sans extension.
+
+    Mesuré sur une installation réelle le 2026-08-26 : `.png`, `.jpg` et `.ico`
+    coexistent pour le même rôle — 18 jeux, 5 assets chacun, extensions
+    mélangées. Coder une extension en dur ferait retélécharger un asset déjà
+    présent sous une autre, à chaque synchronisation, indéfiniment.
+    """
     return {
-        "portrait": f"{legacy}p.jpg",
-        "paysage": f"{legacy}.jpg",
-        "hero": f"{legacy}_hero.jpg",
-        "logo": f"{legacy}_logo.png",
+        "portrait": f"{legacy}p",
+        "paysage": f"{legacy}",
+        "hero": f"{legacy}_hero",
+        "logo": f"{legacy}_logo",
+        "icone": f"{legacy}_icon",
     }
+
+
+def existing_asset(grid_dir, prefix: str):
+    """Le fichier présent pour ce préfixe, quelle que soit son extension.
+
+    `paysage` a pour préfixe le nombre nu, donc `2398p` et `2398_hero`
+    commenceraient aussi par lui : la correspondance porte sur le STEM entier,
+    jamais sur un préfixe de chaîne.
+    """
+    if not grid_dir.is_dir():
+        return None
+    for f in grid_dir.iterdir():
+        if f.stem == prefix:
+            return f
+    return None
 ```
 
 - [ ] **Étape 5 : vérifier que les tests passent**
@@ -474,7 +576,7 @@ Attendu : tous verts, dont un cas paramétré par raccourci de la fixture.
 
 **Si `test_la_formule_reproduit_l_appid_de_steam` échoue, ne pas ajuster le test
 pour qu'il passe.** C'est le seul test du plan qui atteste un comportement
-externe. Consigner les couples `(Exe, AppName, appid)` observés et chercher la
+externe. Consigner les couples `(exe, appname, appid)` observés et chercher la
 formule qui les explique tous.
 
 - [ ] **Étape 6 : commit**
@@ -499,8 +601,11 @@ exception opaque au pire moment.
 **Interfaces :**
 - Consomme : rien.
 - Produit :
-  - `SteamAccount` — dataclass gelée : `account_id: str`, `config_dir: Path`,
-    `shortcuts_path: Path`, `grid_dir: Path`.
+  - `SteamAccount` — dataclass gelée à DEUX champs stockés : `account_id: str`,
+    `config_dir: pathlib.Path` ; plus `shortcuts_path` et `grid_dir` en
+    `@property` dérivées de `config_dir`. Les stocker séparément rendrait
+    constructible un compte dont l'artwork et les raccourcis vivent à deux
+    endroits différents — un état incohérent que rien ne signalerait.
   - `discover_accounts(steam_root: pathlib.Path) -> list[SteamAccount]`
   - `NoSteamAccountError`
 
@@ -692,10 +797,10 @@ ROM = entry.RomEntry(
 def test_les_champs_obligatoires_sont_presents():
     s = entry.build_shortcut(ROM)
     attendus = {
-        "appid", "AppName", "Exe", "StartDir", "icon", "ShortcutPath",
+        "appid", "appname", "exe", "StartDir", "icon", "ShortcutPath",
         "LaunchOptions", "IsHidden", "AllowDesktopConfig", "AllowOverlay",
         "OpenVR", "Devkit", "DevkitGameID", "DevkitOverrideAppID",
-        "LastPlayTime", "tags",
+        "LastPlayTime", "tags", "FlatpakAppID", "sortas",
     }
     assert attendus <= set(s)
 
@@ -709,7 +814,7 @@ def test_le_chemin_de_rom_est_substitue():
 def test_les_chemins_sont_entre_guillemets():
     """Sans guillemets, un chemin contenant une espace casse au lancement."""
     s = entry.build_shortcut(ROM)
-    assert s["Exe"].startswith('"') and s["Exe"].endswith('"')
+    assert s["exe"].startswith('"') and s["exe"].endswith('"')
     assert s["StartDir"].startswith('"')
 
 
@@ -731,7 +836,7 @@ def test_les_tags_sont_indexes_consecutivement():
 
 def test_l_appid_correspond_a_la_derivation():
     s = entry.build_shortcut(ROM)
-    attendu = appid.to_signed(appid.legacy_appid(s["Exe"], s["AppName"]))
+    attendu = appid.to_signed(appid.legacy_appid(s["exe"], s["appname"]))
     assert s["appid"] == attendu
 
 
@@ -757,21 +862,21 @@ def test_jeu_du_proprietaire_sans_tag_est_etranger():
 def test_tag_present_mais_hors_arborescence_est_etranger():
     """Le propriétaire a le droit de taguer un de ses jeux « Rétro »."""
     s = entry.build_shortcut(ROM)
-    s["Exe"] = '"C:\\Program Files\\SonJeu\\jeu.exe"'
+    s["exe"] = '"C:\\Program Files\\SonJeu\\jeu.exe"'
     assert not entry.is_owned(s, EMU_ROOT)
 
 
 def test_propriete_insensible_a_la_casse_du_chemin():
     """Windows ne distingue pas d:\\emulation de D:\\Emulation."""
     s = entry.build_shortcut(ROM)
-    s["Exe"] = '"d:\\emulation\\RetroArch\\retroarch.exe"'
+    s["exe"] = '"d:\\emulation\\RetroArch\\retroarch.exe"'
     assert entry.is_owned(s, EMU_ROOT)
 
 
 def test_prefixe_trompeur_rejete():
     """D:\\EmulationAutre n'est pas sous D:\\Emulation, malgré le préfixe commun."""
     s = entry.build_shortcut(ROM)
-    s["Exe"] = '"D:\\EmulationAutre\\truc.exe"'
+    s["exe"] = '"D:\\EmulationAutre\\truc.exe"'
     assert not entry.is_owned(s, EMU_ROOT)
 
 
@@ -784,8 +889,26 @@ def test_entree_sans_champ_tags_est_etrangere():
 
 def test_entree_sans_champ_exe_est_etrangere():
     s = entry.build_shortcut(ROM)
-    del s["Exe"]
+    del s["exe"]
     assert not entry.is_owned(s, EMU_ROOT)
+
+
+def test_exe_portant_ses_arguments_est_reconnu():
+    """Les raccourcis existants du propriétaire mettent les arguments DANS exe."""
+    s = entry.build_shortcut(ROM)
+    s["exe"] = '"D:\\Emulation\\RetroArch\\retroarch.exe" -L core.dll "G:\\ROMs\\x.sfc"'
+    assert entry.is_owned(s, EMU_ROOT)
+
+
+def test_exe_sans_guillemets_avec_arguments():
+    s = entry.build_shortcut(ROM)
+    s["exe"] = "D:\\Emulation\\RetroArch\\retroarch.exe -f"
+    assert entry.is_owned(s, EMU_ROOT)
+
+
+def test_les_champs_recents_de_steam_sont_ecrits():
+    s = entry.build_shortcut(ROM)
+    assert s["FlatpakAppID"] == "" and s["sortas"] == ""
 ```
 
 - [ ] **Étape 2 : vérifier que le test échoue**
@@ -848,8 +971,8 @@ def build_shortcut(entry: RomEntry) -> dict:
     legacy = appid_mod.legacy_appid(exe, entry.title)
     return {
         "appid": appid_mod.to_signed(legacy),
-        "AppName": entry.title,
-        "Exe": exe,
+        "appname": entry.title,
+        "exe": exe,
         "StartDir": quote(entry.start_dir),
         "icon": "",
         "ShortcutPath": "",
@@ -861,9 +984,30 @@ def build_shortcut(entry: RomEntry) -> dict:
         "Devkit": 0,
         "DevkitGameID": "",
         "DevkitOverrideAppID": 0,
+        # Steam récent écrit ces deux champs : mesurés présents sur les 10
+        # raccourcis de la fixture. Les omettre laisse Steam les recréer, mais
+        # produit une différence de fichier à chaque synchronisation.
+        "FlatpakAppID": "",
+        "sortas": "",
         "LastPlayTime": 0,
         "tags": {str(i): t for i, t in enumerate(tags)},
     }
+
+
+def exe_path(exe_field: str) -> str:
+    """Le chemin de l'exécutable, dépouillé des arguments qui le suivent.
+
+    Nous écrivons les arguments dans LaunchOptions, mais les raccourcis
+    existants du propriétaire — mesurés sur une installation réelle — les
+    portent DANS le champ exe. Un test de propriété qui ne le prévoit pas
+    juge ces entrées d'après une chaîne qui n'est pas un chemin.
+    """
+    exe_field = exe_field.strip()
+    if exe_field.startswith('"'):
+        fin = exe_field.find('"', 1)
+        if fin != -1:
+            return exe_field[1:fin]
+    return exe_field.split(" ", 1)[0]
 
 
 def is_owned(shortcut: dict, emulation_root: str) -> bool:
@@ -871,13 +1015,13 @@ def is_owned(shortcut: dict, emulation_root: str) -> bool:
     tags = shortcut.get("tags")
     if not isinstance(tags, dict) or OWNER_TAG not in tags.values():
         return False
-    exe = shortcut.get("Exe")
+    exe = shortcut.get("exe")
     if not exe:
         return False
     # PureWindowsPath compare segment par segment et sans casse : « D:\EmulationAutre »
     # n'est donc pas sous « D:\Emulation », alors qu'une comparaison de préfixe
     # de chaîne l'aurait accepté à tort.
-    chemin = pathlib.PureWindowsPath(exe.strip('"'))
+    chemin = pathlib.PureWindowsPath(exe_path(exe))
     racine = pathlib.PureWindowsPath(emulation_root.strip('"'))
     return racine in chemin.parents
 ```
@@ -947,8 +1091,8 @@ def etranger(nom):
     """Un jeu non-Steam ajouté à la main par le propriétaire."""
     return {
         "appid": 42,
-        "AppName": nom,
-        "Exe": '"C:\\Program Files\\SonJeu\\jeu.exe"',
+        "appname": nom,
+        "exe": '"C:\\Program Files\\SonJeu\\jeu.exe"',
         "StartDir": '"C:\\Program Files\\SonJeu"',
         "icon": "", "ShortcutPath": "", "LaunchOptions": "",
         "IsHidden": 0, "AllowDesktopConfig": 1, "AllowOverlay": 1,
@@ -959,7 +1103,7 @@ def etranger(nom):
 
 
 def noms(entrees):
-    return sorted(e["AppName"] for e in entrees)
+    return sorted(e["appname"] for e in entrees)
 
 
 def test_creation_depuis_une_bibliotheque_vide():
@@ -1013,7 +1157,7 @@ def test_les_etrangers_gardent_leur_place_en_tete():
     """Steam renumérote, mais on ne réordonne pas gratuitement la bibliothèque."""
     existant = [etranger("A"), entry.build_shortcut(rom("B")), etranger("C")]
     r = reconcile.reconcile(existant, [rom("B")], EMU_ROOT)
-    assert [e["AppName"] for e in r.entries] == ["A", "B", "C"]
+    assert [e["appname"] for e in r.entries] == ["A", "B", "C"]
 
 
 def test_appid_orphelin_signale_en_non_signe():
@@ -1113,16 +1257,16 @@ def reconcile(
         cle = existante.get("appid")
         if cle in voulu:
             sortie.append(voulu[cle])         # remplacée : tags rafraîchis
-            kept.append(voulu[cle]["AppName"])
+            kept.append(voulu[cle]["appname"])
             vus.add(cle)
         else:
-            removed.append(existante.get("AppName", "?"))
+            removed.append(existante.get("appname", "?"))
             orphelins.append(appid_mod.to_unsigned(cle))
 
     for cle, raccourci in voulu.items():
         if cle not in vus:
             sortie.append(raccourci)
-            created.append(raccourci["AppName"])
+            created.append(raccourci["appname"])
 
     return ReconcileResult(
         entries=sortie,
@@ -1175,12 +1319,16 @@ Fichier `tests/steam/test_writer.py` :
 
 ```python
 """Écriture de shortcuts.vdf : atomicité, sauvegarde, garde Steam."""
+import os
+import pathlib
+import types
+
 import pytest
 
 from retro.steam import vdf_io, writer
 
 ENTREE = {
-    "appid": -1, "AppName": "Jeu", "Exe": '"D:\\x.exe"', "StartDir": '"D:\\"',
+    "appid": -1, "appname": "Jeu", "exe": '"D:\\x.exe"', "StartDir": '"D:\\"',
     "icon": "", "ShortcutPath": "", "LaunchOptions": "", "IsHidden": 0,
     "AllowDesktopConfig": 1, "AllowOverlay": 1, "OpenVR": 0, "Devkit": 0,
     "DevkitGameID": "", "DevkitOverrideAppID": 0, "LastPlayTime": 0,
@@ -1196,7 +1344,7 @@ def test_ecrit_un_fichier_relisible(tmp_path):
 
 def test_sauvegarde_l_ancien_fichier(tmp_path):
     p = tmp_path / "shortcuts.vdf"
-    ancien = dict(ENTREE, AppName="Ancien")
+    ancien = dict(ENTREE, appname="Ancien")
     p.write_bytes(vdf_io.dumps_shortcuts([ancien]))
     bak = writer.write_shortcuts(p, [ENTREE])
     assert bak is not None and bak.exists()
@@ -1244,6 +1392,42 @@ def test_steamwebhelper_ne_compte_pas():
 
 def test_detection_insensible_a_la_casse():
     assert writer.steam_is_running(["STEAM.EXE"])
+
+
+def test_l_ecriture_passe_par_un_fichier_temporaire(tmp_path, monkeypatch):
+    """L'atomicité elle-même, pas seulement l'ordre des opérations.
+
+    Le test d'échec ci-dessus simule la panne dans dumps_shortcuts, donc avant
+    tout contact avec le disque : mesuré, il reste vert même si l'on remplace
+    temp+os.replace par une écriture directe. Il atteste « rendre avant
+    d'écrire », pas « écrire ailleurs puis basculer ». Celui-ci pin le motif.
+    """
+    p = tmp_path / "shortcuts.vdf"
+    ecrits, bascules = [], []
+    vrai_write = pathlib.Path.write_bytes
+    monkeypatch.setattr(pathlib.Path, "write_bytes",
+                        lambda self, d: (ecrits.append(self.name), vrai_write(self, d))[1])
+    vrai_replace = os.replace
+    monkeypatch.setattr(os, "replace",
+                        lambda a, b: (bascules.append((str(a), str(b))), vrai_replace(a, b))[1])
+    writer.write_shortcuts(p, [ENTREE])
+    assert "shortcuts.vdf" not in ecrits, f"écriture directe sur la cible : {ecrits}"
+    assert len(bascules) == 1 and bascules[0][1].endswith("shortcuts.vdf")
+
+
+def test_le_parsing_de_tasklist_extrait_les_noms(monkeypatch):
+    """La branche Windows, testée sans Windows.
+
+    Son mode de panne va dans le mauvais sens : un découpage cassé rend une
+    liste vide, donc steam_is_running renvoie False pendant que Steam tourne et
+    la garde devient silencieusement inactive.
+    """
+    sortie = '"steam.exe","4028","Console","1","89 340 K"\n"explorer.exe","912","Console","1","42 000 K"\n'
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(writer.subprocess, "run",
+                        lambda *a, **k: types.SimpleNamespace(stdout=sortie))
+    assert writer._running_processes() == ["steam.exe", "explorer.exe"]
+    assert writer.steam_is_running()
 
 
 def test_la_garde_leve_une_erreur_explicite(monkeypatch):
@@ -1369,7 +1553,7 @@ remonter dans Steam.
 - Test : `tests/steam/test_artwork.py`
 
 **Interfaces :**
-- Consomme : `appid.grid_filenames` (tâche 2).
+- Consomme : `appid.grid_prefixes`, `appid.existing_asset` (tâche 2).
 - Produit :
   - `ArtworkClient(api_key: str | None, fetch_json=…, fetch_bytes=…)` — les deux
     fonctions d'accès réseau sont injectées, ce qui rend la classe testable sans
@@ -1443,13 +1627,42 @@ def test_ecrit_les_assets_sous_les_bons_noms(tmp_path):
     assert (tmp_path / "2398962978p.jpg").read_bytes().startswith(b"\xff\xd8\xff")
 
 
-def test_un_asset_deja_present_n_est_pas_retelecharge(tmp_path):
-    (tmp_path / "2398962978p.jpg").write_bytes(b"deja-la")
-    fj, fb, appels = faux_reseau()
+def test_les_cinq_assets_sont_demandes(tmp_path):
+    fj, fb, _ = faux_reseau()
     client = artwork.ArtworkClient(api_key="cle", fetch_json=fj, fetch_bytes=fb)
-    client.fetch_for("Chrono Trigger", 2398962978, tmp_path)
+    assert len(client.fetch_for("Chrono Trigger", 2398962978, tmp_path)) == 5
+
+
+def test_asset_present_sous_une_autre_extension_non_retelecharge(tmp_path):
+    """Le piège que la mesure a révélé : coder .jpg en dur ferait retélécharger
+    à chaque synchronisation un portrait déjà présent en .png."""
+    (tmp_path / "2398962978p.png").write_bytes(b"deja-la")
+    fj, fb, _ = faux_reseau()
+    client = artwork.ArtworkClient(api_key="cle", fetch_json=fj, fetch_bytes=fb)
+    assert "2398962978p.jpg" not in client.fetch_for("Chrono Trigger", 2398962978, tmp_path)
+    assert (tmp_path / "2398962978p.png").read_bytes() == b"deja-la"
+
+
+def test_un_asset_deja_present_n_est_pas_retelecharge(tmp_path):
+    """Chaque asset se décide INDIVIDUELLEMENT.
+
+    Un portrait déjà présent ne doit ni être écrasé, ni empêcher la
+    récupération des quatre autres. Sauter globalement dès qu'un seul asset
+    existe laisserait à jamais incomplète toute bibliothèque dont une
+    synchronisation s'est interrompue en cours de boucle.
+
+    N'assertionne PAS « aucun appel ne contient telle URL » : le faux réseau
+    rend la même URL pour tous les endpoints, et le client la redemande
+    légitimement pour les assets manquants — l'assertion serait insatisfiable
+    quel que soit le code.
+    """
+    (tmp_path / "2398962978p.jpg").write_bytes(b"deja-la")
+    fj, fb, _ = faux_reseau()
+    client = artwork.ArtworkClient(api_key="cle", fetch_json=fj, fetch_bytes=fb)
+    ecrits = client.fetch_for("Chrono Trigger", 2398962978, tmp_path)
     assert (tmp_path / "2398962978p.jpg").read_bytes() == b"deja-la"
-    assert not any("portrait.jpg" in a for a in appels)
+    assert not any(n.startswith("2398962978p.") for n in ecrits)
+    assert len(ecrits) == 4, f"les quatre autres assets doivent être récupérés : {ecrits}"
 
 
 def test_jeu_introuvable_ne_leve_pas(tmp_path):
@@ -1492,11 +1705,20 @@ def test_la_cle_part_dans_l_en_tete(tmp_path):
 
 
 def test_purge_des_orphelins(tmp_path):
-    for nom in ["111p.jpg", "111_hero.jpg", "222p.jpg"]:
+    for nom in ["111p.jpg", "111_hero.png", "111_icon.ico", "222p.jpg"]:
         (tmp_path / nom).write_bytes(b"x")
     supprimes = artwork.prune_orphans(tmp_path, [111])
-    assert sorted(supprimes) == ["111_hero.jpg", "111p.jpg"]
+    assert sorted(supprimes) == ["111_hero.png", "111_icon.ico", "111p.jpg"]
     assert (tmp_path / "222p.jpg").exists()
+
+
+def test_la_purge_ne_deborde_pas_sur_un_appid_voisin(tmp_path):
+    """111 préfixe la chaîne 1112 : une purge par préfixe de chaîne détruirait
+    l'artwork d'un jeu parfaitement valide."""
+    (tmp_path / "1112p.jpg").write_bytes(b"x")
+    (tmp_path / "111p.jpg").write_bytes(b"x")
+    assert artwork.prune_orphans(tmp_path, [111]) == ["111p.jpg"]
+    assert (tmp_path / "1112p.jpg").exists()
 
 
 def test_purge_sans_orphelin_ne_touche_a_rien(tmp_path):
@@ -1535,7 +1757,6 @@ fait très bien remonter les jeux.
 from __future__ import annotations
 
 import pathlib
-import re
 
 import requests
 
@@ -1549,9 +1770,9 @@ ASSETS = (
     ("paysage", "grids", {"dimensions": "920x430"}),
     ("hero", "heroes", {}),
     ("logo", "logos", {}),
+    ("icone", "icons", {}),
 )
 
-_ORPHAN_RE = "{}(p\\.jpg|\\.jpg|_hero\\.jpg|_logo\\.png)$"
 
 
 def _fetch_json(url: str, headers: dict) -> dict:
@@ -1575,8 +1796,9 @@ class ArtworkClient:
     def fetch_for(self, title: str, legacy_appid: int, grid_dir: pathlib.Path) -> list[str]:
         if not self.api_key:
             return []  # dégradation gracieuse, pas une erreur
-        noms = appid_mod.grid_filenames(legacy_appid)
-        manquants = {k: n for k, n in noms.items() if not (grid_dir / n).exists()}
+        prefixes = appid_mod.grid_prefixes(legacy_appid)
+        manquants = {k: pre for k, pre in prefixes.items()
+                     if appid_mod.existing_asset(grid_dir, pre) is None}
         if not manquants:
             return []
         entetes = {"Authorization": f"Bearer {self.api_key}"}
@@ -1596,9 +1818,14 @@ class ArtworkClient:
                 candidats = reponse.get("data") or []
                 if not candidats:
                     continue
-                contenu = self._fetch_bytes(candidats[0]["url"])
-                (grid_dir / manquants[cle]).write_bytes(contenu)
-                ecrits.append(manquants[cle])
+                url = candidats[0]["url"]
+                # L'extension suit la source : Steam accepte .png, .jpg et .ico
+                # indifféremment, et la conserver évite de retélécharger à chaque
+                # passage un asset déjà présent sous un autre suffixe.
+                ext = pathlib.PurePosixPath(url).suffix or ".png"
+                nom = f"{manquants[cle]}{ext}"
+                (grid_dir / nom).write_bytes(self._fetch_bytes(url))
+                ecrits.append(nom)
             return ecrits
         except Exception:  # noqa: BLE001 - volontairement large, voir docstring
             return []
@@ -1612,10 +1839,12 @@ def prune_orphans(grid_dir: pathlib.Path, orphaned: list[int]) -> list[str]:
     """
     if not orphaned or not grid_dir.is_dir():
         return []
-    motifs = [re.compile(_ORPHAN_RE.format(a)) for a in orphaned]
+    # Comparaison sur le STEM entier, jamais sur un préfixe de chaîne :
+    # l'appid 111 préfixe aussi 1112p.png, qui appartient à un autre jeu.
+    condamnes = {pre for a in orphaned for pre in appid_mod.grid_prefixes(a).values()}
     supprimes = []
     for fichier in grid_dir.iterdir():
-        if any(m.match(fichier.name) for m in motifs):
+        if fichier.stem in condamnes:
             fichier.unlink()
             supprimes.append(fichier.name)
     return supprimes
@@ -1681,10 +1910,40 @@ class ArtworkMuet(artwork.ArtworkClient):
         super().__init__(api_key=None)
 
 
+class ArtworkTemoin(artwork.ArtworkClient):
+    """Observe l'état du monde au moment où l'artwork est demandé.
+
+    ArtworkMuet ne peut rien attester : il rend [] sans regarder ni le disque ni
+    l'entrée. Mesuré — avec lui seul, inverser l'ordre artwork/écriture ou
+    retirer le filtre de propriété laisse toute la suite verte.
+    """
+
+    def __init__(self, shortcuts_path):
+        super().__init__(api_key=None)
+        self.shortcuts_path = shortcuts_path
+        self.appels = []
+
+    def fetch_for(self, title, legacy_appid, grid_dir):
+        self.appels.append((title, self.shortcuts_path.exists()))
+        return []
+
+
 def faire_compte(tmp_path):
     config = tmp_path / "userdata" / "123" / "config"
     config.mkdir(parents=True)
     return accounts.SteamAccount(account_id="123", config_dir=config)
+
+
+def etranger(nom):
+    """Un jeu non-Steam que le propriétaire a ajouté lui-même."""
+    return {
+        "appid": 42, "appname": nom, "exe": '"C:\\Jeux\\perso.exe"',
+        "StartDir": '"C:\\Jeux"', "icon": "", "ShortcutPath": "",
+        "LaunchOptions": "", "IsHidden": 0, "AllowDesktopConfig": 1,
+        "AllowOverlay": 1, "OpenVR": 0, "Devkit": 0, "DevkitGameID": "",
+        "DevkitOverrideAppID": 0, "FlatpakAppID": "", "sortas": "",
+        "LastPlayTime": 0, "tags": {"0": "Favoris"},
+    }
 
 
 def rom(titre):
@@ -1702,7 +1961,7 @@ def test_synchronisation_depuis_zero(tmp_path):
     compte = faire_compte(tmp_path)
     rapport = sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkMuet())
     assert rapport.created == ["Chrono Trigger"]
-    assert [e["AppName"] for e in vdf_io.load_shortcuts(compte.shortcuts_path)] == ["Chrono Trigger"]
+    assert [e["appname"] for e in vdf_io.load_shortcuts(compte.shortcuts_path)] == ["Chrono Trigger"]
 
 
 def test_deuxieme_passage_ne_change_rien(tmp_path):
@@ -1712,6 +1971,28 @@ def test_deuxieme_passage_ne_change_rien(tmp_path):
     r2 = sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkMuet())
     assert r2.created == [] and r2.removed == []
     assert compte.shortcuts_path.read_bytes() == avant
+
+
+def test_l_artwork_est_recupere_avant_l_ecriture(tmp_path):
+    """Un jeu sans vignette vaut mieux qu'une vignette sans jeu : une panne
+    d'artwork ne doit pas empêcher les raccourcis d'être écrits. Le témoin
+    observe que shortcuts.vdf n'existe pas encore quand l'artwork est demandé."""
+    compte = faire_compte(tmp_path)
+    client = ArtworkTemoin(compte.shortcuts_path)
+    sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", client)
+    assert client.appels, "l'artwork n'a jamais été demandé"
+    assert all(not existait for _, existait in client.appels), (
+        "shortcuts.vdf existait déjà : l'écriture a précédé l'artwork"
+    )
+
+
+def test_l_artwork_n_est_demande_que_pour_nos_entrees(tmp_path):
+    """Chercher de l'artwork pour les jeux du propriétaire écraserait le sien."""
+    compte = faire_compte(tmp_path)
+    compte.shortcuts_path.write_bytes(vdf_io.dumps_shortcuts([etranger("Mon jeu à moi")]))
+    client = ArtworkTemoin(compte.shortcuts_path)
+    sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", client)
+    assert [t for t, _ in client.appels] == ["Chrono Trigger"]
 
 
 def test_le_rapport_est_lisible(tmp_path):
@@ -1751,6 +2032,17 @@ def test_sync_sans_compte_steam_echoue_proprement(tmp_path, capsys):
                      "--inventory", str(inventaire)])
     assert code != 0
     assert "connect" in capsys.readouterr().err.lower()
+
+
+def test_inventaire_malforme_ne_leve_pas_de_trace(tmp_path, capsys):
+    """Une console sans clavier ni écran ne doit jamais rendre de trace Python."""
+    (tmp_path / "userdata" / "123" / "config").mkdir(parents=True)
+    mauvais = tmp_path / "inv.json"
+    mauvais.write_text("{ceci n'est pas du JSON")
+    code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--inventory", str(mauvais)])
+    assert code != 0
+    assert "Traceback" not in capsys.readouterr().err
 
 
 def test_sync_complet(tmp_path, capsys):
@@ -1821,7 +2113,7 @@ def sync_account(
         if not entry.is_owned(raccourci, emulation_root):
             continue
         legacy = appid_mod.to_unsigned(raccourci["appid"])
-        ecrits += len(artwork_client.fetch_for(raccourci["AppName"], legacy, account.grid_dir))
+        ecrits += len(artwork_client.fetch_for(raccourci["appname"], legacy, account.grid_dir))
 
     purges = len(artwork.prune_orphans(account.grid_dir, resultat.orphaned_appids))
 
@@ -1998,4 +2290,4 @@ Attendu : aucune ligne.
   tournant sous Linux ne peuvent pas construire honnêtement. Le sous-projet C,
   qui s'exécute sur la VM, dispose du vrai chemin. `build_shortcut` laisse donc
   le champ vide, et le renseigner plus tard ne change pas l'identifiant — celui-ci
-  ne dépend que de `Exe` et `AppName`.
+  ne dépend que de `exe` et `appname`.
