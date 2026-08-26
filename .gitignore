@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Espace de travail du pilotage par sous-agents (scratch, ignoré par git)
+.superpowers/
+
+# Manifeste et secrets du propriétaire : jamais dans le dépôt.
+# Ils vivent sur G:\retro\ côté VM.
+emulators.toml
+secrets.toml
