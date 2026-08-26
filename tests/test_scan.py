@@ -166,6 +166,17 @@ def test_collision_sans_discriminant_retombe_sur_le_nom(tmp_path, profils):
     assert len(set(titres)) == 2
 
 
+def test_collision_sur_le_discriminant_lui_meme(tmp_path, profils):
+    """Le discriminant ne retient que le PREMIER fragment parenthésé : deux
+    révisions de la même région le partagent. La garantie d'unicité doit tenir
+    quand même, sans quoi l'une des deux disparaît en silence."""
+    racine = faire_roms(tmp_path, [
+        "snes/Jeu (USA) (Rev 1).sfc", "snes/Jeu (USA) (Rev 2).sfc",
+    ])
+    titres = [r.title for r in scanner(racine, profils)]
+    assert len(set(titres)) == 2, f"collision non résolue : {titres}"
+
+
 def test_marqueur_de_disque_sans_espace(tmp_path, profils):
     """« (Disc1) » est une forme qu'on rencontre réellement."""
     assert scan.clean_title("Jeu (Disc1).cue") == "Jeu (Disc1)"

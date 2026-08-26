@@ -69,22 +69,30 @@ def _desambiguiser(couples: list[tuple[str, str]]) -> list[str]:
     Les titres uniques ne sont jamais touchés : la bibliothèque reste propre
     dans le cas courant, qui est de loin le plus fréquent.
     """
-    comptes = {}
-    for _, titre in couples:
-        comptes[titre] = comptes.get(titre, 0) + 1
-    sortie = []
-    for nom, titre in couples:
-        if comptes[titre] == 1:
-            sortie.append(titre)
-            continue
-        d = discriminant(nom)
-        # Dernier recours : le nom de fichier ENTIER, extension comprise —
-        # lui seul est unique par construction dans un dossier. Le stem seul
-        # ne l'est pas : « Jeu.sfc » et « Jeu.smc » partagent le même stem
-        # « Jeu » et retomberaient sur le même titre de secours. Un titre
-        # laid vaut mieux qu'un jeu absent.
-        sortie.append(f"{titre} ({d})" if d else f"{titre} ({nom})")
-    return sortie
+    def compter(titres):
+        c = {}
+        for t in titres:
+            c[t] = c.get(t, 0) + 1
+        return c
+
+    titres = [t for _, t in couples]
+    comptes = compter(titres)
+
+    # Premier passage : le discriminant, en pratique la région.
+    passe1 = [t if comptes[t] == 1 else f"{t} ({discriminant(n)})".replace(" ()", "")
+              for n, t in couples]
+
+    # Second passage : ce qui reste en collision reçoit son nom de fichier
+    # ENTIER, extension comprise. C'est la seule clé réellement unique — un
+    # système de fichiers ne porte pas deux fois le même nom au même endroit.
+    #
+    # Cette seconde passe n'est pas une précaution de style : le discriminant
+    # ne retient que le PREMIER fragment parenthésé, donc « Jeu (USA) (Rev 1) »
+    # et « Jeu (USA) (Rev 2) » le partagent. Mesuré le 2026-08-26. Garantir
+    # l'unicité vaut mieux que l'espérer d'une heuristique.
+    comptes2 = compter(passe1)
+    return [t if comptes2[t] == 1 else f"{orig[1]} ({orig[0]})"
+            for t, orig in zip(passe1, couples)]
 
 
 def _systeme_par_dossier(profils):
