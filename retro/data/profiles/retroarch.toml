@@ -1,0 +1,110 @@
+# RetroArch — les systèmes rétro, un core libretro par système.
+#
+# Les chemins relatifs sont résolus depuis D:\Emulation\<install_dir>, et
+# l'archive livrée par le buildbot n'a qu'un dossier racine, RetroArch-Win64\ :
+# c'est pourquoi exe et les cores le portent en préfixe. Retirer ce préfixe
+# ferait pointer Steam sur un exécutable inexistant, sans autre symptôme qu'un
+# raccourci qui ne démarre pas.
+#
+# Les noms de core, les extensions et les BIOS ne sont pas devinés : ils sont
+# repris des fichiers RetroArch-Win64\info\*_libretro.info livrés DANS
+# l'archive dont l'empreinte est au manifeste, et les empreintes MD5 des BIOS
+# de la documentation libretro (docs.libretro.com).
+
+schema = 1
+id  = "retroarch"
+exe = 'RetroArch-Win64\retroarch.exe'
+
+[input]
+steam_input = "required"
+mode        = "xinput"
+
+[exit]
+# Hotkey RetroArch par défaut : la touche « hotkey enable » est Select, et
+# Select+Start quitte. Le fallback reste indispensable : un core qui fige ne
+# traite plus la hotkey, alors que Steam Input envoie toujours alt+F4.
+native   = "Select+Start"
+fallback = "alt+f4"
+
+[[system]]
+id         = "nes"
+name       = "Nintendo Entertainment System"
+extensions = [".nes", ".fds", ".unf", ".unif"]
+launch     = '-L "RetroArch-Win64\cores\mesen_libretro.dll" -f "{rom}"'
+# disksys.rom n'est requis que pour le Famicom Disk System (.fds) ; les
+# cartouches s'en passent. Déclaré optionnel pour cette raison.
+bios       = [
+  { file = "disksys.rom", md5 = "ca30b50f880eb660a320674ed365ef7a", required = false },
+]
+
+[[system]]
+id         = "snes"
+name       = "Super Nintendo"
+extensions = [".smc", ".sfc", ".swc", ".fig"]
+launch     = '-L "RetroArch-Win64\cores\snes9x_libretro.dll" -f "{rom}"'
+bios       = []
+
+[[system]]
+id         = "megadrive"
+name       = "Mega Drive"
+extensions = [".md", ".smd", ".gen", ".bin"]
+launch     = '-L "RetroArch-Win64\cores\genesis_plus_gx_libretro.dll" -f "{rom}"'
+bios       = []
+
+[[system]]
+id         = "gb"
+name       = "Game Boy"
+extensions = [".gb", ".dmg"]
+launch     = '-L "RetroArch-Win64\cores\gambatte_libretro.dll" -f "{rom}"'
+bios       = []
+
+[[system]]
+id         = "gbc"
+name       = "Game Boy Color"
+extensions = [".gbc"]
+launch     = '-L "RetroArch-Win64\cores\gambatte_libretro.dll" -f "{rom}"'
+bios       = []
+
+[[system]]
+id         = "gba"
+name       = "Game Boy Advance"
+extensions = [".gba"]
+launch     = '-L "RetroArch-Win64\cores\mgba_libretro.dll" -f "{rom}"'
+# mGBA a un BIOS de remplacement intégré : gba_bios.bin améliore la fidélité
+# de l'écran de démarrage, il ne conditionne pas le lancement.
+bios       = [
+  { file = "gba_bios.bin", md5 = "a860e8c0b6d573d191e4ec7db1b1e4f6", required = false },
+]
+
+[[system]]
+id         = "n64"
+name       = "Nintendo 64"
+extensions = [".n64", ".v64", ".z64", ".ndd"]
+launch     = '-L "RetroArch-Win64\cores\mupen64plus_next_libretro.dll" -f "{rom}"'
+bios       = []
+
+[[system]]
+id         = "psx"
+name       = "PlayStation"
+extensions = [".cue", ".chd", ".pbp", ".m3u", ".ccd", ".toc"]
+launch     = '-L "RetroArch-Win64\cores\mednafen_psx_hw_libretro.dll" -f "{rom}"'
+# Seul système d'ici dont le core marque son firmware « firmware_opt = false »
+# dans son .info : sans l'un de ces trois fichiers, Beetle PSX HW retombe sur
+# OpenBIOS, dont la compatibilité est partielle et échoue jeu par jeu — le
+# genre de panne qu'on ne diagnostique pas depuis un canapé. Un des trois
+# suffit, celui de la région des jeux.
+bios       = [
+  { file = "scph5500.bin", md5 = "8dd7d5296a650fac7319bce665a6a53c", required = true, region = "jp" },
+  { file = "scph5501.bin", md5 = "490f666e1afb15b7362b406ed1cea246", required = true, region = "us" },
+  { file = "scph5502.bin", md5 = "32736f17079d0b2b7024407c39bd3050", required = true, region = "eu" },
+]
+
+[[system]]
+id         = "arcade"
+name       = "Arcade"
+extensions = [".zip", ".7z"]
+launch     = '-L "RetroArch-Win64\cores\fbneo_libretro.dll" -f "{rom}"'
+# FinalBurn Neo cherche ses BIOS de plateau dans system\fbneo\ ; ils dépendent
+# du romset joué (neogeo.zip pour Neo Geo, pgm.zip pour PGM…) et son .info les
+# déclare tous optionnels. Rien à exiger au niveau du système.
+bios       = []

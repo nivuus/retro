@@ -1,0 +1,45 @@
+# Dolphin — GameCube et Wii.
+#
+# Ce profil est le cas NON-RetroArch : pas de core à charger, une ligne de
+# commande à lui. S'il tient dans ce schéma, les huit autres standalone y
+# tiendront aussi.
+#
+# L'archive officielle n'a qu'un dossier racine, Dolphin-x64\ ; exe le porte en
+# préfixe, comme pour RetroArch.
+#
+# -b (--batch) évite que Dolphin ouvre sa fenêtre de bibliothèque : sans lui,
+# le propriétaire tombe sur une liste de jeux à la souris au lieu du jeu qu'il
+# a lancé. -e (--exec) charge le fichier. Les deux options sont vérifiées dans
+# Source/Core/UICommon/CommandLineParse.cpp de la révision 2606a, et la liste
+# d'extensions vient du filtre de MainWindow::PromptFileNames de la même
+# révision.
+
+schema = 1
+id  = "dolphin"
+exe = 'Dolphin-x64\Dolphin.exe'
+
+[input]
+steam_input = "required"
+mode        = "xinput"
+
+[exit]
+# Dolphin ne livre aucune combinaison manette de sortie par défaut : il n'y a
+# rien d'honnête à déclarer ici. Le fallback Steam Input est la seule sortie.
+native   = ""
+fallback = "alt+f4"
+
+[[system]]
+id         = "gamecube"
+name       = "GameCube"
+extensions = [".iso", ".gcm", ".gcz", ".rvz", ".ciso", ".wia", ".tgc", ".dol", ".elf"]
+launch     = '-b -e "{rom}"'
+# Le BIOS GameCube (IPL) n'est utilisé que pour afficher l'animation de
+# démarrage ; Dolphin joue sans lui. Rien à exiger.
+bios       = []
+
+[[system]]
+id         = "wii"
+name       = "Wii"
+extensions = [".iso", ".wbfs", ".rvz", ".gcz", ".ciso", ".wia", ".wad"]
+launch     = '-b -e "{rom}"'
+bios       = []

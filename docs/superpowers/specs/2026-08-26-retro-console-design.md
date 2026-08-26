@@ -163,7 +163,7 @@ name       = "PlayStation"
 extensions = [".cue", ".chd", ".pbp", ".m3u"]
 launch     = '-L "cores\\swanstation_libretro.dll" -f "{rom}"'
 bios       = [
-  { file = "scph5501.bin", sha1 = "…", required = true },
+  { file = "scph5501.bin", md5 = "…", required = true },
 ]
 ```
 
@@ -374,7 +374,14 @@ Sans BIOS, un jeu PS1 ou Saturn apparaît dans Steam, se lance, écran noir. Rie
 n'explique pourquoi, et le propriétaire n'a aucun moyen de le diagnostiquer
 depuis son canapé.
 
-Chaque profil déclare les BIOS requis avec leurs empreintes SHA-1. `retro status`
+Chaque profil déclare les BIOS requis avec leurs empreintes **MD5**.
+
+Le choix de MD5 n'est pas un oubli : les empreintes de BIOS publiquement
+citables sont des MD5, et calculer un SHA-1 aurait exigé de faire entrer un
+BIOS dans le dépôt — ce que ce projet s'interdit. Une empreinte citable vaut
+mieux qu'une empreinte inventée, et le module qui les lira doit donc lire `md5`.
+Un profil qui écrirait `md5s` par mégarde désactiverait la vérification sans un
+mot : les clés BIOS sont validées au chargement du profil, pas à l'usage. `retro status`
 répond :
 
 ```
@@ -414,7 +421,29 @@ Le shell teste `C:\nivuus\state\steam.hold` avant de relancer, et affiche « mis
 **expire d'elle-même au bout de cinq minutes** : un `retro sync` qui plante ne
 doit pas immobiliser la console sur un écran sans Steam.
 
-### 3. `provision/32-retro.ps1` — nouvelle étape
+### 3. Deux prérequis mesurés, sans lesquels la console n'a aucun émulateur
+
+Ces deux contraintes ont été découvertes en exécutant réellement l'installation,
+et non en la concevant. Les oublier ne produit pas une dégradation : cela
+produit une console sans un seul émulateur rétro.
+
+**`7zr.exe` doit être présent sur la machine.** Les archives de RetroArch — et
+elles seules parmi celles du manifeste — utilisent le filtre de compression
+BCJ2, que la bibliothèque Python d'extraction ne sait pas lire ; elle le marque
+« Unsupported » dans son propre code. Aucune variante `.zip` n'existe chez
+l'éditeur. Le paquet retombe donc sur un binaire 7-Zip du système, et son
+absence lève une erreur explicite plutôt qu'un silence. `7zr.exe` pèse environ
+600 Ko, est redistribuable, et se télécharge sur `https://www.7-zip.org/a/7zr.exe`.
+
+**Le dossier temporaire du système doit disposer d'au moins 1,5 Gio libre.**
+L'installation extrait dans un dossier temporaire avant de basculer vers le
+volume d'émulation — ce qui garantit qu'une extraction interrompue ne laisse
+pas d'installation à moitié écrasée. RetroArch et ses cores y transitent
+ensemble : environ 1,3 Gio mesuré. Ce dossier vit sur la partition système, qui
+n'est pas celle des jeux, et une VM au disque système étroit échoue sur un
+manque d'espace au milieu du provisionnement.
+
+### 4. `provision/32-retro.ps1` — nouvelle étape
 
 Environ quarante lignes, entre `30-steam.ps1` et `35-shares.ps1` :
 installer Python, installer le paquet `retro`, exécuter `retro install`.

@@ -7,6 +7,7 @@ license = { text = "MIT" }
 dependencies = [
     "vdf>=3.4",
     "requests>=2.31",
+    "py7zr>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -18,6 +19,28 @@ retro = "retro.cli:main"
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
+# manifests/ et profiles/ ne sont pas des paquets Python. La découverte
+# automatique de setuptools verrait tout dossier de premier niveau comme un
+# paquet et refuserait de construire : la liste reste explicite.
+[tool.setuptools.packages.find]
+include = ["retro*"]
+
+# Le paquet n'est rien sans ses données : un « retro install » ou un
+# « retro scan » sur une machine où le manifeste et les profils n'ont pas suivi
+# n'a rien à installer et ne peut lancer aucun jeu.
+#
+# Elles vivent DANS le paquet (retro/data/) et non à la racine, parce que
+# data-files les déposait dans share/retro/ — un chemin que rien ne relie à
+# site-packages/retro/, où le code les cherche. Mesuré sur un wheel installé
+# dans un venv neuf : DEFAULT_MANIFEST pointait sur
+# site-packages/manifests/core.toml, qui n'existe pas, et « retro scan »
+# rendait « aucun profil ». Le mode éditable masquait le défaut, puisque
+# __file__ y reste dans le dépôt.
+#
+# package-data suit le paquet partout : dépôt nu, éditable, wheel installé.
+[tool.setuptools.package-data]
+retro = ["data/manifests/*.toml", "data/profiles/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

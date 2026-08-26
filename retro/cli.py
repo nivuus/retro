@@ -2,14 +2,30 @@
 from __future__ import annotations
 
 import argparse
+import importlib.resources
 import json
 import pathlib
 import sys
 
+from retro import install as install_mod
+from retro import manifest, profiles, scan
 from retro.steam import accounts, artwork, entry, sync, writer
 
 DEFAULT_STEAM_ROOT = "D:\\Steam"
 DEFAULT_EMULATION_ROOT = "D:\\Emulation"
+
+# Le manifeste et les profils vivent DANS le paquet (retro/data/), et on les
+# atteint par importlib.resources plutôt que par __file__ : c'est la seule voie
+# qui résout dans les deux modes. Un calcul relatif à __file__ visait
+# site-packages/manifests/, un dossier que rien n'installe — le mode éditable,
+# où __file__ reste dans le dépôt, masquait la panne jusqu'au premier wheel.
+#
+# files() rend un Traversable ; le paquet est toujours installé décompressé
+# (setuptools, pas de zipimport), donc c'est un chemin du système de fichiers
+# et la conversion est exacte. Le reste du code manipule des pathlib.Path.
+_DONNEES = pathlib.Path(str(importlib.resources.files("retro"))) / "data"
+DEFAULT_MANIFEST = _DONNEES / "manifests" / "core.toml"
+DEFAULT_PROFILES = _DONNEES / "profiles"
 
 
 def _load_inventory(path: pathlib.Path) -> list[entry.RomEntry]:
@@ -71,6 +87,94 @@ def _cmd_sync(args) -> int:
     return 0
 
 
+def _cmd_install(args) -> int:
+    try:
+        utilisateur = pathlib.Path(args.user_manifest) if args.user_manifest else None
+        emulateurs = manifest.load_manifest(pathlib.Path(args.manifest), utilisateur)
+        resultats = install_mod.install_all(emulateurs, pathlib.Path(args.emulation_root))
+    except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    print(install_mod.format_install_report(resultats))
+    echecs = [cle for cle, etat in resultats if etat.startswith("ÉCHEC")]
+    return 1 if echecs else 0
+
+
+def _install_dirs_pour(profils: dict, emulateurs: dict) -> dict[str, str]:
+    """Dossier d'installation par identifiant de profil.
+
+    La source de vérité est le manifeste : c'est lui qui décide où chaque
+    émulateur s'installe, et `scan` lit les MÊMES manifestes qu'`install`,
+    manifeste utilisateur compris. Sans ce dernier, le repli ci-dessous était
+    le cas courant plutôt que l'exception : un emulators.toml déclarant
+    install_dir = "DuckStation-v0.1" installait bien là, et l'inventaire
+    pointait pourtant « ...\\duckstation\\ », un dossier qui n'existe pas.
+
+    Le repli subsiste — un profil sans émulateur au manifeste ne doit pas faire
+    échouer tout le scan — mais il DEVINE un chemin, et la garde de `retro
+    sync` ne peut pas le rattraper : le chemin deviné reste sous la racine
+    d'émulation. Steam créerait l'entrée, le rapport annoncerait « + <titre> »,
+    et rien ne se lancerait. Donc il s'entend.
+    """
+    table = {emu.profile: emu.install_dir for emu in emulateurs.values()}
+    devines = sorted(pid for pid in profils if pid not in table)
+    if devines:
+        print(
+            "attention : aucun manifeste ne dit où sont installés les "
+            f"émulateurs des profils suivants : {', '.join(devines)}. Leur "
+            "dossier est DEVINÉ d'après l'identifiant du profil. S'il est "
+            "faux, les raccourcis produits ne lanceront rien, et ni Steam ni "
+            "ce paquet ne le signaleront. Déclarer ces émulateurs au "
+            "manifeste — --user-manifest pour ceux qui vivent hors dépôt.",
+            file=sys.stderr,
+        )
+    for pid in devines:
+        table[pid] = pid
+    return table
+
+
+def _cmd_scan(args) -> int:
+    try:
+        profils = profiles.load_profiles(pathlib.Path(args.profiles))
+        utilisateur = pathlib.Path(args.user_manifest) if args.user_manifest else None
+        emulateurs = manifest.load_manifest(pathlib.Path(args.manifest), utilisateur)
+        install_dirs = _install_dirs_pour(profils, emulateurs)
+        inventaire = scan.scan(
+            pathlib.Path(args.roms), profils, args.emulation_root, install_dirs,
+            roms_root_windows=args.roms_windows,
+        )
+    except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    donnees = [
+        {
+            "title": rom.title,
+            "rom_path": rom.rom_path,
+            "system_name": rom.system_name,
+            "emulator_exe": rom.emulator_exe,
+            "launch_template": rom.launch_template,
+            "start_dir": rom.start_dir,
+            "extra_tags": list(rom.extra_tags),
+        }
+        for rom in inventaire
+    ]
+    # L'écriture est aussi faillible que le scan : un --output dont le dossier
+    # parent n'existe pas, un volume plein, un fichier en lecture seule. Hors
+    # de ce try, la trace Python remontait telle quelle — sur une console sans
+    # clavier ni écran, elle n'est lisible par personne.
+    try:
+        pathlib.Path(args.output).write_text(
+            json.dumps(donnees, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError as exc:
+        print(f"écriture de l'inventaire impossible : {exc}", file=sys.stderr)
+        return 2
+    print(f"{len(donnees)} ROM(s) répertoriée(s) dans {args.output}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="retro")
     sous = parser.add_subparsers(dest="commande", required=True)
@@ -82,6 +186,26 @@ def main(argv: list[str] | None = None) -> int:
                    help="inventaire JSON produit par le scanner (sous-projet A)")
     p.add_argument("--steamgriddb-key", default=None)
     p.set_defaults(func=_cmd_sync)
+
+    i = sous.add_parser("install", help="installe les émulateurs du manifeste")
+    i.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
+    i.add_argument("--user-manifest", default=None)
+    i.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
+    i.set_defaults(func=_cmd_install)
+
+    s = sous.add_parser("scan", help="produit l'inventaire des ROMs")
+    s.add_argument("--roms", required=True)
+    s.add_argument("--roms-windows", default="G:\\ROMs")
+    s.add_argument("--profiles", default=str(DEFAULT_PROFILES))
+    # Les mêmes manifestes qu'`install`, et pour la même raison : c'est le
+    # manifeste qui décide où chaque émulateur s'installe, donc lui seul sait
+    # où l'inventaire doit pointer. `scan` lisait le seul noyau, et les
+    # émulateurs déclarés hors dépôt produisaient des raccourcis invalides.
+    s.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
+    s.add_argument("--user-manifest", default=None)
+    s.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
+    s.add_argument("--output", required=True)
+    s.set_defaults(func=_cmd_scan)
 
     args = parser.parse_args(argv)
     return args.func(args)
