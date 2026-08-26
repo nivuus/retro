@@ -80,9 +80,20 @@ def _cmd_sync(args) -> int:
         return 4
 
     client = artwork.ArtworkClient(api_key=args.steamgriddb_key)
-    rapports = [
-        sync.sync_account(c, voulu, args.emulation_root, client) for c in comptes
-    ]
+    # sync_account écrit réellement sur le disque (shortcuts.vdf, sa
+    # sauvegarde, l'artwork) : vdf_io.load_shortcuts lève ShortcutsError sur
+    # un fichier illisible ou malformé, writer.write_shortcuts lève
+    # BackupError si la sauvegarde échoue. `retro sync` est lancé par
+    # l'hôte, sans personne devant l'écran, et c'est justement le fichier
+    # dont la corruption casse la bibliothèque Steam du propriétaire : hors
+    # filet, l'une ou l'autre remontait en trace Python brute.
+    try:
+        rapports = [
+            sync.sync_account(c, voulu, args.emulation_root, client) for c in comptes
+        ]
+    except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
+        print(str(exc), file=sys.stderr)
+        return 5
     print(sync.format_report(rapports))
     return 0
 

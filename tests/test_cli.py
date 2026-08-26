@@ -53,6 +53,35 @@ def test_sync_complet(tmp_path, capsys):
     assert "Chrono Trigger" in capsys.readouterr().out
 
 
+def test_sync_shortcuts_illisible_ne_rend_pas_de_trace(tmp_path, capsys):
+    """sync.sync_account est le dernier appel de _cmd_sync, hors de tout
+    try/except : vdf_io.load_shortcuts lève ShortcutsError sur un
+    shortcuts.vdf illisible ou malformé, et cette exception remontait telle
+    quelle. `retro sync` est lancé par l'hôte, sans personne devant l'écran,
+    et c'est justement le fichier dont la corruption casse la bibliothèque
+    Steam du propriétaire : une trace Python y est encore moins acceptable
+    qu'ailleurs.
+    """
+    config = tmp_path / "userdata" / "123" / "config"
+    config.mkdir(parents=True)
+    (config / "shortcuts.vdf").write_bytes(b"ceci n'est pas du VDF binaire")
+    inventaire = tmp_path / "inv.json"
+    inventaire.write_text(json.dumps([{
+        "title": "Chrono Trigger",
+        "rom_path": "G:\\ROMs\\snes\\ct.sfc",
+        "system_name": "Super Nintendo",
+        "emulator_exe": "D:\\Emulation\\RetroArch\\retroarch.exe",
+        "launch_template": '-L "cores\\snes9x_libretro.dll" -f "{rom}"',
+        "start_dir": "D:\\Emulation\\RetroArch",
+    }]))
+    code = cli.main(["sync", "--steam-root", str(tmp_path),
+                     "--emulation-root", "D:\\Emulation",
+                     "--inventory", str(inventaire)])
+    err = capsys.readouterr().err
+    assert code != 0
+    assert "Traceback" not in err
+
+
 def test_emulation_root_erronee_est_refusee(tmp_path, capsys):
     """Sans cette garde, is_owned est faux pour NOS PROPRES entrées : chaque
     passage les réécrit sans les reconnaître, et trois passages produisent trois
