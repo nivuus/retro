@@ -105,21 +105,40 @@ def _install_dirs_pour(profils: dict, emulateurs: dict) -> dict[str, str]:
     """Dossier d'installation par identifiant de profil.
 
     La source de vérité est le manifeste : c'est lui qui décide où chaque
-    émulateur s'installe. Un profil que le manifeste ne référence pas (un
-    profil ajouté par le propriétaire sans émulateur correspondant dans le
-    manifeste, par exemple) retombe sur son propre identifiant plutôt que de
-    faire échouer tout le scan.
+    émulateur s'installe, et `scan` lit les MÊMES manifestes qu'`install`,
+    manifeste utilisateur compris. Sans ce dernier, le repli ci-dessous était
+    le cas courant plutôt que l'exception : un emulators.toml déclarant
+    install_dir = "DuckStation-v0.1" installait bien là, et l'inventaire
+    pointait pourtant « ...\\duckstation\\ », un dossier qui n'existe pas.
+
+    Le repli subsiste — un profil sans émulateur au manifeste ne doit pas faire
+    échouer tout le scan — mais il DEVINE un chemin, et la garde de `retro
+    sync` ne peut pas le rattraper : le chemin deviné reste sous la racine
+    d'émulation. Steam créerait l'entrée, le rapport annoncerait « + <titre> »,
+    et rien ne se lancerait. Donc il s'entend.
     """
     table = {emu.profile: emu.install_dir for emu in emulateurs.values()}
-    for pid in profils:
-        table.setdefault(pid, pid)
+    devines = sorted(pid for pid in profils if pid not in table)
+    if devines:
+        print(
+            "attention : aucun manifeste ne dit où sont installés les "
+            f"émulateurs des profils suivants : {', '.join(devines)}. Leur "
+            "dossier est DEVINÉ d'après l'identifiant du profil. S'il est "
+            "faux, les raccourcis produits ne lanceront rien, et ni Steam ni "
+            "ce paquet ne le signaleront. Déclarer ces émulateurs au "
+            "manifeste — --user-manifest pour ceux qui vivent hors dépôt.",
+            file=sys.stderr,
+        )
+    for pid in devines:
+        table[pid] = pid
     return table
 
 
 def _cmd_scan(args) -> int:
     try:
         profils = profiles.load_profiles(pathlib.Path(args.profiles))
-        emulateurs = manifest.load_manifest(DEFAULT_MANIFEST)
+        utilisateur = pathlib.Path(args.user_manifest) if args.user_manifest else None
+        emulateurs = manifest.load_manifest(pathlib.Path(args.manifest), utilisateur)
         install_dirs = _install_dirs_pour(profils, emulateurs)
         inventaire = scan.scan(
             pathlib.Path(args.roms), profils, args.emulation_root, install_dirs,
@@ -178,6 +197,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--roms", required=True)
     s.add_argument("--roms-windows", default="G:\\ROMs")
     s.add_argument("--profiles", default=str(DEFAULT_PROFILES))
+    # Les mêmes manifestes qu'`install`, et pour la même raison : c'est le
+    # manifeste qui décide où chaque émulateur s'installe, donc lui seul sait
+    # où l'inventaire doit pointer. `scan` lisait le seul noyau, et les
+    # émulateurs déclarés hors dépôt produisaient des raccourcis invalides.
+    s.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
+    s.add_argument("--user-manifest", default=None)
     s.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
     s.add_argument("--output", required=True)
     s.set_defaults(func=_cmd_scan)
