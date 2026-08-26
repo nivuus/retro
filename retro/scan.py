@@ -17,7 +17,7 @@ _PARENTHESES = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]")
 # ... à une exception près : le marqueur de disque. Deux disques du même jeu
 # donneraient sinon le même titre, donc le même identifiant Steam, et une
 # seule entrée survivrait aux deux.
-_DISQUE = re.compile(r"\((Disc|Disk|CD)\s+[^\)]*\)", re.IGNORECASE)
+_DISQUE = re.compile(r"\((Disc|Disk|CD)\s*[^\)]*\)", re.IGNORECASE)
 
 
 class ScanError(RuntimeError):
@@ -47,6 +47,44 @@ def clean_title(filename: str) -> str:
         return base_title(filename)
     sans_disque = tige[: m.start()] + tige[m.end():]
     return f"{_PARENTHESES.sub('', sans_disque).strip()} {m.group(0)}".strip()
+
+
+def discriminant(filename: str) -> str:
+    """Le premier fragment parenthésé d'un nom de fichier — en pratique la
+    région. Sert à départager deux fichiers dont le titre nettoyé serait le
+    même, et seulement dans ce cas."""
+    tige = pathlib.PurePosixPath(filename).stem
+    m = _PARENTHESES.search(tige)
+    return m.group(0).strip(" ()[]") if m else ""
+
+
+def _desambiguiser(couples: list[tuple[str, str]]) -> list[str]:
+    """Rend les titres, en n'ajoutant un discriminant qu'aux titres en collision.
+
+    Sans cela, « Jeu (USA).sfc » et « Jeu (Europe).sfc » rendent tous deux
+    « Jeu », donc le même identifiant Steam, et un seul des deux survit — un
+    jeu qui disparaît de la bibliothèque sans que rien ne le signale. Mesuré le
+    2026-08-26 : trois régions, une seule entrée.
+
+    Les titres uniques ne sont jamais touchés : la bibliothèque reste propre
+    dans le cas courant, qui est de loin le plus fréquent.
+    """
+    comptes = {}
+    for _, titre in couples:
+        comptes[titre] = comptes.get(titre, 0) + 1
+    sortie = []
+    for nom, titre in couples:
+        if comptes[titre] == 1:
+            sortie.append(titre)
+            continue
+        d = discriminant(nom)
+        # Dernier recours : le nom de fichier ENTIER, extension comprise —
+        # lui seul est unique par construction dans un dossier. Le stem seul
+        # ne l'est pas : « Jeu.sfc » et « Jeu.smc » partagent le même stem
+        # « Jeu » et retomberaient sur le même titre de secours. Un titre
+        # laid vaut mieux qu'un jeu absent.
+        sortie.append(f"{titre} ({d})" if d else f"{titre} ({nom})")
+    return sortie
 
 
 def _systeme_par_dossier(profils):
@@ -90,11 +128,13 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
         # conserve.
         titres_m3u = {base_title(f.name) for f in fichiers
                       if f.suffix.lower() == ".m3u"}
-        for f in fichiers:
-            if f.suffix.lower() != ".m3u" and base_title(f.name) in titres_m3u:
-                continue
+        retenus = [f for f in fichiers
+                   if f.suffix.lower() == ".m3u"
+                   or base_title(f.name) not in titres_m3u]
+        titres = _desambiguiser([(f.name, clean_title(f.name)) for f in retenus])
+        for f, titre in zip(retenus, titres):
             inventaire.append(entry.RomEntry(
-                title=clean_title(f.name),
+                title=titre,
                 rom_path=f"{roms_root_windows}\\{dossier.name}\\{f.name}",
                 system_name=systeme.name,
                 emulator_exe=exe,

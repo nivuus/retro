@@ -20,7 +20,7 @@ bios = []
 [[system]]
 id = "snes"
 name = "Super Nintendo"
-extensions = [".sfc"]
+extensions = [".sfc", ".smc"]
 launch = '-L "cores\\\\snes9x.dll" -f "{rom}"'
 bios = []
 """
@@ -106,7 +106,7 @@ def test_le_bin_d_un_cue_ne_cree_pas_de_doublon(tmp_path, profils):
 
 def test_le_m3u_evince_ses_disques(tmp_path, profils):
     """Quand un .m3u regroupe les disques, lancer un disque isolé est une
-    erreur : le jeu réclamerait le disque suivant sans pouvoir l'obtenir."""
+    erreur : le jeu demanderait le disque suivant sans pouvoir l'obtenir."""
     racine = faire_roms(tmp_path, [
         "psx/Jeu.m3u", "psx/Jeu (Disc 1).cue", "psx/Jeu (Disc 2).cue",
     ])
@@ -141,6 +141,34 @@ def test_racine_vide_rend_une_liste_vide(tmp_path, profils):
 def test_les_tags_portent_le_systeme(tmp_path, profils):
     racine = faire_roms(tmp_path, ["snes/Jeu.sfc"])
     assert scanner(racine, profils)[0].system_name == "Super Nintendo"
+
+
+def test_deux_regions_du_meme_jeu_restent_distinctes(tmp_path, profils):
+    """Sans désambiguïsation, les deux rendent « Jeu », donc le même
+    identifiant Steam, et un seul des deux survit — un jeu qui disparaît de la
+    bibliothèque sans que rien ne le signale."""
+    racine = faire_roms(tmp_path, ["snes/Jeu (USA).sfc", "snes/Jeu (Europe).sfc"])
+    titres = sorted(r.title for r in scanner(racine, profils))
+    assert titres == ["Jeu (Europe)", "Jeu (USA)"]
+
+
+def test_un_titre_unique_n_est_pas_desambigue(tmp_path, profils):
+    """La désambiguïsation ne doit pas enlaidir le cas courant."""
+    racine = faire_roms(tmp_path, ["snes/Chrono Trigger (USA).sfc"])
+    assert [r.title for r in scanner(racine, profils)] == ["Chrono Trigger"]
+
+
+def test_collision_sans_discriminant_retombe_sur_le_nom(tmp_path, profils):
+    """Deux fichiers sans fragment parenthésé mais de même titre : un titre
+    laid vaut mieux qu'un jeu absent."""
+    racine = faire_roms(tmp_path, ["snes/Jeu.sfc", "snes/Jeu.smc"])
+    titres = sorted(r.title for r in scanner(racine, profils))
+    assert len(set(titres)) == 2
+
+
+def test_marqueur_de_disque_sans_espace(tmp_path, profils):
+    """« (Disc1) » est une forme qu'on rencontre réellement."""
+    assert scan.clean_title("Jeu (Disc1).cue") == "Jeu (Disc1)"
 
 
 def test_le_resultat_est_deterministe(tmp_path, profils):
