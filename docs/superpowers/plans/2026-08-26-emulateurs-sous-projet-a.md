@@ -1314,10 +1314,10 @@ def _desambiguiser(couples: list[tuple[str, str]]) -> list[str]:
             sortie.append(titre)
             continue
         d = discriminant(nom)
-        # Dernier recours : le nom de fichier, qui est unique par construction
-        # dans un dossier. Un titre laid vaut mieux qu'un jeu absent.
-        sortie.append(f"{titre} ({d})" if d
-                      else f"{titre} ({pathlib.PurePosixPath(nom).stem})")
+        # Dernier recours : le nom de fichier ENTIER, extension comprise. Le
+        # stem ne suffit pas — « Jeu.sfc » et « Jeu.smc » le partagent, et le
+        # secours reproduirait alors le défaut qu'il doit corriger.
+        sortie.append(f"{titre} ({d})" if d else f"{titre} ({nom})")
     return sortie
 
 
