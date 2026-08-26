@@ -20,10 +20,21 @@ ARCHIVES = ("7z", "zip")
 # importance : elle ne sert qu'à éprouver la jointure.
 _TEMOIN = pathlib.PureWindowsPath("D:/__racine__")
 _CHAMPS = ("name", "version", "url", "sha256", "archive", "install_dir", "profile")
+_CHAMPS_PART = ("url", "sha256", "archive")
 
 
 class ManifestError(RuntimeError):
     """Un manifeste est illisible, incomplet ou incohérent."""
+
+
+@dataclasses.dataclass(frozen=True)
+class Part:
+    """Une archive supplémentaire, extraite dans le même dossier que la
+    principale. RetroArch en a besoin : son archive ne contient AUCUN core, et
+    un émulateur sans core ne lance aucun jeu."""
+    url: str
+    sha256: str
+    archive: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -36,6 +47,7 @@ class Emulator:
     archive: str
     install_dir: str
     profile: str
+    parts: tuple[Part, ...] = ()
 
 
 def _lire(path: pathlib.Path, obligatoire: bool) -> dict:
@@ -82,6 +94,33 @@ def _valider_install_dir(cle: str, valeur: str) -> None:
     )
 
 
+def _lire_parts(cle: str, champs: dict) -> tuple[Part, ...]:
+    """Les archives supplémentaires d'un émulateur, éventuellement aucune.
+
+    Un émulateur peut être livré en plusieurs morceaux qui se déversent dans le
+    même dossier. C'est le cas de RetroArch : son archive principale ne contient
+    AUCUN core, et un émulateur sans core s'installe sans rien pouvoir lancer.
+
+    Chaque morceau est validé comme l'entrée principale — une empreinte
+    manquante ici vaudrait un binaire non vérifié.
+    """
+    parts = []
+    for i, brute in enumerate(champs.get("parts", ())):
+        manquants = [c for c in _CHAMPS_PART if c not in brute]
+        if manquants:
+            raise ManifestError(
+                f"[emulator.{cle}] parts[{i}] : champ(s) manquant(s) "
+                f"{', '.join(manquants)}"
+            )
+        if brute["archive"] not in ARCHIVES:
+            raise ManifestError(
+                f"[emulator.{cle}] parts[{i}] archive = "
+                f"{brute['archive']!r} : connu(s) {', '.join(ARCHIVES)}"
+            )
+        parts.append(Part(**{c: brute[c] for c in _CHAMPS_PART}))
+    return tuple(parts)
+
+
 def load_manifest(core: pathlib.Path,
                   user: pathlib.Path | None = None) -> dict[str, Emulator]:
     """Le noyau, surchargé par le manifeste utilisateur s'il existe.
@@ -106,5 +145,6 @@ def load_manifest(core: pathlib.Path,
                 f"connu(s) {', '.join(ARCHIVES)}"
             )
         _valider_install_dir(cle, champs["install_dir"])
-        emulateurs[cle] = Emulator(key=cle, **{c: champs[c] for c in _CHAMPS})
+        emulateurs[cle] = Emulator(key=cle, parts=_lire_parts(cle, champs),
+                                   **{c: champs[c] for c in _CHAMPS})
     return emulateurs

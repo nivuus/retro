@@ -8,6 +8,12 @@ Deux risques distincts, et aucun ne se voit après coup :
    venue d'Internet peut contenir « ../ » ou un chemin absolu ; l'extraire
    naïvement écrit n'importe où sur le disque, et le dossier de destination
    n'en garde aucune trace.
+
+Un émulateur peut être livré en plusieurs archives qui se déversent dans le
+même dossier. Toutes sont téléchargées et vérifiées avant que la moindre
+écriture ne touche à l'installation existante : un émulateur amputé d'une de
+ses parties est pire qu'un émulateur absent, parce qu'il paraît installé et ne
+lance rien.
 """
 from __future__ import annotations
 
@@ -110,13 +116,44 @@ def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> str:
             "Rien n'a été installé."
         )
 
+    # Les archives supplémentaires sont téléchargées et vérifiées AVANT que
+    # quoi que ce soit ne touche à l'installation existante : une seconde
+    # archive dont l'empreinte est fausse ne doit pas laisser un émulateur
+    # amputé. RetroArch en dépend — son archive principale ne contient aucun
+    # core, et un émulateur sans core s'installe sans rien pouvoir lancer.
+    # Un émulateur amputé est pire qu'un émulateur absent : il paraît installé.
+    supplements = []
+    for i, part in enumerate(emu.parts):
+        try:
+            b = fetch(part.url)
+        except Exception as exc:  # noqa: BLE001 - toute panne réseau, nommée
+            raise AcquireError(
+                f"{emu.name} : téléchargement de l'archive supplémentaire "
+                f"{i + 1} impossible ({exc})"
+            ) from exc
+        h = hashlib.sha256(b).hexdigest()
+        if h != part.sha256:
+            raise AcquireError(
+                f"{emu.name} {emu.version}, archive supplémentaire {i + 1} : "
+                f"empreinte SHA256 inattendue.\n  attendue : {part.sha256}\n"
+                f"  obtenue  : {h}\nRien n'a été installé."
+            )
+        supplements.append((b, part.archive))
+
     with tempfile.TemporaryDirectory() as tmp:
-        archive = pathlib.Path(tmp) / f"{emu.key}.{emu.archive}"
+        racine = pathlib.Path(tmp)
+        archive = racine / f"{emu.key}.{emu.archive}"
         archive.write_bytes(blob)
-        extrait = pathlib.Path(tmp) / "extrait"
+        extrait = racine / "extrait"
         # Extraire à côté, puis basculer : une extraction qui échoue à
         # mi-chemin ne doit pas laisser une installation à moitié écrasée.
         safe_extract(archive, emu.archive, extrait)
+        # Les supplémentaires se déversent dans le MÊME dossier : c'est ce qui
+        # fait cohabiter l'émulateur et ses cores.
+        for i, (b, kind) in enumerate(supplements):
+            sup = racine / f"{emu.key}-part{i}.{kind}"
+            sup.write_bytes(b)
+            safe_extract(sup, kind, extrait)
         if cible.exists():
             shutil.rmtree(cible)
         cible.parent.mkdir(parents=True, exist_ok=True)

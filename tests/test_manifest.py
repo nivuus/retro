@@ -114,6 +114,36 @@ def test_champ_manquant_nomme_le_champ_et_l_emulateur(tmp_path):
     assert "sha256" in str(exc.value) and "retroarch" in str(exc.value)
 
 
+def test_les_archives_supplementaires_sont_chargees(tmp_path):
+    """RetroArch a besoin d'une seconde archive : la principale ne contient
+    aucun core, et un émulateur sans core ne lance aucun jeu."""
+    avec = NOYAU + """
+[[emulator.retroarch.parts]]
+url = "https://exemple.invalid/cores.7z"
+sha256 = "dd"
+archive = "7z"
+"""
+    m = manifest.load_manifest(ecrire(tmp_path, "c.toml", avec))
+    assert len(m["retroarch"].parts) == 1
+    assert m["retroarch"].parts[0].url.endswith("cores.7z")
+
+
+def test_sans_parts_la_liste_est_vide(tmp_path):
+    m = manifest.load_manifest(ecrire(tmp_path, "core.toml", NOYAU))
+    assert m["retroarch"].parts == ()
+
+
+def test_une_archive_supplementaire_incomplete_est_refusee(tmp_path):
+    mauvais = NOYAU + """
+[[emulator.retroarch.parts]]
+url = "https://exemple.invalid/cores.7z"
+archive = "7z"
+"""
+    with pytest.raises(manifest.ManifestError) as exc:
+        manifest.load_manifest(ecrire(tmp_path, "c.toml", mauvais))
+    assert "sha256" in str(exc.value) and "parts" in str(exc.value)
+
+
 def test_archive_inconnue_refusee(tmp_path):
     mauvais = NOYAU.replace('archive = "7z"', 'archive = "rar"')
     with pytest.raises(manifest.ManifestError) as exc:

@@ -1,4 +1,5 @@
 """Téléchargement, vérification et extraction des émulateurs."""
+import dataclasses
 import hashlib
 import pathlib
 import zipfile
@@ -135,6 +136,37 @@ def test_archive_inconnue_refusee(tmp_path):
     faire_zip(src, {"a.txt": "x"})
     with pytest.raises(acquire.AcquireError):
         acquire.safe_extract(src, "rar", tmp_path / "cible")
+
+
+def test_les_archives_supplementaires_se_deversent_dans_le_meme_dossier(tmp_path):
+    """Sans cela, RetroArch s'installe sans un seul core et ne lance rien."""
+    principal = faire_zip(tmp_path / "p.zip", {"retroarch.exe": "binaire"})
+    cores = faire_zip(tmp_path / "c.zip", {"cores/snes9x.dll": "core"})
+    e = dataclasses.replace(
+        emu(hashlib.sha256(principal).hexdigest()),
+        parts=(manifest.Part(url="https://exemple.invalid/c.zip",
+                             sha256=hashlib.sha256(cores).hexdigest(),
+                             archive="zip"),),
+    )
+    racine = tmp_path / "Emulation"
+    acquire.acquire(e, racine, fetch=lambda u: cores if u.endswith("c.zip") else principal)
+    assert (racine / "Truc" / "retroarch.exe").exists()
+    assert (racine / "Truc" / "cores" / "snes9x.dll").exists()
+
+
+def test_une_archive_supplementaire_fausse_n_installe_rien(tmp_path):
+    """Un émulateur amputé de ses cores est pire qu'un émulateur absent : il
+    apparaît installé et ne lance rien."""
+    principal = faire_zip(tmp_path / "p.zip", {"retroarch.exe": "binaire"})
+    e = dataclasses.replace(
+        emu(hashlib.sha256(principal).hexdigest()),
+        parts=(manifest.Part(url="https://exemple.invalid/c.zip",
+                             sha256="0" * 64, archive="zip"),),
+    )
+    racine = tmp_path / "Emulation"
+    with pytest.raises(acquire.AcquireError):
+        acquire.acquire(e, racine, fetch=lambda u: principal)
+    assert not (racine / "Truc").exists()
 
 
 def test_panne_de_telechargement_nomme_l_emulateur(tmp_path):
