@@ -245,6 +245,7 @@ def _cmd_status(args) -> int:
             emulation_root=pathlib.Path(args.emulation_root),
             systems=systemes,
             bios_status=etat_bios,
+            bios_root=pathlib.Path(args.bios),
         )
         texte = status.format_report(rapport)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
