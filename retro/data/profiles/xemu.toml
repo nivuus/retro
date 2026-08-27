@@ -1,0 +1,44 @@
+# xemu — Xbox.
+#
+# L'archive épinglée au manifeste a été listée : deux entrées, xemu.exe et
+# LICENSE.txt, aucune dans un dossier racine. `exe` est donc un nom plat.
+#
+# Les options sont lues DANS l'exécutable livré, celui dont le manifeste porte
+# l'empreinte — xemu hérite l'analyseur de QEMU :
+#   -full-screen  « start in full screen » (avec le tiret du milieu : ce n'est
+#                 PAS -fullscreen, et l'orthographe voisine passerait pour une
+#                 option inconnue) ;
+#   -dvd_path     monte l'image dans le lecteur.
+# L'image de disque ne se donne pas en argument positionnel : sans -dvd_path,
+# xemu démarre sur le tableau de bord Xbox et la console a l'air de marcher.
+#
+# La liste d'extensions vient du filtre du même exécutable : « Disc Image Files
+# (*.iso, *.xiso) ».
+
+schema = 1
+id  = "xemu"
+exe = 'xemu.exe'
+
+[input]
+steam_input = "required"
+mode        = "xinput"
+
+[exit]
+# Rien à déclarer : le menu de xemu est une interface ImGui pilotée à la souris
+# et au clavier, et aucune liaison manette par défaut ne l'ouvre — rien dans
+# l'exécutable livré n'en atteste. Le fallback Steam Input est la seule sortie.
+native   = ""
+fallback = "alt+f4"
+
+[[system]]
+id         = "xbox"
+name       = "Xbox"
+extensions = [".iso", ".xiso"]
+launch     = '-full-screen -dvd_path "{rom}"'
+# xemu EXIGE une ROM de démarrage MCPX, un BIOS flash et une image de disque
+# dur, tous trois dumpés d'une vraie console. Rien n'est déclaré ici : xemu
+# désigne ces trois fichiers par des CHEMINS que le propriétaire choisit dans
+# ses réglages, il n'impose aucun nom, et aucune empreinte publiquement
+# citable n'a pu être vérifiée pour eux. Déclarer un couple (nom, md5)
+# approximatif ferait accuser de corruption un fichier parfaitement valide.
+bios       = []

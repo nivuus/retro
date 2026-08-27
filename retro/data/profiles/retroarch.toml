@@ -83,27 +83,11 @@ extensions = [".n64", ".v64", ".z64", ".ndd"]
 launch     = '-L "RetroArch-Win64\cores\mupen64plus_next_libretro.dll" -f "{rom}"'
 bios       = []
 
-[[system]]
-id         = "psx"
-name       = "PlayStation"
-extensions = [".cue", ".chd", ".pbp", ".m3u", ".ccd", ".toc"]
-launch     = '-L "RetroArch-Win64\cores\mednafen_psx_hw_libretro.dll" -f "{rom}"'
-# Seul système d'ici dont le core marque son firmware « firmware_opt = false »
-# dans son .info : sans l'un de ces trois fichiers, Beetle PSX HW retombe sur
-# OpenBIOS, dont la compatibilité est partielle et échoue jeu par jeu — le
-# genre de panne qu'on ne diagnostique pas depuis un canapé. Un des trois
-# suffit, celui de la région des jeux.
-#
-# C'est ce que dit `group` : les trois portent le même, donc le rapport les
-# traite comme UN besoin — « aucun des trois n'est présent, un seul suffit »
-# plutôt que trois lignes accusatrices pour quelqu'un qui a déposé le bon.
-# `region` est le texte que le rapport affiche pour dire lequel déposer ; il
-# est écrit ici, en clair, plutôt que traduit d'un code par du code.
-bios       = [
-  { file = "scph5500.bin", md5 = "8dd7d5296a650fac7319bce665a6a53c", required = true, group = "psx-region", region = "Japon" },
-  { file = "scph5501.bin", md5 = "490f666e1afb15b7362b406ed1cea246", required = true, group = "psx-region", region = "Amérique du Nord" },
-  { file = "scph5502.bin", md5 = "32736f17079d0b2b7024407c39bd3050", required = true, group = "psx-region", region = "Europe" },
-]
+# « psx » n'est PLUS servi ici : DuckStation le sert, dans son propre profil.
+# Il est plus fidèle que Beetle PSX HW, gère seul le plein écran et la sortie
+# propre, et deux profils livrés ne peuvent pas revendiquer le même dossier de
+# ROMs — le scan trancherait par ordre alphabétique. Le groupe de BIOS des
+# trois SCPH a suivi le système, dans duckstation.toml.
 
 [[system]]
 id         = "arcade"

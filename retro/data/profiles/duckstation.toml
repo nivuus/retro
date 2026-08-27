@@ -1,0 +1,67 @@
+# DuckStation — PlayStation.
+#
+# C'est DuckStation, et non le core Beetle PSX de RetroArch, qui sert « psx » :
+# il est plus fidèle, il gère seul le plein écran et la sortie propre, et le
+# système a donc QUITTÉ retroarch.toml. Deux profils livrés ne peuvent pas
+# revendiquer le même dossier de ROMs — `_refuser_systemes_partages` le refuse,
+# et le scan trancherait sinon par ordre alphabétique.
+#
+# L'archive épinglée au manifeste a été listée : 281 entrées, aucun dossier
+# racine. `exe` est donc un nom plat, contrairement à RetroArch, Dolphin et
+# Cemu — ce n'est pas un oubli de préfixe.
+#
+# Les options viennent de PrintCommandLineHelp() dans
+# src/duckstation-qt/qthost.cpp de la révision v0.1-11609, celle-là même dont
+# le manifeste porte l'empreinte :
+#   -batch      « exits after powering off » — sans lui, éteindre le jeu
+#                 renvoie à la liste de jeux au lieu de rendre la main à Steam ;
+#   -nogui      « Disables main window from being shown, exits on shutdown » ;
+#   -fullscreen « Enters fullscreen mode immediately after starting ».
+# La liste d'extensions vient du filtre de fichiers de la même révision, lu
+# DANS l'exécutable livré.
+
+schema = 1
+id  = "duckstation"
+exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
+
+[input]
+steam_input = "required"
+mode        = "xinput"
+
+[exit]
+# DuckStation ne lie AUCUN bouton de manette par défaut à « Open Pause Menu » :
+# la touche est à choisir dans « Pause Menu Hotkey », et il n'y a rien
+# d'honnête à annoncer ici tant qu'elle ne l'est pas. Une fois liée, le menu
+# offre l'arrêt du jeu et `-batch` fait alors quitter l'application.
+# Le fallback Steam Input reste la sortie garantie.
+native   = ""
+fallback = "alt+f4"
+
+[[system]]
+id         = "psx"
+name       = "PlayStation"
+# .bin et .img sont volontairement absents : ce sont les pistes brutes que
+# désigne un .cue, et les compter ferait une entrée Steam par piste À CÔTÉ du
+# jeu. Même raison que dans le profil RetroArch d'origine.
+extensions = [".cue", ".chd", ".pbp", ".m3u", ".ccd", ".ecm", ".mds", ".iso"]
+launch     = '-batch -nogui -fullscreen "{rom}"'
+# DuckStation n'a pas de BIOS de remplacement utilisable : sans l'un de ces
+# trois fichiers il retombe sur OpenBIOS, dont la compatibilité est partielle
+# et échoue jeu par jeu — le genre de panne qu'on ne diagnostique pas depuis un
+# canapé. Un des trois suffit, celui de la région des jeux.
+#
+# C'est ce que dit `group` : les trois portent le même, donc le rapport les
+# traite comme UN besoin — « aucun des trois n'est présent, un seul suffit »
+# plutôt que trois lignes accusatrices pour quelqu'un qui a déposé le bon.
+# `region` est le texte que le rapport affiche pour dire lequel déposer.
+#
+# Les empreintes MD5 sont celles que publie docs.libretro.com : ce sont les
+# seules publiquement citables pour ces fichiers, et en calculer d'autres
+# exigerait de faire entrer un BIOS dans le dépôt, ce que ce projet s'interdit.
+# Ces noms de fichiers sont ceux de la convention ; DuckStation, lui, reconnaît
+# ses BIOS à leur contenu, donc un fichier valide reste valide sous ces noms.
+bios       = [
+  { file = "scph5500.bin", md5 = "8dd7d5296a650fac7319bce665a6a53c", required = true, group = "psx-region", region = "Japon" },
+  { file = "scph5501.bin", md5 = "490f666e1afb15b7362b406ed1cea246", required = true, group = "psx-region", region = "Amérique du Nord" },
+  { file = "scph5502.bin", md5 = "32736f17079d0b2b7024407c39bd3050", required = true, group = "psx-region", region = "Europe" },
+]

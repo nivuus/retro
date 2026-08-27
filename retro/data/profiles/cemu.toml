@@ -1,0 +1,47 @@
+# Cemu — Wii U.
+#
+# Le SEUL des sept dont l'archive porte un dossier racine : Cemu_2.6\, listé
+# dans l'archive dont le manifeste porte l'empreinte. `exe` porte donc ce
+# préfixe, comme RetroArch et Dolphin — et l'antislash qu'il contient est
+# exactement ce que `install.local_path` doit traduire hors Windows.
+#
+# Ce préfixe porte le NUMÉRO DE VERSION. Faire monter le manifeste à Cemu 2.7
+# sans changer ce chemin ferait pointer Steam sur un exécutable inexistant,
+# sans autre symptôme qu'un raccourci qui ne démarre pas.
+#
+# Les options sont lues DANS l'exécutable livré :
+#   -f, --fullscreen ;
+#   -g, --game <path> « Path of game to launch ».
+# Cemu accepte au plus un argument positionnel, mais -g est explicite et ne
+# dépend pas de sa place.
+#
+# La liste d'extensions vient du filtre du même exécutable : « All Wii U files
+# (*.wud, *.wux, *.wua, *.wuhb, *.iso, *.rpx, *.elf) ».
+
+schema = 1
+id  = "cemu"
+exe = 'Cemu_2.6\Cemu.exe'
+
+[input]
+steam_input = "required"
+mode        = "xinput"
+
+[exit]
+# L'exécutable livré n'annonce que des raccourcis CLAVIER pour le plein écran
+# — « ALT + ENTER - toggle fullscreen », « ESC - leave fullscreen » — et
+# aucune liaison manette par défaut n'ouvre son menu. Le fallback Steam Input
+# est la seule sortie.
+native   = ""
+fallback = "alt+f4"
+
+[[system]]
+id         = "wiiu"
+name       = "Wii U"
+# .elf est écarté : Cemu l'accepte, mais c'est un format de développement qui
+# n'a rien à faire dans un dossier de jeux.
+extensions = [".wud", ".wux", ".wua", ".wuhb", ".iso", ".rpx"]
+launch     = '-f -g "{rom}"'
+# Aucun BIOS : la Wii U n'en a pas d'équivalent dumpable, et Cemu démarre les
+# jeux sans rien d'autre. Les clés de titre que réclament certains formats
+# chiffrés ne sont pas des BIOS et ne se vérifient pas par empreinte.
+bios       = []

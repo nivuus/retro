@@ -331,9 +331,14 @@ def test_les_bios_playstation_sont_interchangeables():
     commentaire du profil depuis toujours. Déclarés `required = true` un par
     un, le rapport disait « MANQUANT : scph5500.bin » et « MANQUANT :
     scph5502.bin » à quelqu'un qui venait de déposer scph5501.bin, le bon.
+
+    Le système « psx » a quitté RetroArch pour DuckStation ; le groupe l'a
+    suivi. Ce test est écrit pour SUIVRE le système, pas le profil : c'est le
+    besoin PlayStation qui doit rester groupé, quel que soit l'émulateur qui
+    le sert un jour.
     """
-    psx = next(s for s in profiles.load_profiles(PROFILS)["retroarch"].systems
-               if s.id == "psx")
+    psx = next(s for p in profiles.load_profiles(PROFILS).values()
+               for s in p.systems if s.id == "psx")
     groupes = {b.get("group") for b in psx.bios}
     assert groupes == {"psx-region"}, (
         f"les trois BIOS PlayStation ne forment pas un groupe : {groupes}"
@@ -378,3 +383,67 @@ def test_les_profils_livres_resolvent_en_chemin_local():
     # porte donc un exe en PLUSIEURS composants. Si ce compte tombe à zéro, les
     # fixtures plates redeviennent représentatives — et le trou se rouvre.
     assert composes, "aucun profil livré n'exerce la traduction des séparateurs"
+
+
+def test_chaque_gabarit_livre_guillemete_la_rom():
+    """Un chemin de ROM porte des espaces : « Halo 2 (USA).iso ».
+
+    Non guillemeté dans le gabarit, il arrive à l'émulateur découpé en
+    plusieurs arguments — l'émulateur ne trouve pas le fichier, ou pire,
+    s'ouvre sur son propre menu et la console a l'air de fonctionner. Rien
+    d'autre ici ne le verrait : `load_profile` n'exige que la PRÉSENCE de
+    {rom}, pas ses guillemets, et les fixtures des autres tests n'ont pas
+    d'espace dans leurs noms.
+    """
+    nus = [
+        f"{pid}/{s.id}"
+        for pid, p in profiles.load_profiles(PROFILS).items()
+        for s in p.systems if '"{rom}"' not in s.launch
+    ]
+    assert nus == [], f"gabarits dont {{rom}} n'est pas guillemeté : {nus}"
+
+
+def test_chaque_profil_livre_lance_en_plein_ecran():
+    """Un émulateur qui s'ouvre en fenêtre sur un écran de télévision est une
+    panne silencieuse : le jeu tourne, personne ne le voit en entier, et rien
+    ne dit qu'une option manque.
+
+    Le vocabulaire diffère d'un émulateur à l'autre — -fullscreen, -f,
+    -full-screen, --fullscreen, ou une valeur de configuration transitoire
+    chez Flycast — donc la garde est délibérément large : elle exige que le
+    mot apparaisse, pas qu'il prenne une forme précise. Elle attrape le seul
+    défaut qui compte, l'oubli pur et simple.
+    """
+    sans = [
+        f"{pid}/{s.id}"
+        for pid, p in profiles.load_profiles(PROFILS).items()
+        for s in p.systems
+        if "fullscreen" not in s.launch.replace("-", "").lower()
+        and " -f " not in f" {s.launch} "
+    ]
+    assert sans == [], f"gabarits sans plein écran : {sans}"
+
+
+def test_le_dossier_racine_de_cemu_suit_la_version_du_manifeste():
+    """Cemu est le seul émulateur livré dont le dossier racine d'archive porte
+    le numéro de version : `Cemu_2.6\\`.
+
+    Faire monter le manifeste à la version suivante sans toucher au profil
+    ferait pointer Steam sur `Cemu_2.6\\Cemu.exe`, qui n'existerait plus — et
+    le seul symptôme serait un raccourci qui ne démarre pas. Retirer le
+    préfixe entier aurait le même effet.
+
+    Rien d'autre ne le verrait : `test_les_profils_livres_resolvent_en_chemin_
+    local` se contente qu'UN profil livré ait un exe en plusieurs composants,
+    et RetroArch et Dolphin le lui donnent déjà — un Cemu redevenu plat y
+    passerait inaperçu. Mesuré : la mutation `exe = 'Cemu.exe'` laissait tout
+    le fichier vert.
+    """
+    version = manifest.load_manifest(CORE)["cemu"].version
+    exe = profiles.load_profiles(PROFILS)["cemu"].exe
+    racine = pathlib.PureWindowsPath(exe).parts[0]
+    assert racine == f"Cemu_{version}", (
+        f"le profil Cemu part de « {racine} » alors que le manifeste déclare "
+        f"la version {version} : l'archive dépose ses fichiers dans "
+        f"« Cemu_{version}\\ ». Corriger exe = « {exe} »."
+    )

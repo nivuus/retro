@@ -1,0 +1,51 @@
+# RPCS3 — PlayStation 3.
+#
+# L'archive épinglée au manifeste a été listée : 274 entrées, aucun dossier
+# racine, rpcs3.exe à la racine. `exe` est donc un nom plat.
+#
+# Les deux options sont lues DANS l'exécutable livré, celui dont le manifeste
+# porte l'empreinte :
+#   --no-gui     « Run RPCS3 without its GUI » ;
+#   --fullscreen « Run games in fullscreen mode. Only used when no-gui is
+#                set. » — d'où l'ordre : --fullscreen SEUL serait ignoré, et le
+#                jeu s'ouvrirait en fenêtre sans que rien ne le signale.
+# Le même exécutable porte « Cannot run no-gui mode without boot target » :
+# --no-gui exige donc un jeu, ce que {rom} garantit.
+#
+# Les extensions viennent du filtre « Boot (S)ELF » du même exécutable, qui
+# accepte *.iso depuis que RPCS3 sait démarrer une image de disque
+# (« Booting from BootISO... », « Boot ISO »). Sans cela ce profil n'aurait
+# aucun sens ici : le scan n'inventorie que des FICHIERS d'un dossier, jamais
+# les arborescences de jeux dumpés que RPCS3 attendait autrefois.
+
+schema = 1
+id  = "rpcs3"
+exe = 'rpcs3.exe'
+
+[input]
+steam_input = "required"
+mode        = "xinput"
+
+[exit]
+# L'exécutable livré porte « Open Home Menu », « PS Button », « Exit Game? » et
+# « Stop/Exit Game » : le menu maison s'ouvre au bouton PS et offre l'arrêt du
+# jeu. Rien n'y est déclaré pour autant, parce que RPCS3 ne livre aucune
+# configuration de manette par défaut dans son archive — la liaison du bouton
+# PS est à faire dans ses réglages, et l'annoncer avant serait une promesse
+# que la console ne tiendrait pas.
+native   = ""
+fallback = "alt+f4"
+
+[[system]]
+id         = "ps3"
+name       = "PlayStation 3"
+# .self et .elf sont les exécutables homebrew que RPCS3 démarre directement.
+# .bin est écarté : un jeu dumpé s'appelle EBOOT.BIN, donc tous porteraient le
+# même titre dans Steam et un seul survivrait.
+extensions = [".iso", ".self", ".elf"]
+launch     = '--no-gui --fullscreen "{rom}"'
+# RPCS3 exige le firmware PS3, qui n'est pas un fichier déposé dans un dossier
+# de BIOS mais une mise à jour (PS3UPDAT.PUP) INSTALLÉE une fois depuis
+# l'interface. Son empreinte change à chaque version de firmware et n'a rien de
+# publiquement citable : rien de vérifiable à déclarer ici.
+bios       = []
