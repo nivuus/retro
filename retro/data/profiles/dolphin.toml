@@ -38,6 +38,7 @@ fallback = "alt+f4"
 [[system]]
 id         = "gamecube"
 name       = "GameCube"
+folders    = ["GC", "NGC", "Nintendo GameCube"]
 extensions = [".iso", ".gcm", ".gcz", ".rvz", ".ciso", ".wia", ".tgc", ".dol", ".elf"]
 launch     = '-b --config Dolphin.Display.Fullscreen=True -e "{rom}"'
 # Le BIOS GameCube (IPL) n'est utilisé que pour afficher l'animation de
@@ -47,6 +48,7 @@ bios       = []
 [[system]]
 id         = "wii"
 name       = "Wii"
+folders    = ["Nintendo Wii"]
 extensions = [".iso", ".wbfs", ".rvz", ".gcz", ".ciso", ".wia", ".wad"]
 launch     = '-b --config Dolphin.Display.Fullscreen=True -e "{rom}"'
 bios       = []

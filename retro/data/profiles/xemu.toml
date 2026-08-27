@@ -33,6 +33,7 @@ fallback = "alt+f4"
 [[system]]
 id         = "xbox"
 name       = "Xbox"
+folders    = ["Microsoft Xbox", "Xbox Classic", "Xbox Original"]
 extensions = [".iso", ".xiso"]
 launch     = '-full-screen -dvd_path "{rom}"'
 # xemu EXIGE une ROM de démarrage MCPX, un BIOS flash et une image de disque

@@ -431,3 +431,115 @@ def test_un_ensemble_fourni_vide_n_ignore_rien(tmp_path, profils):
     inv = scan.scan(racine, profils, "D:\\Emulation", INSTALL_DIRS,
                     emulation_root_local=faire_emulation(tmp_path), ignored=[])
     assert [r.title for r in inv] == ["Jeu"]
+
+
+# --- Une bibliothèque rangée par constructeur -----------------------------
+#
+# Mesuré le 2026-08-26 sur la bibliothèque réelle du propriétaire : dix-sept
+# systèmes attendus, quatre dossiers de constructeur sur le disque, zéro
+# rencontre, et « 0 ROM répertoriée » pour toute explication. Le scan exigeait
+# une organisation à plat que personne n'a — et ce n'est pas au propriétaire
+# de réorganiser sa collection pour convenir à l'outil.
+
+PROFIL_FOLDERS = """
+schema = 1
+id = "retroarch"
+exe = 'RetroArch-Win64\\retroarch.exe'
+[[system]]
+id = "psx"
+name = "PlayStation"
+folders = ["Playstation", "PS1"]
+extensions = [".cue", ".chd"]
+launch = '-L "cores\\\\swanstation.dll" -f "{rom}"'
+bios = []
+[[system]]
+id = "snes"
+name = "Super Nintendo"
+extensions = [".sfc"]
+launch = '-L "cores\\\\snes9x.dll" -f "{rom}"'
+bios = []
+"""
+
+
+@pytest.fixture
+def profils_folders(tmp_path):
+    p = tmp_path / "ra.toml"
+    p.write_text(PROFIL_FOLDERS, encoding="utf-8")
+    return {"retroarch": profiles.load_profile(p)}
+
+
+def _scan(tmp_path, profils):
+    return scan.scan(tmp_path / "ROMs", profils, "D:\\Emulation",
+                     {"retroarch": "RetroArch"}, roms_root_windows="G:\\ROMs")
+
+
+def test_un_dossier_de_constructeur_est_traverse(tmp_path, profils_folders):
+    """« Nintendo\\Snes\\jeu.sfc » : le constructeur n'est pas un système, il
+    se traverse. C'est l'organisation de toute collection réelle."""
+    faire_roms(tmp_path, ["Nintendo/Snes/Zelda.sfc"])
+    inv = _scan(tmp_path, profils_folders)
+    assert [e.title for e in inv] == ["Zelda"]
+
+
+def test_le_chemin_de_la_rom_porte_toute_l_arborescence(tmp_path, profils_folders):
+    """Le piège de la descente : reconnaître le dossier mais adresser la ROM
+    par son seul nom donne une entrée Steam d'apparence normale qui ne
+    démarre jamais — un échec qui ressemble à une réussite."""
+    faire_roms(tmp_path, ["Nintendo/Snes/Zelda.sfc"])
+    inv = _scan(tmp_path, profils_folders)
+    assert inv[0].rom_path == "G:\\ROMs\\Nintendo\\Snes\\Zelda.sfc"
+
+
+def test_un_nom_declare_dans_folders_est_reconnu(tmp_path, profils_folders):
+    """Le propriétaire range « Playstation », le profil dit « psx »."""
+    faire_roms(tmp_path, ["Sony/Playstation/Crash.cue"])
+    inv = _scan(tmp_path, profils_folders)
+    assert [e.system_name for e in inv] == ["PlayStation"]
+
+
+def test_la_casse_du_dossier_est_ignoree(tmp_path, profils_folders):
+    faire_roms(tmp_path, ["Sony/PLAYSTATION/Crash.cue"])
+    assert len(_scan(tmp_path, profils_folders)) == 1
+
+
+def test_un_dossier_reconnu_n_est_pas_ouvert_plus_loin(tmp_path, profils_folders):
+    """Sous un système, ce sont des ROMs — pas d'autres systèmes. Un dossier
+    « PS1 » d'extras à l'intérieur de « Snes » ne doit pas devenir un
+    système, sans quoi la même ROM ressortirait deux fois."""
+    faire_roms(tmp_path, ["Snes/PS1/piege.cue", "Snes/Zelda.sfc"])
+    inv = _scan(tmp_path, profils_folders)
+    assert [e.title for e in inv] == ["Zelda"]
+
+
+def test_deux_systemes_homonymes_sous_deux_constructeurs(tmp_path, profils_folders):
+    """Le chemin relatif, et non le nom seul, distingue les dossiers : c'est
+    aussi la clé par laquelle un système ignoré est exclu."""
+    faire_roms(tmp_path, ["A/Snes/Un.sfc", "B/Snes/Deux.sfc"])
+    inv = _scan(tmp_path, profils_folders)
+    assert sorted(e.rom_path for e in inv) == [
+        "G:\\ROMs\\A\\Snes\\Un.sfc", "G:\\ROMs\\B\\Snes\\Deux.sfc"]
+
+
+def test_la_descente_s_arrete_avant_de_fouiller_les_jeux(tmp_path, profils_folders):
+    """Passé la profondeur admise, ce qu'on parcourt n'est plus un rangement
+    mais l'intérieur d'un jeu."""
+    faire_roms(tmp_path, ["a/b/c/d/Snes/Zelda.sfc"])
+    assert _scan(tmp_path, profils_folders) == []
+
+
+# --- Ce que le scan dit quand il ne reconnaît rien -------------------------
+
+def test_les_dossiers_inconnus_sont_nommes(tmp_path, profils_folders):
+    faire_roms(tmp_path, ["Atari/5200/jeu.a52", "Nintendo/Virtual Boy/jeu.vb"])
+    vus, attendus = scan.unmatched_folders(tmp_path / "ROMs", profils_folders)
+    assert vus == ["Atari\\5200", "Nintendo\\Virtual Boy"]
+    assert "PlayStation" in attendus and "Super Nintendo" in attendus
+
+
+def test_un_constructeur_dont_un_enfant_est_reconnu_n_est_pas_signale(
+        tmp_path, profils_folders):
+    """Sinon une bibliothèque parfaitement rangée listerait ses propres
+    dossiers de constructeur comme autant de problèmes."""
+    faire_roms(tmp_path, ["Nintendo/Snes/Zelda.sfc"])
+    vus, _ = scan.unmatched_folders(tmp_path / "ROMs", profils_folders)
+    assert vus == []

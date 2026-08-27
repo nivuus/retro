@@ -34,6 +34,7 @@ fallback = "alt+f4"
 [[system]]
 id         = "dreamcast"
 name       = "Dreamcast"
+folders    = ["Sega Dreamcast", "DC"]
 extensions = [".chd", ".gdi", ".cdi", ".cue"]
 launch     = '-config window:fullscreen=yes "{rom}"'
 # dc_boot.bin est FACULTATIF : l'exécutable livré porte « Forcing HLE BIOS »

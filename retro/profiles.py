@@ -1,8 +1,9 @@
 """Comment on parle à un émulateur.
 
 Un profil décrit les systèmes qu'un émulateur couvre, les extensions de ROM
-qu'il accepte, la ligne de commande qui lance un jeu, les BIOS qu'il exige et
-la façon d'en sortir à la manette.
+qu'il accepte, LES NOMS DE DOSSIER sous lesquels le propriétaire range ses
+ROMs, la ligne de commande qui lance un jeu, les BIOS qu'il exige et la façon
+d'en sortir à la manette.
 
 Tout ce qui est propre à un émulateur vit ici, dans son TOML, jamais dans le
 code : c'est ce qui permet d'en ajouter un sans rouvrir un module.
@@ -27,6 +28,40 @@ class System:
     extensions: tuple[str, ...]
     launch: str
     bios: tuple[dict, ...]
+    # Les noms de dossier USUELS de ce système, en plus de son identifiant et
+    # de son nom. Le propriétaire range « Playstation\ », pas « psx\ », et
+    # ce n'est pas à lui de renommer sa bibliothèque pour convenir à l'outil.
+    # Déclaratif, dans le TOML : une liste d'exceptions dans le code
+    # rouvrirait un module à chaque collection rencontrée.
+    folders: tuple[str, ...] = ()
+
+
+def folder_key(nom: str) -> str:
+    """La forme sous laquelle deux noms de dossier se comparent.
+
+    La casse, et elle seule : « Gamecube », « GameCube » et « gamecube »
+    désignent le même système, et aucune collection ne s'écrit deux fois de la
+    même façon. Tout le reste — les espaces de « Game Boy », le « Sony »
+    devant « Playstation » — se DÉCLARE dans le profil, où ça se lit et se
+    corrige, plutôt que de se deviner ici par une heuristique que personne ne
+    pourrait prévoir.
+    """
+    return nom.strip().casefold()
+
+
+def folder_claims(systeme: System) -> tuple[str, ...]:
+    """Tous les noms de dossier qui désignent ce système, normalisés.
+
+    L'identifiant et le nom en font partie d'office : « gamecube » et
+    « GameCube » sont déjà écrits dans le profil, les redéclarer serait du
+    bruit. `folders` porte le reste — « Playstation » pour « psx ».
+    """
+    vus = {}
+    for nom in (systeme.id, systeme.name, *systeme.folders):
+        cle = folder_key(nom)
+        if cle:
+            vus.setdefault(cle, None)
+    return tuple(vus)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -132,6 +167,42 @@ def load_profile(path: pathlib.Path) -> Profile:
             raise ProfileError(
                 f"{path} [{sid}] : extension(s) sans point : {', '.join(mauvaises)}"
             )
+        # `folders` dit sous quels AUTRES noms ce système peut être rangé.
+        # Une bibliothèque réelle s'organise « Nintendo\\Gamecube\\ » ou
+        # « Sony\\Playstation\\ », pas par identifiant technique, et ce n'est
+        # pas au propriétaire de renommer sa collection pour convenir à
+        # l'outil. Les fautes ci-dessous sont toutes muettes : un `folders`
+        # mal typé ou vide ne fait pas échouer le scan, il fait rendre zéro.
+        declares = brut.get("folders", [])
+        if not isinstance(declares, list):
+            raise ProfileError(
+                f"{path} [{sid}] : 'folders' doit être une liste de noms de "
+                "dossier (folders = [\"Playstation\", \"PS1\"]). Un autre "
+                "type ne serait jamais comparé à quoi que ce soit, et le "
+                "dossier du propriétaire resterait invisible."
+            )
+        mauvais = [repr(f) for f in declares
+                   if not isinstance(f, str) or not f.strip()]
+        if mauvais:
+            raise ProfileError(
+                f"{path} [{sid}] : 'folders' contient des entrées vides ou non "
+                f"textuelles : {', '.join(mauvais)}. Chacune est un nom de "
+                "dossier, comparé tel quel à la casse près — une entrée vide "
+                "ne désigne rien et le dossier visé resterait ignoré, sans "
+                "qu'aucun message ne le dise."
+            )
+        # Un nom de dossier ne PEUT pas contenir de séparateur : le scan
+        # compare le nom d'UN dossier, jamais un chemin. Déclarer
+        # « Nintendo/Gamecube » ne matcherait rien, et la faute serait muette.
+        chemins = [f for f in declares if "/" in f or "\\" in f]
+        if chemins:
+            raise ProfileError(
+                f"{path} [{sid}] : 'folders' contient des chemins : "
+                f"{', '.join(chemins)}. Chaque entrée est le nom d'UN dossier, "
+                "jamais un chemin — le scan descend tout seul dans les "
+                "dossiers de constructeur, et un nom composé ne serait comparé "
+                "à rien."
+            )
         if "{rom}" not in brut["launch"]:
             raise ProfileError(
                 f"{path} [{sid}] : le gabarit launch ne contient pas {{rom}}. "
@@ -185,6 +256,7 @@ def load_profile(path: pathlib.Path) -> Profile:
         systemes.append(System(
             id=sid, name=brut["name"], extensions=exts, launch=brut["launch"],
             bios=tuple(brut.get("bios", ())),
+            folders=tuple(declares),
         ))
 
     if not systemes:
@@ -265,7 +337,7 @@ def _charger_source(directory: pathlib.Path,
 
 def _refuser_systemes_partages(
         source: dict[str, tuple[Profile, pathlib.Path]]) -> None:
-    """Dans UNE source, un système n'est servi que par un profil.
+    """Dans UNE source, un NOM DE DOSSIER n'est revendiqué que par un système.
 
     Deux profils du même dossier qui revendiquent 'psx' se disputent le même
     dossier de ROMs. Rien dans le résultat ne le dirait : `scan` retient le
@@ -275,27 +347,42 @@ def _refuser_systemes_partages(
     profil ; entre profils d'une même source, il n'était vérifié que sur les
     données livrées, par un test, et jamais sur celles du propriétaire.
 
+    La règle porte sur TOUS les noms qui désignent un système — son
+    identifiant, son nom, et les `folders` qu'il déclare (`folder_claims`) —
+    parce que c'est de ces noms que le scan se sert. Deux systèmes qui
+    déclarent tous deux « Playstation » rendraient un dossier AMBIGU : le
+    départager en silence est exactement ce que ce refus empêche, et la faute
+    de frappe dans un `folders` recopié d'un profil voisin est le chemin
+    nominal pour y arriver.
+
     Entre les DEUX sources, la règle est autre : voir `load_profiles`.
     """
-    servi: dict[str, tuple[str, pathlib.Path]] = {}
+    servi: dict[str, tuple[str, pathlib.Path, str]] = {}
     for pid in sorted(source):
         profil, fichier = source[pid]
         for s in profil.systems:
-            if s.id in servi:
-                autre_pid, autre_fichier = servi[s.id]
-                raise ProfileError(
-                    f"le système '{s.id}' est revendiqué par deux profils du "
-                    f"même dossier : '{autre_pid}' ({autre_fichier.name}) et "
-                    f"'{pid}' ({fichier.name}). Un seul dossier de ROMs porte "
-                    "ce nom : les deux profils se le disputeraient, et le "
-                    "scan trancherait par ordre alphabétique — renommer un "
-                    "fichier suffirait alors à changer l'émulateur qui lance "
-                    "ces jeux, sans qu'aucun message ne le dise. Retirer ce "
-                    "système de l'un des deux profils, ou — pour remplacer un "
-                    "émulateur livré — déclarer le vôtre dans le dossier de "
-                    "profils du propriétaire, qui l'emporte."
-                )
-            servi[s.id] = (pid, fichier)
+            for nom in folder_claims(s):
+                if nom in servi:
+                    autre_pid, autre_fichier, autre_sid = servi[nom]
+                    precision = (
+                        f"'{s.id}'" if autre_sid == s.id else
+                        f"'{autre_sid}' et '{s.id}'"
+                    )
+                    raise ProfileError(
+                        f"le dossier de ROMs « {nom} » est revendiqué par deux "
+                        f"profils du même dossier : '{autre_pid}' "
+                        f"({autre_fichier.name}) et '{pid}' ({fichier.name}), "
+                        f"pour le système {precision}. Un seul dossier de ROMs "
+                        "porte ce nom : les deux profils se le disputeraient, "
+                        "et le scan trancherait par ordre alphabétique — "
+                        "renommer un fichier suffirait alors à changer "
+                        "l'émulateur qui lance ces jeux, sans qu'aucun message "
+                        "ne le dise. Retirer ce système — ou ce nom de "
+                        "'folders' — de l'un des deux profils, ou, pour "
+                        "remplacer un émulateur livré, déclarer le vôtre dans "
+                        "le dossier de profils du propriétaire, qui l'emporte."
+                    )
+                servi[nom] = (pid, fichier, s.id)
 
 
 def load_profiles(directory: pathlib.Path,

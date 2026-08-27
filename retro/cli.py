@@ -202,6 +202,42 @@ def _install_dirs_pour(profils: dict, emulateurs: dict) -> dict[str, str]:
     return table
 
 
+def _signaler_inconnus(roms_root: pathlib.Path, profils: dict,
+                       affiche: str, detaille: bool) -> None:
+    """Pourquoi un scan n'a rien trouvé, quand il n'a rien trouvé.
+
+    Trois faits, parce qu'aucun ne suffit seul : ce qui a été VU sur le
+    disque, ce qui était ATTENDU, et quoi faire de l'écart. Le propriétaire
+    range « Nintendo\\Gamecube » et l'outil cherchait « gamecube » — l'un des
+    deux doit céder, et ce n'est pas à lui de renommer sa collection.
+    """
+    try:
+        vus, attendus = scan.unmatched_folders(roms_root, profils)
+    except scan.ScanError as exc:
+        print(str(exc), file=sys.stderr)
+        return
+    if not vus:
+        if detaille:
+            print(f"aucun dossier sous {affiche} : la bibliothèque est vide, "
+                  "ou ce n'est pas la bonne racine.")
+        return
+    if not detaille:
+        # Le scan a trouvé des jeux : ces dossiers-ci ne sont pas une panne,
+        # mais les taire ferait passer un inventaire amputé pour complet.
+        apercu = ", ".join(vus[:6]) + (" ..." if len(vus) > 6 else "")
+        print(f"{len(vus)} dossier(s) ne correspondent à aucun système connu "
+              f"et n'ont pas été répertoriés : {apercu}")
+        return
+    print("")
+    print(f"aucun dossier de {affiche} ne correspond à un système connu.")
+    print(f"  vus     : {', '.join(vus)}")
+    print(f"  attendus: {', '.join(attendus)}")
+    print("  Le nom du dossier désigne le système, à la casse près, et les")
+    print("  dossiers de constructeur sont traversés. Pour garder vos noms,")
+    print("  ajoutez-les au champ 'folders' du système, dans son profil :")
+    print("      folders = [\"Playstation\", \"PS1\"]")
+
+
 def _signaler_ignores(ignores: list[scan.IgnoredSystem],
                       racine_locale: str) -> None:
     """Dit ce que le scan a laissé de côté, et comment le récupérer.
@@ -308,6 +344,16 @@ def _cmd_scan(args) -> int:
         print(f"écriture de l'inventaire impossible : {exc}", file=sys.stderr)
         return 2
     print(f"{len(donnees)} ROM(s) répertoriée(s) dans {args.output}")
+    # Des dossiers non reconnus sont signalés DÈS QU'IL Y EN A, pas seulement
+    # quand l'inventaire est vide. La première version ne parlait que du cas
+    # vide ; sur la bibliothèque réelle, trois systèmes sur six étaient passés
+    # sous silence parce que les trois autres avaient réussi — un inventaire
+    # amputé qui s'annonce complet, exactement le défaut que ce projet
+    # combat. Le cas vide garde le message long, qui explique quoi faire ;
+    # le cas partiel n'en reçoit qu'une ligne, pour ne pas noyer un scan
+    # nominal sous ses dossiers de BIOS et de sauvegardes.
+    _signaler_inconnus(pathlib.Path(args.roms), profils, args.roms,
+                       detaille=not donnees and not ignores)
     # Aussi sur la sortie standard : c'est elle que l'hôte relaie au
     # propriétaire, et un inventaire amputé qui s'annonce complet est
     # exactement le défaut qu'on vient de fermer.

@@ -40,6 +40,7 @@ fallback = "alt+f4"
 [[system]]
 id         = "psx"
 name       = "PlayStation"
+folders    = ["Playstation", "PS1", "PSX", "Playstation 1"]
 # .bin et .img sont volontairement absents : ce sont les pistes brutes que
 # désigne un .cue, et les compter ferait une entrée Steam par piste À CÔTÉ du
 # jeu. Même raison que dans le profil RetroArch d'origine.

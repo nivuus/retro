@@ -37,6 +37,7 @@ fallback = "alt+f4"
 [[system]]
 id         = "wiiu"
 name       = "Wii U"
+folders    = ["WiiU", "Nintendo Wii U"]
 # .elf est écarté : Cemu l'accepte, mais c'est un format de développement qui
 # n'a rien à faire dans un dossier de jeux.
 extensions = [".wud", ".wux", ".wua", ".wuhb", ".iso", ".rpx"]

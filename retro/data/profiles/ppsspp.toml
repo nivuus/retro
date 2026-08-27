@@ -36,6 +36,7 @@ fallback = "alt+f4"
 [[system]]
 id         = "psp"
 name       = "PlayStation Portable"
+folders    = ["PSP"]
 extensions = [".iso", ".cso", ".chd", ".pbp"]
 launch     = '--fullscreen --pause-menu-exit "{rom}"'
 # PPSSPP émule le firmware PSP en haut niveau : docs.libretro.com l'écrit noir

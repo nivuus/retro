@@ -33,6 +33,7 @@ fallback = "alt+f4"
 [[system]]
 id         = "ps2"
 name       = "PlayStation 2"
+folders    = ["PS2"]
 # .bin est écarté : c'est la piste brute d'un .cue, et la compter ferait une
 # entrée Steam de trop par jeu. .gz et .dump le sont aussi — le premier est
 # trop générique pour un dossier de ROMs, le second est un format de trace.

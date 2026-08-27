@@ -29,6 +29,7 @@ fallback = "alt+f4"
 [[system]]
 id         = "nes"
 name       = "Nintendo Entertainment System"
+folders    = ["NES", "Famicom", "Nintendo NES"]
 extensions = [".nes", ".fds", ".unf", ".unif"]
 launch     = '-L "RetroArch-Win64\cores\mesen_libretro.dll" -f "{rom}"'
 # disksys.rom n'est requis que pour le Famicom Disk System (.fds) ; les
@@ -40,6 +41,7 @@ bios       = [
 [[system]]
 id         = "snes"
 name       = "Super Nintendo"
+folders    = ["SNES", "Super Famicom", "Super NES"]
 extensions = [".smc", ".sfc", ".swc", ".fig"]
 launch     = '-L "RetroArch-Win64\cores\snes9x_libretro.dll" -f "{rom}"'
 bios       = []
@@ -47,6 +49,7 @@ bios       = []
 [[system]]
 id         = "megadrive"
 name       = "Mega Drive"
+folders    = ["Megadrive", "Genesis", "Sega Genesis", "Sega Mega Drive"]
 extensions = [".md", ".smd", ".gen", ".bin"]
 launch     = '-L "RetroArch-Win64\cores\genesis_plus_gx_libretro.dll" -f "{rom}"'
 bios       = []
@@ -54,6 +57,7 @@ bios       = []
 [[system]]
 id         = "gb"
 name       = "Game Boy"
+folders    = ["Gameboy", "GB"]
 extensions = [".gb", ".dmg"]
 launch     = '-L "RetroArch-Win64\cores\gambatte_libretro.dll" -f "{rom}"'
 bios       = []
@@ -61,6 +65,7 @@ bios       = []
 [[system]]
 id         = "gbc"
 name       = "Game Boy Color"
+folders    = ["Gameboy Color", "GBC"]
 extensions = [".gbc"]
 launch     = '-L "RetroArch-Win64\cores\gambatte_libretro.dll" -f "{rom}"'
 bios       = []
@@ -68,6 +73,7 @@ bios       = []
 [[system]]
 id         = "gba"
 name       = "Game Boy Advance"
+folders    = ["Gameboy Advance", "GBA"]
 extensions = [".gba"]
 launch     = '-L "RetroArch-Win64\cores\mgba_libretro.dll" -f "{rom}"'
 # mGBA a un BIOS de remplacement intégré : gba_bios.bin améliore la fidélité
@@ -79,6 +85,7 @@ bios       = [
 [[system]]
 id         = "n64"
 name       = "Nintendo 64"
+folders    = ["N64", "Nintendo64"]
 extensions = [".n64", ".v64", ".z64", ".ndd"]
 launch     = '-L "RetroArch-Win64\cores\mupen64plus_next_libretro.dll" -f "{rom}"'
 bios       = []
@@ -92,6 +99,7 @@ bios       = []
 [[system]]
 id         = "arcade"
 name       = "Arcade"
+folders    = ["MAME", "FBNeo", "Neo Geo"]
 extensions = [".zip", ".7z"]
 launch     = '-L "RetroArch-Win64\cores\fbneo_libretro.dll" -f "{rom}"'
 # FinalBurn Neo cherche ses BIOS de plateau dans system\fbneo\ ; ils dépendent

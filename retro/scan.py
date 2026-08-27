@@ -12,6 +12,7 @@ import re
 from collections.abc import Sequence
 
 from retro import install as install_mod
+from retro import profiles as profiles_mod
 from retro.steam import entry
 
 # Les conventions No-Intro et Redump : « Titre (Région) (Langues) [flags] ».
@@ -38,6 +39,12 @@ class IgnoredSystem:
     cherché (`install_dir`, `emulator`), pourquoi (`reason`, vocabulaire de
     `install.emulator_state`), et ce que ça coûte (`roms`).
     """
+    # Le chemin du dossier RELATIF à la racine des ROMs, en séparateurs
+    # Windows (« Nintendo\\Gamecube »), et non son seul nom : c'est aussi la
+    # clé par laquelle `scan` exclut ce système. Deux constructeurs peuvent
+    # ranger un dossier de même nom — le nom seul en aurait exclu deux pour
+    # un émulateur manquant, et les jeux de l'autre auraient disparu sans
+    # qu'aucun message ne le dise.
     folder: str
     system_name: str
     profile: str
@@ -118,14 +125,34 @@ def _desambiguiser(couples: list[tuple[str, str]]) -> list[str]:
             for t, orig in zip(passe1, couples)]
 
 
+# Jusqu'où descendre sous la racine avant de renoncer. Une bibliothèque
+# réelle s'organise « Constructeur\\Système », parfois sous un dossier
+# chapeau de plus ; au-delà, ce qu'on parcourt n'est plus un rangement mais
+# l'intérieur d'un jeu — des dossiers d'extras, de sauvegardes ou de disques
+# qu'il ne faut pas confondre avec des systèmes. Une limite, plutôt qu'une
+# descente libre, parce qu'un partage réseau profond se parcourt lentement et
+# qu'un scan qui traîne sans fin ressemble à un scan qui a planté.
+_PROFONDEUR_MAX = 3
+
+
 def _systeme_par_dossier(profils):
-    """Le nom du dossier désigne le système. Un même identifiant ne peut être
-    servi que par un profil : le premier dans l'ordre alphabétique gagne, ce
-    qui rend le résultat indépendant de l'ordre de chargement."""
+    """Chaque nom de dossier qui désigne un système, normalisé, vers ce système.
+
+    Un système répond à son identifiant, à son nom, et aux `folders` que son
+    profil déclare : le propriétaire range « Playstation\\ », pas « psx\\ », et
+    ce n'est pas à lui de renommer sa bibliothèque pour convenir à l'outil.
+
+    Un même nom ne peut être servi que par un profil : le premier dans l'ordre
+    alphabétique gagne, ce qui rend le résultat indépendant de l'ordre de
+    chargement. `profiles._refuser_systemes_partages` interdit déjà le cas à
+    l'intérieur d'une source ; ce `setdefault` couvre ce qui reste, la
+    collision entre un profil livré et celui du propriétaire.
+    """
     table = {}
     for pid in sorted(profils):
         for s in profils[pid].systems:
-            table.setdefault(s.id, (pid, s))
+            for nom in profiles_mod.folder_claims(s):
+                table.setdefault(nom, (pid, s))
     return table
 
 
@@ -136,18 +163,91 @@ def _verifier_racine(roms_root: pathlib.Path) -> None:
         )
 
 
+def _explorer(base: pathlib.Path, table: dict, parents: tuple[str, ...],
+              profondeur: int) -> tuple[list, list]:
+    """Descend sous `base` et sépare ce qui est reconnu de ce qui ne l'est pas.
+
+    Un dossier reconnu est rendu TEL QUEL et n'est pas ouvert : ce qu'il
+    contient, ce sont des ROMs, pas d'autres systèmes. Un dossier inconnu est
+    traversé — c'est un constructeur, « Nintendo », « Sony » — et n'est
+    signalé que si RIEN sous lui n'a été reconnu. Sans cette dernière
+    condition, une bibliothèque parfaitement rangée ferait tout de même la
+    liste de ses dossiers de constructeur comme autant de problèmes.
+    """
+    couverts, orphelins = [], []
+    try:
+        enfants = sorted(p for p in base.iterdir() if p.is_dir())
+    except OSError:
+        # Un dossier illisible — permission, partage tombé — n'arrête pas le
+        # scan du reste, mais ne se tait pas non plus : il ressort comme non
+        # reconnu, ce qu'il est de fait, plutôt que de retirer des jeux de la
+        # bibliothèque sans un mot.
+        return couverts, orphelins
+
+    for enfant in enfants:
+        chemin = parents + (enfant.name,)
+        trouve = table.get(profiles_mod.folder_key(enfant.name))
+        if trouve:
+            couverts.append((enfant, chemin, trouve[0], trouve[1]))
+            continue
+        if profondeur < _PROFONDEUR_MAX:
+            sous_couverts, sous_orphelins = _explorer(
+                enfant, table, chemin, profondeur + 1)
+            if sous_couverts or sous_orphelins:
+                # Ce qui remonte, ce sont les FEUILLES, jamais le dossier
+                # traversé. « Atari » ne dit rien au propriétaire — il ne
+                # renommera pas son dossier de constructeur ; « Atari\\5200 »
+                # nomme le dossier exact à déclarer ou à renommer.
+                couverts.extend(sous_couverts)
+                orphelins.extend(sous_orphelins)
+                continue
+        orphelins.append("\\".join(chemin))
+    return couverts, orphelins
+
+
+def _parcourir(roms_root: pathlib.Path, profils: dict) -> tuple[list, list]:
+    """Le parcours du disque, couverts et orphelins.
+
+    Partagé par `scan`, `ignored_systems` et `unmatched_folders` : tous
+    doivent parcourir le MÊME disque de la même façon, sinon le rapport
+    annoncerait des systèmes que le scan n'a pas ignorés, ou tairait ceux
+    qu'il a ignorés.
+    """
+    return _explorer(roms_root, _systeme_par_dossier(profils), (), 1)
+
+
 def _dossiers_couverts(roms_root: pathlib.Path, profils: dict):
     """Les dossiers de ROMs qu'un profil couvre, dans un ordre stable.
 
-    Partagé par `scan` et `ignored_systems` : les deux doivent parcourir le
-    MÊME disque de la même façon, sinon le rapport annoncerait des systèmes
-    que le scan n'a pas ignorés, ou tairait ceux qu'il a ignorés.
+    Rend, pour chacun : le dossier, son chemin RELATIF vu de Windows, le
+    profil qui le sert et le système. Le chemin relatif — et non le seul nom —
+    parce que c'est lui qui construit l'adresse de la ROM que Steam lancera :
+    un jeu rangé sous « Nintendo\\Gamecube » adressé par « Gamecube » seul
+    donnerait une entrée d'apparence normale qui ne démarrerait jamais.
     """
-    table = _systeme_par_dossier(profils)
-    for dossier in sorted(p for p in roms_root.iterdir() if p.is_dir()):
-        trouve = table.get(dossier.name)
-        if trouve:  # sinon : dossier qu'aucun profil ne couvre
-            yield dossier, trouve[0], trouve[1]
+    couverts, _ = _parcourir(roms_root, profils)
+    for dossier, chemin, pid, systeme in couverts:
+        yield dossier, "\\".join(chemin), pid, systeme
+
+
+def unmatched_folders(roms_root: pathlib.Path,
+                      profils: dict) -> tuple[list[str], list[str]]:
+    """Les dossiers qu'aucun profil ne reconnaît, et les noms attendus.
+
+    « 0 ROM répertoriée » est vrai et inutile : le propriétaire ne peut pas
+    savoir si sa bibliothèque est vide, mal montée, ou simplement rangée
+    autrement que ce que l'outil cherche. Mesuré sur une bibliothèque réelle
+    le 2026-08-26 : dix-sept systèmes attendus, quatre dossiers de
+    constructeur sur le disque, zéro rencontre, et pas un mot pour le dire.
+
+    Rend ce qui a été VU d'un côté, ce qui était ATTENDU de l'autre : c'est
+    de la comparaison des deux que le propriétaire tire quoi faire —
+    renommer un dossier, ou déclarer son nom dans `folders`.
+    """
+    _verifier_racine(roms_root)
+    _, orphelins = _parcourir(roms_root, profils)
+    attendus = sorted({s.name for p in profils.values() for s in p.systems})
+    return orphelins, attendus
 
 
 def _retenus(dossier: pathlib.Path, systeme) -> list[pathlib.Path]:
@@ -183,7 +283,7 @@ def ignored_systems(roms_root: pathlib.Path, profils: dict,
     """
     _verifier_racine(roms_root)
     ignores = []
-    for dossier, pid, systeme in _dossiers_couverts(roms_root, profils):
+    for dossier, chemin, pid, systeme in _dossiers_couverts(roms_root, profils):
         # La MÊME notion d'« installé » que `retro status` et `retro install`,
         # lue au même endroit : l'une inventoriait ce que l'autre déclarait
         # absent, sur le même disque, et le propriétaire n'avait aucun moyen
@@ -195,7 +295,7 @@ def ignored_systems(roms_root: pathlib.Path, profils: dict,
         jeux = len(_retenus(dossier, systeme))
         if jeux:
             ignores.append(IgnoredSystem(
-                folder=dossier.name, system_name=systeme.name, profile=pid,
+                folder=chemin, system_name=systeme.name, profile=pid,
                 install_dir=install_mod.install_path(
                     emulation_root_local, install_dirs[pid]),
                 emulator=install_mod.emulator_exe(
@@ -239,8 +339,8 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
     ignores = {i.folder for i in ignored or ()}
     inventaire = []
 
-    for dossier, pid, systeme in _dossiers_couverts(roms_root, profils):
-        if dossier.name in ignores:
+    for dossier, chemin, pid, systeme in _dossiers_couverts(roms_root, profils):
+        if chemin in ignores:
             continue  # émulateur absent : ces jeux ne se lanceraient pas
         exe = f"{emulation_root}\\{install_dirs[pid]}\\{profils[pid].exe}"
         start_dir = f"{emulation_root}\\{install_dirs[pid]}"
@@ -250,7 +350,7 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
         for f, titre in zip(retenus, titres):
             inventaire.append(entry.RomEntry(
                 title=titre,
-                rom_path=f"{roms_root_windows}\\{dossier.name}\\{f.name}",
+                rom_path=f"{roms_root_windows}\\{chemin}\\{f.name}",
                 system_name=systeme.name,
                 emulator_exe=exe,
                 launch_template=systeme.launch,

@@ -39,6 +39,7 @@ fallback = "alt+f4"
 [[system]]
 id         = "ps3"
 name       = "PlayStation 3"
+folders    = ["PS3"]
 # .self et .elf sont les exécutables homebrew que RPCS3 démarre directement.
 # .bin est écarté : un jeu dumpé s'appelle EBOOT.BIN, donc tous porteraient le
 # même titre dans Steam et un seul survivrait.

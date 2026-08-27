@@ -458,3 +458,72 @@ bios = []
     assert code == 0
     assert "PlayStation : 1 jeu ignoré" in out
     assert "duckstation" in out
+
+
+# --- « 0 ROM répertoriée » doit dire POURQUOI ------------------------------
+
+_PROFIL_MIN = """
+schema = 1
+id = "retroarch"
+exe = 'retroarch.exe'
+[[system]]
+id = "snes"
+name = "Super Nintendo"
+extensions = [".sfc"]
+launch = '-f "{rom}"'
+bios = []
+"""
+_MANIFESTE_MIN = """
+schema = 1
+[emulator.retroarch]
+name        = "RetroArch"
+version     = "1"
+url         = "https://example.invalid/ra.7z"
+sha256      = "0000000000000000000000000000000000000000000000000000000000000000"
+archive     = "7z"
+install_dir = "RetroArch"
+profile     = "retroarch"
+"""
+
+
+def _scan_sur(tmp_path, arborescence):
+    """Lance `retro scan` sur une arborescence donnée et rend sa sortie."""
+    for chemin in arborescence:
+        f = tmp_path / "ROMs" / chemin
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"x")
+    (tmp_path / "ROMs").mkdir(exist_ok=True)
+    prof = tmp_path / "profiles"
+    prof.mkdir()
+    (prof / "ra.toml").write_text(_PROFIL_MIN, encoding="utf-8")
+    man = tmp_path / "core.toml"
+    man.write_text(_MANIFESTE_MIN, encoding="utf-8")
+    return cli.main([
+        "scan", "--roms", str(tmp_path / "ROMs"), "--profiles", str(prof),
+        "--manifest", str(man), "--output", str(tmp_path / "inv.json"),
+    ])
+
+
+def test_scan_vide_explique_ce_qu_il_a_vu_et_attendu(tmp_path, capsys):
+    """« 0 ROM répertoriée » est vrai et inutile : la bibliothèque est-elle
+    vide, mal montée, ou rangée sous d'autres noms ? Mesuré sur une
+    bibliothèque réelle et bien remplie."""
+    assert _scan_sur(tmp_path, ["Atari/5200/jeu.a52"]) == 0
+    sortie = capsys.readouterr().out
+    assert "Atari\\5200" in sortie          # ce qui a été vu
+    assert "Super Nintendo" in sortie       # ce qui était attendu
+    assert "folders" in sortie              # quoi faire
+
+
+def test_scan_partiel_ne_tait_pas_les_dossiers_ignores(tmp_path, capsys):
+    """Le piège : trois systèmes reconnus suffisaient à faire taire les trois
+    autres, et l'inventaire amputé s'annonçait complet."""
+    assert _scan_sur(tmp_path, ["Snes/Zelda.sfc", "Atari/5200/jeu.a52"]) == 0
+    sortie = capsys.readouterr().out
+    assert "1 ROM(s) répertoriée(s)" in sortie
+    assert "Atari\\5200" in sortie
+
+
+def test_scan_racine_sans_aucun_dossier_le_dit(tmp_path, capsys):
+    assert _scan_sur(tmp_path, []) == 0
+    assert "vide" in capsys.readouterr().out
