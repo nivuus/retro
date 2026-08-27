@@ -81,7 +81,7 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
     """
     rendu = systeme.render
     lignes = [
-        "# Écrit par « retro sync ». Toute modification sera écrasée.",
+        "# Écrit par « retro scan ». Toute modification sera écrasée.",
         f"emulator={emulator_exe}",
         f"workdir={workdir}",
         f"launch={systeme.launch}",
