@@ -9,7 +9,9 @@ from __future__ import annotations
 import dataclasses
 import pathlib
 import re
+from collections.abc import Sequence
 
+from retro import install as install_mod
 from retro.steam import entry
 
 # Les conventions No-Intro et Redump : « Titre (Région) (Langues) [flags] ».
@@ -33,13 +35,16 @@ class IgnoredSystem:
     remplacerait une bibliothèque morte par une bibliothèque incomplète, tout
     aussi inexplicable pour le propriétaire. Chaque champ sert au message :
     ce qui manque (`system_name`), quoi installer (`profile`), où on a
-    cherché (`emulator`), et ce que ça coûte (`roms`).
+    cherché (`install_dir`, `emulator`), pourquoi (`reason`, vocabulaire de
+    `install.emulator_state`), et ce que ça coûte (`roms`).
     """
     folder: str
     system_name: str
     profile: str
+    install_dir: pathlib.Path
     emulator: pathlib.Path
     roms: int
+    reason: str
 
 
 def base_title(filename: str) -> str:
@@ -145,20 +150,6 @@ def _dossiers_couverts(roms_root: pathlib.Path, profils: dict):
             yield dossier, trouve[0], trouve[1]
 
 
-def _emulateur_local(emulation_root_local: pathlib.Path | str,
-                     install_dirs: dict[str, str], pid: str,
-                     profil) -> pathlib.Path:
-    """L'exécutable de l'émulateur SUR CE DISQUE, pas sur la console.
-
-    L'inventaire décrit une machine Windows, et ses chemins sont donc des
-    chaînes : `pathlib.Path("D:\\\\Emulation")` est un chemin RELATIF sous
-    Linux, et testerait l'existence de « ./D:\\Emulation\\... », qui n'existe
-    jamais. Le chemin qu'on ouvre est celui de la machine qui scanne — d'où
-    ce second paramètre, comme `--roms` en regard de `--roms-windows`.
-    """
-    return pathlib.Path(emulation_root_local) / install_dirs[pid] / profil.exe
-
-
 def _retenus(dossier: pathlib.Path, systeme) -> list[pathlib.Path]:
     """Les fichiers de ce dossier qui méritent une entrée Steam.
 
@@ -193,15 +184,23 @@ def ignored_systems(roms_root: pathlib.Path, profils: dict,
     _verifier_racine(roms_root)
     ignores = []
     for dossier, pid, systeme in _dossiers_couverts(roms_root, profils):
-        exe = _emulateur_local(emulation_root_local, install_dirs, pid,
-                               profils[pid])
-        if exe.is_file():
+        # La MÊME notion d'« installé » que `retro status` et `retro install`,
+        # lue au même endroit : l'une inventoriait ce que l'autre déclarait
+        # absent, sur le même disque, et le propriétaire n'avait aucun moyen
+        # de trancher.
+        etat = install_mod.emulator_state(
+            emulation_root_local, install_dirs[pid], profils[pid].exe)
+        if etat == install_mod.OK:
             continue
         jeux = len(_retenus(dossier, systeme))
         if jeux:
             ignores.append(IgnoredSystem(
                 folder=dossier.name, system_name=systeme.name, profile=pid,
-                emulator=exe, roms=jeux,
+                install_dir=install_mod.install_path(
+                    emulation_root_local, install_dirs[pid]),
+                emulator=install_mod.emulator_exe(
+                    emulation_root_local, install_dirs[pid], profils[pid].exe),
+                roms=jeux, reason=etat,
             ))
     return ignores
 
@@ -210,6 +209,7 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
          install_dirs: dict[str, str],
          roms_root_windows: str = "G:\\ROMs",
          emulation_root_local: pathlib.Path | str | None = None,
+         ignored: Sequence[IgnoredSystem] | None = None,
          ) -> list[entry.RomEntry]:
     """L'inventaire des ROMs, tel que Steam le verra.
 
@@ -225,13 +225,18 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
     Facultatif, parce qu'un appelant peut préparer l'inventaire d'une machine
     qu'il n'atteint pas. Absent, rien n'est vérifié ni ignoré : le
     comportement d'avant, à l'identique.
+
+    `ignored` est pour l'appelant qui a DÉJÀ appelé `ignored_systems` — le
+    CLI, qui doit annoncer ce qu'il ignore. Son ensemble fait alors foi et
+    rien n'est recalculé : deux calculs, c'est deux vérités possibles sur un
+    disque qui bouge, et un message qui contredit l'inventaire qu'il
+    accompagne. Un ensemble vide est une réponse, pas une absence de réponse.
     """
     _verifier_racine(roms_root)
-    if emulation_root_local is None:
-        ignores = frozenset()
-    else:
-        ignores = {i.folder for i in ignored_systems(
-            roms_root, profils, install_dirs, emulation_root_local)}
+    if ignored is None and emulation_root_local is not None:
+        ignored = ignored_systems(roms_root, profils, install_dirs,
+                                  emulation_root_local)
+    ignores = {i.folder for i in ignored or ()}
     inventaire = []
 
     for dossier, pid, systeme in _dossiers_couverts(roms_root, profils):

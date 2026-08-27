@@ -155,7 +155,7 @@ def _profil_minimal(tmp_path):
     (profils / "p.toml").write_text("""
 schema = 1
 id = "r"
-exe = "r.exe"
+exe = 'R-x64\\r.exe'
 [[system]]
 id = "snes"
 name = "SNES"
@@ -372,8 +372,8 @@ def test_status_ne_reproche_rien_quand_l_emulateur_est_la(tmp_path, capsys):
     bios_dir = tmp_path / "bios"
     bios_dir.mkdir()
     emu = tmp_path / "Emulation" / "r"
-    emu.mkdir(parents=True)
-    (emu / "r.exe").write_bytes(b"MZ")
+    (emu / "R-x64").mkdir(parents=True)
+    (emu / "R-x64" / "r.exe").write_bytes(b"MZ")
     (emu / ".retro-version").write_text("1.0\n", encoding="utf-8")
     code = cli.main(["status", "--roms", str(tmp_path / "ROMs"),
                      "--profiles", str(profils),

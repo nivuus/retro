@@ -34,9 +34,10 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+import re
 from collections.abc import Sequence
 
-from retro import acquire
+from retro import install as install_mod
 from retro.bios import BiosNeed, SystemBios
 from retro.scan import IgnoredSystem
 
@@ -71,9 +72,15 @@ def _joindre(racine: str, *parties: str) -> str:
     que le propriétaire recopierait tel quel. La racine d'émulation est un
     chemin Windows en production et peut être un chemin POSIX en test : c'est
     elle qui décide du séparateur.
+
+    Les PARTIES aussi sont normalisées : `install_dir` vient du manifeste, et
+    un manifeste utilisateur peut y mettre un sous-chemin Windows. Recopié
+    tel quel sous une racine POSIX, il rendait le même chemin bâtard.
     """
     sep = "\\" if "\\" in racine and "/" not in racine else "/"
-    return sep.join([racine.rstrip("\\/"), *parties])
+    segments = [s for partie in parties
+                for s in re.split(r"[\\/]+", str(partie)) if s]
+    return sep.join([racine.rstrip("\\/"), *segments])
 
 
 def _cout(ignores: Sequence[IgnoredSystem]) -> tuple[str, ...]:
@@ -118,12 +125,11 @@ def _etat_emulateurs(
     emulateurs = []
     problemes = []
     for pid in sorted(install_dirs):
-        temoin = pathlib.Path(emulation_root) / install_dirs[pid] / acquire.TEMOIN
-        try:
-            version = temoin.read_text(encoding="utf-8").strip() if temoin.is_file() else None
-        except OSError:
-            version = None
+        # La MÊME lecture du disque que `scan` et `install` : le témoin de
+        # version, posé seulement après vérification de toutes les archives.
+        version = install_mod.installed_version(emulation_root, install_dirs[pid])
         sans_jeux = par_profil.get(pid, [])
+        motif = sans_jeux[0].reason if sans_jeux else None
         if version and not sans_jeux:
             emulateurs.append((pid, version))
         elif version:
@@ -134,6 +140,21 @@ def _etat_emulateurs(
                       "incomplète"),
                 where=str(sans_jeux[0].emulator),
                 action=f"réinstaller : retro install --emulation-root '{racine}'",
+                details=_cout(sans_jeux),
+            ))
+        elif motif == install_mod.SANS_TEMOIN:
+            # L'exécutable est là, le témoin non. Dire « pas installé » à qui
+            # voit son dossier plein le ferait douter du rapport ; dire
+            # « installé » tairait que rien n'atteste sa complétude.
+            emulateurs.append((pid, "présent, sans témoin de version"))
+            problemes.append(Problem(
+                what=(f"l'émulateur « {pid} » n'a pas été installé par "
+                      "« retro install » : son exécutable est là, mais aucun "
+                      "témoin de version n'atteste que l'installation soit "
+                      "complète — un émulateur amputé de ses composants "
+                      "paraît installé et ne lance rien"),
+                where=_joindre(racine, install_dirs[pid]),
+                action=f"retro install --emulation-root '{racine}'",
                 details=_cout(sans_jeux),
             ))
         else:

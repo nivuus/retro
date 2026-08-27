@@ -204,14 +204,21 @@ def _signaler_ignores(ignores: list[scan.IgnoredSystem],
     if not ignores:
         return
     lignes = [
-        "attention : l'émulateur de ces systèmes n'est pas installé. Leurs "
-        "jeux sont ignorés — ils n'apparaîtront pas dans Steam :"
+        "attention : ces systèmes sont ignorés, leur émulateur n'est pas "
+        "utilisable — leurs jeux n'apparaîtront pas dans Steam :"
     ]
     for i in ignores:
         jeu = "jeu" if i.roms == 1 else "jeux"
         lignes.append(f"  {i.system_name} : {i.roms} {jeu} ignoré"
                       f"{'' if i.roms == 1 else 's'} (profil « {i.profile} »)")
-        lignes.append(f"    cherché : {i.emulator}")
+        lignes.append(f"    {install_mod.MOTIFS[i.reason]}")
+        # Le chemin qui manque VRAIMENT. Annoncer « cherché : ...\\retroarch.exe »
+        # pour un émulateur posé à la main enverrait chercher un fichier qui
+        # est là : ce qui manque, dans ce cas, est le témoin, donc le dossier.
+        if i.reason == install_mod.SANS_TEMOIN:
+            lignes.append(f"    dossier : {i.install_dir}")
+        else:
+            lignes.append(f"    cherché : {i.emulator}")
     lignes.append(
         "Installer ce qui manque — retro install --emulation-root "
         f"'{racine_locale}' — puis relancer ce scan."
@@ -236,10 +243,15 @@ def _cmd_scan(args) -> int:
         ignores = scan.ignored_systems(
             pathlib.Path(args.roms), profils, install_dirs, racine_locale,
         ) if racine_locale else []
+        # `ignored=ignores` : le scan ne recalcule pas ce qu'on vient de
+        # calculer pour l'annoncer. Deux calculs, ce sont deux vérités
+        # possibles sur un disque qui bouge — un message qui contredirait
+        # l'inventaire qu'il accompagne. Sans racine locale, l'ensemble est
+        # vide et rien n'est ignoré : le comportement d'avant.
         inventaire = scan.scan(
             pathlib.Path(args.roms), profils, args.emulation_root, install_dirs,
             roms_root_windows=args.roms_windows,
-            emulation_root_local=racine_locale,
+            emulation_root_local=racine_locale, ignored=ignores,
         )
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
         print(str(exc), file=sys.stderr)

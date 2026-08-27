@@ -3,7 +3,7 @@ import pathlib
 
 import pytest
 
-from retro import bios, scan, status
+from retro import bios, install, scan, status
 
 
 def test_un_emulateur_installe_est_signale_avec_sa_version(tmp_path):
@@ -207,10 +207,12 @@ def test_un_bios_facultatif_absent_n_est_pas_un_probleme_mais_se_voit():
 # --- « l'émulateur n'est pas installé » coûte des jeux ---------------------
 
 
-def _ignore(tmp_path, roms=3, profil="retroarch"):
+def _ignore(tmp_path, roms=3, profil="retroarch", raison=install.ABSENT):
     return scan.IgnoredSystem(
         folder="snes", system_name="Super Nintendo", profile=profil,
-        emulator=tmp_path / "RetroArch" / "retroarch.exe", roms=roms,
+        install_dir=tmp_path / "RetroArch",
+        emulator=tmp_path / "RetroArch" / "RetroArch-Win64" / "retroarch.exe",
+        roms=roms, reason=raison,
     )
 
 
@@ -244,7 +246,7 @@ def test_un_emulateur_dit_installe_mais_sans_executable_est_un_probleme(tmp_path
         ignored_systems=[_ignore(tmp_path)])
     (probleme,) = [p for p in r.problems if "retroarch" in p.what]
     assert "exécutable" in probleme.what
-    assert probleme.where == str(emu / "retroarch.exe")
+    assert probleme.where == str(emu / "RetroArch-Win64" / "retroarch.exe")
     assert "Super Nintendo" in " ".join(probleme.details)
 
 
@@ -266,3 +268,32 @@ def test_les_jeux_ignores_se_lisent_dans_le_rapport(tmp_path):
         ignored_systems=[_ignore(tmp_path, roms=1)]))
     assert "1 jeu ignoré" in texte
     assert "1 jeux" not in texte
+
+
+def test_un_emulateur_pose_a_la_main_est_dit_tel_quel(tmp_path):
+    """L'exécutable est là, le témoin non. Dire « n'est pas installé » à qui
+    voit son dossier plein l'enverrait douter du rapport ; dire « installé »
+    tairait que rien n'atteste sa complétude — `install` ne pose le témoin
+    qu'après avoir vérifié TOUTES les archives, cores compris. Le scan et le
+    rapport disent désormais la même chose du même disque."""
+    r = status.build_report(
+        install_dirs={"retroarch": "RetroArch"}, emulation_root=tmp_path,
+        systems=[("Super Nintendo", 3)], bios_status=[],
+        bios_root=pathlib.Path("/BIOS"),
+        ignored_systems=[_ignore(tmp_path, raison=install.SANS_TEMOIN)])
+    (probleme,) = [p for p in r.problems if "retroarch" in p.what]
+    assert "témoin" in probleme.what
+    assert "retro install" in probleme.action
+    assert "Super Nintendo" in " ".join(probleme.details)
+
+
+def test_le_dossier_d_installation_ne_melange_pas_les_separateurs(tmp_path):
+    """Un manifeste utilisateur peut mettre un sous-chemin dans install_dir.
+    Recopié tel quel sous une racine POSIX, il rendait « /mnt/emus\\R », un
+    chemin que personne ne peut ouvrir et que le propriétaire recopierait."""
+    r = status.build_report(
+        install_dirs={"retroarch": "emus\\RetroArch-1.22"},
+        emulation_root=pathlib.Path("/mnt/emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"))
+    (probleme,) = r.problems
+    assert probleme.where == "/mnt/emulation/emus/RetroArch-1.22"

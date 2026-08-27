@@ -270,12 +270,16 @@ def test_scan_ne_previent_pas_quand_le_manifeste_couvre_tout(tmp_path, capsys):
 # --- scan : un émulateur absent est ignoré, et signalé ---------------------
 
 def _profils_deux_systemes(tmp_path):
+    """La forme RÉELLE de `exe` : un dossier racine d'archive, en chemin
+    Windows. Une fixture au nom plat ne montre rien du seul cas où
+    --emulation-root-local a une raison d'être, celui où il ne vaut pas
+    --emulation-root."""
     profils = tmp_path / "profiles"
     profils.mkdir()
     (profils / "p.toml").write_text("""
 schema = 1
 id = "retroarch"
-exe = "retroarch.exe"
+exe = 'RetroArch-Win64\\retroarch.exe'
 [[system]]
 id = "snes"
 name = "Super Nintendo"
@@ -307,7 +311,9 @@ def test_scan_signale_le_systeme_dont_l_emulateur_manque(tmp_path, capsys):
     assert code == 0, sortie_std.err
     assert json.loads(sortie.read_text(encoding="utf-8")) == []
     assert "Super Nintendo" in sortie_std.err
-    assert str(emulation / "RetroArch" / "retroarch.exe") in sortie_std.err
+    assert str(emulation / "RetroArch" / "RetroArch-Win64" / "retroarch.exe") \
+        in sortie_std.err
+    assert "\\" not in sortie_std.err, "chemin bâtard, mi-POSIX mi-Windows"
     assert "retro install" in sortie_std.err
     # L'hôte peut ne relayer que la sortie standard : le silence y serait le
     # même défaut sous une autre forme.
@@ -317,9 +323,11 @@ def test_scan_signale_le_systeme_dont_l_emulateur_manque(tmp_path, capsys):
 def test_scan_n_ignore_rien_quand_l_emulateur_est_installe(tmp_path, capsys):
     """Le pendant : la vérification ne doit pas vider la bibliothèque."""
     profils = _profils_deux_systemes(tmp_path)
-    exe = tmp_path / "Emulation" / "RetroArch" / "retroarch.exe"
+    exe = tmp_path / "Emulation" / "RetroArch" / "RetroArch-Win64" / "retroarch.exe"
     exe.parent.mkdir(parents=True)
     exe.write_bytes(b"MZ")
+    (tmp_path / "Emulation" / "RetroArch" / ".retro-version").write_text(
+        "1.0\n", encoding="utf-8")
     sortie = tmp_path / "inv.json"
     code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
                      "--profiles", str(profils), "--output", str(sortie),
@@ -330,3 +338,47 @@ def test_scan_n_ignore_rien_quand_l_emulateur_est_installe(tmp_path, capsys):
     d = json.loads(sortie.read_text(encoding="utf-8"))
     assert [r["title"] for r in d] == ["Jeu"]
     assert "ignoré" not in sortie_std.err
+
+
+def test_scan_dit_qu_un_emulateur_pose_a_la_main_n_est_pas_atteste(tmp_path, capsys):
+    """L'exécutable est là, le témoin non. « cherché : ...\\retroarch.exe »
+    enverrait chercher un fichier qui est là : ce qui manque est le témoin,
+    donc le dossier — et la raison doit se lire."""
+    profils = _profils_deux_systemes(tmp_path)
+    dossier = tmp_path / "Emulation" / "RetroArch"
+    (dossier / "RetroArch-Win64").mkdir(parents=True)
+    (dossier / "RetroArch-Win64" / "retroarch.exe").write_bytes(b"MZ")
+    sortie = tmp_path / "inv.json"
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils), "--output", str(sortie),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(tmp_path / "Emulation")])
+    err = capsys.readouterr().err
+    assert code == 0, err
+    assert json.loads(sortie.read_text(encoding="utf-8")) == []
+    assert "témoin" in err
+    assert f"dossier : {dossier}" in err
+
+
+def test_le_scan_ne_calcule_les_systemes_ignores_qu_une_fois(tmp_path, monkeypatch):
+    """Le CLI annonce ce qu'il ignore, puis scanne. Calculer deux fois, c'est
+    deux vérités possibles sur un disque qui bouge : entre le message et
+    l'inventaire, un émulateur qui apparaît ou disparaît les rend
+    contradictoires. L'ensemble calculé est passé, pas recalculé."""
+    profils = _profils_deux_systemes(tmp_path)
+    (tmp_path / "Emulation").mkdir()
+    appels = []
+    vrai = cli.scan.ignored_systems
+
+    def compter(*a, **k):
+        appels.append(a)
+        return vrai(*a, **k)
+
+    monkeypatch.setattr(cli.scan, "ignored_systems", compter)
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--output", str(tmp_path / "inv.json"),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(tmp_path / "Emulation")])
+    assert code == 0
+    assert len(appels) == 1, f"{len(appels)} calculs, donc autant de vérités"

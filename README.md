@@ -107,12 +107,20 @@ confondent que lorsque la commande tourne sur la console elle-même.
 `--emulation-root-local` est la même distinction pour les émulateurs :
 `--emulation-root` est ce que la **console** lira dans `shortcuts.vdf`,
 `--emulation-root-local` le chemin par lequel la machine qui scanne atteint les
-mêmes fichiers. Donné, `scan` vérifie que l'exécutable de chaque émulateur
-existe vraiment, ignore les systèmes dont il manque, et **le dit** — sur la
-sortie d'erreur et sur la sortie standard. Sans lui, rien n'est vérifié : une
-installation ratée peuple alors Steam de raccourcis vers des programmes
-absents, et la bibliothèque ne se contente pas d'être vide, elle est morte.
-`retro status` fait la même vérification, avec le chemin qu'il reçoit déjà.
+mêmes fichiers — un chemin POSIX là où l'autre est un chemin Windows. Donné,
+`scan` vérifie que chaque émulateur est réellement installé, ignore les systèmes
+dont il manque, et **le dit** — sur la sortie d'erreur et sur la sortie
+standard. Sans lui, rien n'est vérifié : une installation ratée peuple alors
+Steam de raccourcis vers des programmes absents, et la bibliothèque ne se
+contente pas d'être vide, elle est morte.
+
+« Installé » veut dire deux choses à la fois, et `scan`, `status` et `install`
+l'entendent de la même façon : l'exécutable du profil existe, **et** le témoin
+de version `.retro-version` est là. Le témoin n'est déposé qu'après vérification
+de toutes les archives — RetroArch sans ses cores ne lance rien tout en
+paraissant installé. Un émulateur déposé à la main est donc signalé, pas
+inventorié. `retro status` fait la même vérification, avec le chemin qu'il
+reçoit déjà.
 
 `--manifest` et `--user-manifest` sont passés à `install` **et** à `scan`, avec
 les mêmes valeurs : c'est le manifeste qui décide où chaque émulateur
