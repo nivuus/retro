@@ -278,3 +278,267 @@ def test_groupe_aux_exigences_contradictoires_refuse(tmp_path):
                              'md5 = "bb", required = false')
     with pytest.raises(profiles.ProfileError, match="required"):
         profiles.load_profile(ecrire(tmp_path, "r.toml", contenu))
+
+
+# --- Les profils du propriétaire ------------------------------------------
+#
+# Le manifeste accepte déjà une surcharge utilisateur : c'est l'échappatoire
+# qui permet au dépôt public de ne référencer aucun émulateur contesté sans
+# brider personne. Déclarer un émulateur au manifeste ne suffit pourtant pas à
+# s'en servir — il lui faut un profil. Les profils du propriétaire vivent donc
+# hors dépôt, et se FUSIONNENT avec ceux du paquet.
+
+# La forme RÉELLE de `exe` : les archives officielles ont un dossier racine, et
+# l'antislash n'est pas un séparateur sous Linux. Une fixture au nom plat a
+# déjà laissé passer un défaut qui ignorait TOUS les systèmes avec les profils
+# livrés ; on ne la reproduit pas ici.
+DUCKSTATION = """
+schema = 1
+id = "duckstation"
+exe = 'DuckStation-x64\\duckstation-qt-x64-ReleaseLTCG.exe'
+
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".chd", ".cue"]
+launch = '-fullscreen "{rom}"'
+bios = []
+"""
+
+
+PPSSPP = """
+schema = 1
+id = "ppsspp"
+exe = 'PPSSPPWindows64\\PPSSPPWindows64.exe'
+
+[[system]]
+id = "psp"
+name = "PlayStation Portable"
+extensions = [".iso", ".cso"]
+launch = '--fullscreen "{rom}"'
+bios = []
+"""
+
+
+def _sources(tmp_path, livres: dict, miens: dict | None = None):
+    """Un dossier de profils livrés, un dossier de profils du propriétaire."""
+    paquet = tmp_path / "paquet"
+    paquet.mkdir()
+    for nom, contenu in livres.items():
+        (paquet / nom).write_text(contenu, encoding="utf-8")
+    if miens is None:
+        return paquet, tmp_path / "jamais-monte"
+    sien = tmp_path / "sien"
+    sien.mkdir()
+    for nom, contenu in miens.items():
+        (sien / nom).write_text(contenu, encoding="utf-8")
+    return paquet, sien
+
+
+def test_les_profils_du_proprietaire_s_ajoutent_a_ceux_du_paquet(tmp_path):
+    """Le besoin d'origine : ajouter un émulateur que le dépôt public ne peut
+    pas référencer. Pointer --profiles ailleurs perdait ceux du paquet ; la
+    seconde source les COMPLÈTE."""
+    paquet, sien = _sources(tmp_path, {"retroarch.toml": RETROARCH},
+                            {"ppsspp.toml": PPSSPP})
+    tous = profiles.load_profiles(paquet, sien)
+    assert set(tous) == {"retroarch", "ppsspp"}
+    assert tous["ppsspp"].exe == "PPSSPPWindows64\\PPSSPPWindows64.exe"
+    # Les systèmes du paquet que personne ne revendique restent servis.
+    assert {s.id for s in tous["retroarch"].systems} == {"psx", "snes"}
+
+
+def test_le_profil_du_proprietaire_l_emporte_a_identifiant_egal(tmp_path):
+    """La MÊME règle que le manifeste : à clé égale, la version du
+    propriétaire remplace celle du paquet, entièrement."""
+    sien = RETROARCH.replace('exe = "retroarch.exe"',
+                             "exe = 'RetroArch-nightly\\retroarch.exe'")
+    sien = sien.replace('id = "snes"', 'id = "megadrive"')
+    paquet, dossier = _sources(tmp_path, {"retroarch.toml": RETROARCH},
+                               {"retroarch.toml": sien})
+    tous = profiles.load_profiles(paquet, dossier)
+    assert set(tous) == {"retroarch"}
+    assert tous["retroarch"].exe == "RetroArch-nightly\\retroarch.exe"
+    # Remplacé, pas fusionné système par système : « snes » ne survit pas.
+    assert {s.id for s in tous["retroarch"].systems} == {"psx", "megadrive"}
+
+
+def test_le_dossier_du_proprietaire_absent_est_normal(tmp_path):
+    """Il vit sur un partage qui n'est pas monté au moment du
+    provisionnement — exactement comme le manifeste utilisateur. Une erreur
+    ici casserait l'installation d'une machine neuve."""
+    paquet, jamais = _sources(tmp_path, {"retroarch.toml": RETROARCH})
+    assert not jamais.exists()
+    assert set(profiles.load_profiles(paquet, jamais)) == {"retroarch"}
+
+
+def test_le_dossier_du_proprietaire_vide_est_normal(tmp_path):
+    paquet, sien = _sources(tmp_path, {"retroarch.toml": RETROARCH}, {})
+    assert set(profiles.load_profiles(paquet, sien)) == {"retroarch"}
+
+
+def test_sans_second_dossier_le_chargement_est_celui_d_avant(tmp_path):
+    paquet, _ = _sources(tmp_path, {"retroarch.toml": RETROARCH})
+    assert set(profiles.load_profiles(paquet)) == {"retroarch"}
+
+
+def test_un_systeme_revendique_par_le_proprietaire_lui_revient(tmp_path):
+    """Le cas qui décide : Duckstation revendique « psx », que le RetroArch
+    livré sert déjà. Le profil du propriétaire l'emporte, et le système
+    QUITTE le profil livré — sans quoi deux profils se disputeraient le même
+    dossier de ROMs et le scan trancherait par ordre alphabétique.
+    """
+    paquet, sien = _sources(tmp_path, {"retroarch.toml": RETROARCH},
+                            {"duckstation.toml": DUCKSTATION})
+    tous = profiles.load_profiles(paquet, sien)
+    assert {s.id for s in tous["duckstation"].systems} == {"psx"}
+    assert {s.id for s in tous["retroarch"].systems} == {"snes"}
+    # Un seul profil sert « psx » : le scan n'a plus rien à arbitrer.
+    servants = [pid for pid, p in tous.items()
+                if any(s.id == "psx" for s in p.systems)]
+    assert servants == ["duckstation"]
+
+
+def test_un_profil_livre_entierement_repris_disparait(tmp_path):
+    """Un profil sans système ne peut rien lancer, et `load_profile` refuse
+    déjà d'en produire un. Rendre celui-là amputé de TOUS ses systèmes
+    ferait mentir `retro status`, qui réclamerait l'installation d'un
+    émulateur dont plus aucun jeu ne dépend."""
+    tout = DUCKSTATION.replace('id = "duckstation"', 'id = "monretroarch"')
+    tout += """
+[[system]]
+id = "snes"
+name = "Super Nintendo"
+extensions = [".sfc"]
+launch = '-fullscreen "{rom}"'
+bios = []
+"""
+    paquet, sien = _sources(tmp_path, {"retroarch.toml": RETROARCH},
+                            {"mien.toml": tout})
+    tous = profiles.load_profiles(paquet, sien)
+    assert set(tous) == {"monretroarch"}
+
+
+def test_deux_profils_livres_ne_se_disputent_pas_un_systeme(tmp_path):
+    """Le refus des identifiants de système en double vaut ENTRE profils
+    d'une même source : deux profils qui revendiquent « psx » se disputent le
+    même dossier de ROMs, et rien dans le résultat ne le dirait — le scan
+    retient le premier par ordre alphabétique. Le message doit nommer le
+    système et les deux fichiers, sinon il faut relire tous les TOML."""
+    autre = DUCKSTATION
+    paquet, _ = _sources(tmp_path, {"retroarch.toml": RETROARCH,
+                                    "duckstation.toml": autre})
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profiles(paquet)
+    message = str(exc.value)
+    assert "psx" in message
+    assert "retroarch.toml" in message and "duckstation.toml" in message
+
+
+def test_deux_profils_du_proprietaire_ne_se_disputent_pas_un_systeme(tmp_path):
+    """La même garde dans le dossier du propriétaire : la préséance ne
+    départage QUE les deux sources, jamais deux fichiers de la même."""
+    copie = DUCKSTATION.replace('id = "duckstation"', 'id = "duckstation-nightly"')
+    paquet, sien = _sources(tmp_path, {"retroarch.toml": RETROARCH},
+                            {"a-duck.toml": DUCKSTATION, "z-duck.toml": copie})
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profiles(paquet, sien)
+    message = str(exc.value)
+    assert "psx" in message
+    assert "a-duck.toml" in message and "z-duck.toml" in message
+
+
+def test_deux_profils_de_meme_id_dans_le_dossier_du_proprietaire_refuses(tmp_path):
+    """La garde qui existait sur le dossier livré vaut aussi sur le sien : le
+    second effacerait le premier en silence."""
+    copie = DUCKSTATION.replace('id = "psx"', 'id = "ps2"')
+    paquet, sien = _sources(tmp_path, {"retroarch.toml": RETROARCH},
+                            {"a.toml": DUCKSTATION, "z.toml": copie})
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profiles(paquet, sien)
+    assert "duckstation" in str(exc.value)
+    assert "a.toml" in str(exc.value) and "z.toml" in str(exc.value)
+
+
+def test_le_dossier_livre_reste_obligatoire(tmp_path):
+    """L'absence du dossier du propriétaire est normale ; celle du dossier
+    livré ne l'est pas. Sans cette asymétrie, un --profiles mal orthographié
+    rendrait silencieusement les seuls profils du propriétaire, et les
+    systèmes livrés disparaîtraient de Steam sans un mot."""
+    _, sien = _sources(tmp_path, {}, {"duckstation.toml": DUCKSTATION})
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profiles(tmp_path / "jamais-livre", sien)
+    assert "jamais-livre" in str(exc.value)
+
+
+def test_un_dossier_du_proprietaire_qui_est_un_fichier_refuse(tmp_path):
+    """« Pas monté » et « mal orthographié » ne se ressemblent que de loin.
+
+    Donner le profil lui-même au lieu de son dossier est la faute de frappe
+    naturelle. Traitée comme une absence, elle rendrait silencieusement les
+    seuls profils du paquet : l'émulateur du propriétaire manquerait, et
+    aucun message ne dirait pourquoi.
+    """
+    paquet, _ = _sources(tmp_path, {"retroarch.toml": RETROARCH})
+    fichier = tmp_path / "duckstation.toml"
+    fichier.write_text(DUCKSTATION, encoding="utf-8")
+    with pytest.raises(profiles.ProfileError) as exc:
+        profiles.load_profiles(paquet, fichier)
+    assert "duckstation.toml" in str(exc.value)
+    assert "dossier" in str(exc.value)
+
+
+def _deux_sources(tmp_path, pid_utilisateur):
+    """Un profil livré et un profil du propriétaire qui servent le MÊME dossier
+    de ROMs sous des identifiants de système DIFFÉRENTS."""
+    livres, miens = tmp_path / "livres", tmp_path / "miens"
+    livres.mkdir(); miens.mkdir()
+    (livres / "ra.toml").write_text("""
+schema = 1
+id = "retroarch"
+exe = 'ra.exe'
+[[system]]
+id = "psx"
+name = "PlayStation"
+folders = ["Playstation"]
+extensions = [".cue"]
+launch = '-f "{rom}"'
+bios = []
+""", encoding="utf-8")
+    (miens / "m.toml").write_text(f"""
+schema = 1
+id = "{pid_utilisateur}"
+exe = 'perso.exe'
+[[system]]
+id = "psx-perso"
+name = "PlayStation (le mien)"
+folders = ["Playstation"]
+extensions = [".cue"]
+launch = '-f "{{rom}}"'
+bios = []
+""", encoding="utf-8")
+    return profiles.load_profiles(livres, miens)
+
+
+@pytest.mark.parametrize("pid", ["duckstation", "zz-le-mien"])
+def test_la_preseance_ne_depend_pas_du_nom_du_fichier(tmp_path, pid):
+    """« Le vôtre l'emporte » portait sur le seul identifiant de SYSTÈME. Un
+    profil du propriétaire servant « Playstation » sous un identifiant à lui
+    ne reprenait rien : les deux systèmes survivaient, et le scan tranchait
+    par ordre alphabétique des identifiants de PROFIL. Le propriétaire
+    gagnait ou perdait selon le nom qu'il avait donné à son fichier."""
+    fusionnes = _deux_sources(tmp_path, pid)
+    revendiquent = [
+        p.id for p in fusionnes.values() for s in p.systems
+        if "playstation" in profiles.folder_claims(s)
+    ]
+    assert revendiquent == [pid], (
+        "un seul profil doit revendiquer ce dossier, et ce doit être celui "
+        f"du propriétaire — trouvé : {revendiquent}"
+    )
+
+
+def test_le_profil_livre_devenu_vide_disparait(tmp_path):
+    """Il ne pourrait plus rien lancer, et `retro status` réclamerait
+    l'installation d'un émulateur dont plus aucun jeu ne dépend."""
+    assert "retroarch" not in _deux_sources(tmp_path, "duckstation")

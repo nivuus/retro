@@ -456,3 +456,134 @@ def test_le_motif_sans_temoin_nomme_les_deux_issues(tmp_path, capsys):
     # et ce test ne prouverait rien.
     assert "ne peut installer que ce qui y figure" in err
     assert "témoin" in err
+
+
+# --- scan : les profils du propriétaire ------------------------------------
+#
+# Déclarer un émulateur au manifeste utilisateur ne suffit pas à s'en servir :
+# il lui faut un profil. `--profiles` ne prenait qu'un dossier, et y pointer
+# ailleurs perdait ceux du paquet — l'extension utilisateur était donc
+# incomplète.
+
+# La forme RÉELLE de `exe` : un dossier racine d'archive, en chemin Windows.
+PROFIL_PAQUET = """
+schema = 1
+id = "retroarch"
+exe = 'RetroArch-Win64\\retroarch.exe'
+[[system]]
+id = "snes"
+name = "Super Nintendo"
+extensions = [".sfc"]
+launch = '-L "RetroArch-Win64\\cores\\snes9x_libretro.dll" -f "{rom}"'
+bios = []
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".chd"]
+launch = '-L "RetroArch-Win64\\cores\\swanstation_libretro.dll" -f "{rom}"'
+bios = []
+"""
+
+PROFIL_MIEN = """
+schema = 1
+id = "duckstation"
+exe = 'DuckStation-x64\\duckstation-qt-x64-ReleaseLTCG.exe'
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".chd"]
+launch = '-fullscreen -nogui "{rom}"'
+bios = []
+"""
+
+
+def _deux_sources(tmp_path):
+    """Les profils du paquet, ceux du propriétaire, les ROMs et les manifestes."""
+    paquet = tmp_path / "profiles"
+    paquet.mkdir()
+    (paquet / "retroarch.toml").write_text(PROFIL_PAQUET, encoding="utf-8")
+    mien = tmp_path / "mes-profils"
+    mien.mkdir()
+    (mien / "duckstation.toml").write_text(PROFIL_MIEN, encoding="utf-8")
+    for systeme, rom in (("snes", "Chrono Trigger (USA).sfc"),
+                         ("psx", "Tekken 3 (Europe).chd")):
+        d = tmp_path / "ROMs" / systeme
+        d.mkdir(parents=True)
+        (d / rom).write_bytes(b"x")
+    noyau = tmp_path / "core.toml"
+    noyau.write_text(MANIFESTE_NOYAU, encoding="utf-8")
+    utilisateur = tmp_path / "emulators.toml"
+    utilisateur.write_text(MANIFESTE_UTILISATEUR, encoding="utf-8")
+    return paquet, mien, noyau, utilisateur
+
+
+def test_scan_fusionne_les_profils_du_proprietaire(tmp_path, capsys):
+    """Les deux dossiers servent, et à système disputé le sien l'emporte.
+
+    Le propriétaire ajoute Duckstation pour que « psx » passe par lui plutôt
+    que par le core de RetroArch. Remplacer --profiles perdrait « snes » avec
+    le profil livré ; ne rien faire laisserait deux profils se disputer le
+    dossier psx\\, et le scan trancherait par ordre alphabétique.
+    """
+    paquet, mien, noyau, utilisateur = _deux_sources(tmp_path)
+    sortie = tmp_path / "inv.json"
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(paquet), "--user-profiles", str(mien),
+                     "--manifest", str(noyau),
+                     "--user-manifest", str(utilisateur),
+                     "--output", str(sortie),
+                     "--emulation-root", "D:\\Emulation"])
+    assert code == 0
+    assert capsys.readouterr().err == ""
+    par_systeme = {d["system_name"]: d
+                   for d in json.loads(sortie.read_text(encoding="utf-8"))}
+    # Le profil livré survit à l'ajout : « snes » est toujours là.
+    assert par_systeme["Super Nintendo"]["emulator_exe"] == (
+        "D:\\Emulation\\RetroArch\\RetroArch-Win64\\retroarch.exe")
+    # Et « psx » passe par l'émulateur du propriétaire, chemin ET gabarit.
+    psx = par_systeme["PlayStation"]
+    assert psx["emulator_exe"] == (
+        "D:\\Emulation\\DuckStation-v0.1\\DuckStation-x64\\"
+        "duckstation-qt-x64-ReleaseLTCG.exe")
+    assert psx["launch_template"] == '-fullscreen -nogui "{rom}"'
+
+
+def test_scan_sans_dossier_de_profils_du_proprietaire(tmp_path, capsys):
+    """Son absence est NORMALE : il vit sur un partage qui n'est pas monté au
+    moment du provisionnement. Une erreur ici casserait la première
+    installation d'une machine neuve."""
+    paquet, _, noyau, _ = _deux_sources(tmp_path)
+    sortie = tmp_path / "inv.json"
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(paquet),
+                     "--user-profiles", str(tmp_path / "jamais-monte"),
+                     "--manifest", str(noyau),
+                     "--output", str(sortie),
+                     "--emulation-root", "D:\\Emulation"])
+    assert code == 0
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    systemes = {d["system_name"]
+                for d in json.loads(sortie.read_text(encoding="utf-8"))}
+    assert systemes == {"Super Nintendo", "PlayStation"}
+
+
+def test_scan_refuse_deux_profils_du_proprietaire_sur_un_meme_systeme(tmp_path, capsys):
+    """La préséance ne départage que les deux SOURCES. Deux profils du même
+    dossier qui revendiquent « psx » se disputeraient le même dossier de
+    ROMs, et le message doit dire lequel corriger."""
+    paquet, mien, noyau, utilisateur = _deux_sources(tmp_path)
+    (mien / "zz-duck.toml").write_text(
+        PROFIL_MIEN.replace('id = "duckstation"', 'id = "duckstation-nightly"'),
+        encoding="utf-8")
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(paquet), "--user-profiles", str(mien),
+                     "--manifest", str(noyau),
+                     "--user-manifest", str(utilisateur),
+                     "--output", str(tmp_path / "inv.json"),
+                     "--emulation-root", "D:\\Emulation"])
+    assert code != 0
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert "psx" in err
+    assert "duckstation.toml" in err and "zz-duck.toml" in err

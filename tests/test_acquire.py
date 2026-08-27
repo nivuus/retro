@@ -221,3 +221,85 @@ def test_panne_de_telechargement_nomme_l_emulateur(tmp_path):
     with pytest.raises(acquire.AcquireError) as exc:
         acquire.acquire(e, tmp_path / "Emulation", fetch=fetch)
     assert "Truc" in str(exc.value)
+
+
+def test_un_temporaire_qui_ne_s_efface_pas_n_emporte_pas_le_temoin(
+        tmp_path, monkeypatch):
+    """Mesuré sur la machine du propriétaire, en production.
+
+    Le secours binaire 7-Zip laisse un descripteur ouvert sur l'archive ;
+    Windows refuse alors de la supprimer ([WinError 32]) et l'échec du
+    nettoyage du dossier temporaire remontait APRÈS que l'installation soit
+    complète : 15 005 fichiers en place, 197 cores, et pas de témoin — donc
+    430 Mo à retélécharger au passage suivant.
+
+    Le défaut n'existe pas sous Linux, où un fichier ouvert se supprime : on
+    simule ici le refus au niveau de l'appel système, là où Windows le pose.
+    """
+    import os
+    import tempfile
+
+    abri = tmp_path / "tmp"
+    abri.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(abri))
+
+    vrai_unlink = os.unlink
+
+    def unlink_refuse(chemin, *args, **kwargs):
+        if os.path.basename(os.fspath(chemin)) == "truc.zip":
+            raise PermissionError(
+                32, "The process cannot access the file because it is being "
+                    "used by another process")
+        return vrai_unlink(chemin, *args, **kwargs)
+
+    monkeypatch.setattr(os, "unlink", unlink_refuse)
+
+    blob = faire_zip(tmp_path / "src.zip", {"truc.exe": "binaire"})
+    e = emu(hashlib.sha256(blob).hexdigest(), version="1.19.1")
+    racine = tmp_path / "Emulation"
+
+    assert acquire.acquire(e, racine, fetch=lambda u: blob) == "installé"
+    assert (racine / "Truc" / "truc.exe").read_text() == "binaire"
+    assert (racine / "Truc" / ".retro-version").read_text().strip() == "1.19.1"
+    # Le nettoyage a bien échoué : sans ce reste, le test passerait à vide.
+    assert list(abri.rglob("truc.zip")), "le refus de suppression n'a pas joué"
+
+
+def test_un_basculement_entre_volumes_ne_depend_pas_du_menage(
+        tmp_path, monkeypatch):
+    """Le même défaut, un cran plus tôt : `shutil.move` entre deux volumes
+    copie puis SUPPRIME la source, et cette suppression lève alors que la
+    destination est déjà complète. C'est le chemin réel chez le propriétaire —
+    %TEMP% sur C:, émulation sur D: — donc le témoin en dépendrait aussi."""
+    import errno
+    import os
+    import tempfile
+
+    abri = tmp_path / "tmp"
+    abri.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(abri))
+
+    def renommage_refuse(src, dst, *args, **kwargs):
+        """Les deux noms du renommage : la copie doit être le seul chemin."""
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    vrai_unlink = os.unlink
+
+    def unlink_refuse(chemin, *args, **kwargs):
+        if os.path.basename(os.fspath(chemin)) == "truc.exe":
+            raise PermissionError(
+                32, "The process cannot access the file because it is being "
+                    "used by another process")
+        return vrai_unlink(chemin, *args, **kwargs)
+
+    monkeypatch.setattr(os, "replace", renommage_refuse)
+    monkeypatch.setattr(os, "rename", renommage_refuse)
+    monkeypatch.setattr(os, "unlink", unlink_refuse)
+
+    blob = faire_zip(tmp_path / "src.zip", {"truc.exe": "binaire"})
+    e = emu(hashlib.sha256(blob).hexdigest(), version="2.4.0")
+    racine = tmp_path / "Emulation"
+
+    assert acquire.acquire(e, racine, fetch=lambda u: blob) == "installé"
+    assert (racine / "Truc" / "truc.exe").read_text() == "binaire"
+    assert (racine / "Truc" / ".retro-version").read_text().strip() == "2.4.0"

@@ -117,6 +117,16 @@ def prune_orphans(grid_dir: pathlib.Path, orphaned: list[int]) -> list[str]:
     supprimes = []
     for fichier in grid_dir.iterdir():
         if fichier.stem in condamnes:
-            fichier.unlink()
+            try:
+                fichier.unlink()
+            except OSError:
+                # Une vignette que le système refuse de supprimer — le client
+                # Steam la tient ouverte, et Windows lève alors [WinError 32] —
+                # ne doit pas faire échouer la synchronisation. L'appelant
+                # écrit les raccourcis APRÈS cette purge : une exception ici
+                # emporterait une bibliothèque qui, par ailleurs, remonte très
+                # bien, pour un ornement orphelin. Non compté : rien n'a été
+                # supprimé, et le passage suivant réessaiera.
+                continue
             supprimes.append(fichier.name)
     return supprimes

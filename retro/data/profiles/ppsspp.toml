@@ -1,0 +1,44 @@
+# PPSSPP — PlayStation Portable.
+#
+# L'archive épinglée au manifeste a été listée : 194 entrées, aucun dossier
+# racine, PPSSPPWindows64.exe à la racine à côté de assets\. `exe` est donc un
+# nom plat.
+#
+# Les trois options viennent de UI/NativeApp.cpp de la révision v1.20.4, celle
+# dont le manifeste porte l'empreinte :
+#   --fullscreen      force bFullScreen sans l'enregistrer dans la config ;
+#   --pause-menu-exit fait QUITTER PPSSPP quand on choisit « Exit » dans le
+#                     menu de pause, au lieu de revenir à la liste de jeux ;
+#   --escape-exit     ferait la même chose sur Échap — inutile ici, la console
+#                     n'a pas de clavier.
+#
+# La liste d'extensions est lue DANS l'exécutable livré : « iso:cso:chd:pbp:
+# elf:prx:ppdmp ». Les trois dernières sont écartées — homebrew et traces —,
+# elles n'ont rien à faire dans un dossier de jeux.
+
+schema = 1
+id  = "ppsspp"
+exe = 'PPSSPPWindows64.exe'
+
+[input]
+steam_input = "required"
+mode        = "xinput"
+
+[exit]
+# Le seul des sept à offrir une sortie manette PAR DÉFAUT : dans
+# Core/KeyMapDefaults.cpp (v1.20.4), la table XInput lie VIRTKEY_PAUSE à
+# NKCODE_HOME — le bouton Guide — et à la gâchette gauche à fond. Le menu de
+# pause s'ouvre donc sans clavier, et --pause-menu-exit fait que son « Exit »
+# rend la main à Steam au lieu d'afficher la liste de jeux.
+native   = "Guide (ou gâchette gauche) puis Exit"
+fallback = "alt+f4"
+
+[[system]]
+id         = "psp"
+name       = "PlayStation Portable"
+folders    = ["PSP"]
+extensions = [".iso", ".cso", ".chd", ".pbp"]
+launch     = '--fullscreen --pause-menu-exit "{rom}"'
+# PPSSPP émule le firmware PSP en haut niveau : docs.libretro.com l'écrit noir
+# sur blanc, « No BIOS file required to play ». Rien à exiger.
+bios       = []

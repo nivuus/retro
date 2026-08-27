@@ -45,3 +45,117 @@ install_dir = "Dolphin"
 profile     = "dolphin"
 
 # L'archive n'a qu'un dossier racine, Dolphin-x64\.
+
+# Les sept entrées qui suivent couvrent ce que RetroArch sert mal. Leurs
+# empreintes ont été calculées le 2026-08-27 en téléchargeant chaque archive
+# hors du dépôt et en passant son contenu à hashlib.sha256() ; aucune n'est
+# recopiée d'une page tierce. Celle de RPCS3 a en outre été comparée au
+# fichier .sha256 que le projet publie à côté de son archive — les deux
+# concordent.
+#
+# Toutes les URL épinglent une VERSION, jamais une étiquette « latest » ou
+# « nightly » : DuckStation et Xemu republient sous ces étiquettes-là, et une
+# empreinte qui vieillit d'un jour ferait échouer l'installation sur la console
+# sans que rien n'explique pourquoi. Aucun de ces sept n'a d'archive
+# supplémentaire à déclarer : contrairement à RetroArch, chacun est complet
+# dans une seule archive — vérifié en la listant.
+
+[emulator.duckstation]
+name        = "DuckStation"
+version     = "0.1-11609"
+url         = "https://github.com/stenzek/duckstation/releases/download/v0.1-11609/duckstation-windows-x64-release.zip"
+sha256      = "17a6c77ac550e2d66d9e6e5d5ebe2bc56aa69068b3e9594f7573d7e0f3403e09"
+archive     = "zip"
+install_dir = "DuckStation"
+profile     = "duckstation"
+
+# 281 entrées, AUCUN dossier racine : duckstation-qt-x64-ReleaseLTCG.exe est à
+# la racine de l'archive. Le profil ne porte donc pas de préfixe.
+#
+# L'étiquette « latest » du projet est une publication roulante réécrite en
+# place : c'est le tag versionné v0.1-11609 qui est épinglé ici.
+
+[emulator.pcsx2]
+name        = "PCSX2"
+version     = "2.6.3"
+url         = "https://github.com/PCSX2/pcsx2/releases/download/v2.6.3/pcsx2-v2.6.3-windows-x64-Qt.7z"
+sha256      = "963ae6c82bc858a09115c2455247feb76b453862c04f60d41ef80739d802ae60"
+archive     = "7z"
+install_dir = "PCSX2"
+profile     = "pcsx2"
+
+# 259 entrées, AUCUN dossier racine : pcsx2-qt.exe est à la racine.
+# v2.6.3 est la dernière version STABLE ; les v2.7.x du même dépôt sont des
+# pré-publications quotidiennes, qu'épingler reviendrait à réécrire ce
+# manifeste chaque semaine.
+#
+# Son 7z se lit avec py7zr (filtres LZMA2 + BCJ x86) : il n'emprunte pas le
+# secours binaire 7-Zip.
+
+[emulator.ppsspp]
+name        = "PPSSPP"
+version     = "1.20.4"
+url         = "https://github.com/hrydgard/ppsspp/releases/download/v1.20.4/PPSSPP-v1.20.4-Windows-x64.zip"
+sha256      = "fbc9cd2f5131b159a92424e5c458c35ce43ba603cdded64dfc98e4bd4f17ff93"
+archive     = "zip"
+install_dir = "PPSSPP"
+profile     = "ppsspp"
+
+# 194 entrées, AUCUN dossier racine : PPSSPPWindows64.exe est à la racine,
+# avec le dossier assets\ dont l'émulateur ne se passe pas.
+
+[emulator.flycast]
+name        = "Flycast"
+version     = "2.7"
+url         = "https://github.com/flyinghead/flycast/releases/download/v2.7/flycast-win64-2.7.zip"
+sha256      = "7edf489ba6b3053703a18ce8233767eb71a2d89e4bda0421b312c2167a739161"
+archive     = "zip"
+install_dir = "Flycast"
+profile     = "flycast"
+
+# UNE entrée : flycast.exe, seul, à la racine. Rien d'autre à extraire.
+
+[emulator.xemu]
+name        = "xemu"
+version     = "0.8.136"
+url         = "https://github.com/xemu-project/xemu/releases/download/v0.8.136/xemu-0.8.136-windows-x86_64.zip"
+sha256      = "b25a6c24a2c2c36a0843a153cd9ee59ca6833ef87bdcd855ba0824930e4ddd1d"
+archive     = "zip"
+install_dir = "Xemu"
+profile     = "xemu"
+
+# Deux entrées, AUCUN dossier racine : xemu.exe et LICENSE.txt.
+# L'archive xemu-win-x86_64-release.zip de la même publication a le même
+# contenu, mais son nom est réutilisé d'une version à l'autre : c'est le nom
+# VERSIONNÉ qui est épinglé ici.
+
+[emulator.rpcs3]
+name        = "RPCS3"
+version     = "0.0.42-19843"
+url         = "https://github.com/RPCS3/rpcs3-binaries-win/releases/download/build-6567a5a2f8ab47a89db395d6b47a7b59b23d6960/rpcs3-v0.0.42-19843-6567a5a2_win64_msvc.7z"
+sha256      = "4458897d7b020a35e3d7409762d0e739b9e0180b51d15e4857d64f862863f7a4"
+archive     = "7z"
+install_dir = "RPCS3"
+profile     = "rpcs3"
+
+# 274 entrées, AUCUN dossier racine : rpcs3.exe est à la racine.
+#
+# ATTENTION : ce 7z emploie le filtre BCJ2, que py7zr ne sait pas lire. Il
+# passe donc par le SECOURS binaire 7-Zip de acquire._extraire_7z, comme les
+# archives de RetroArch — vérifié le 2026-08-27, py7zr lève bien
+# UnsupportedCompressionMethodError sur cette archive. Sans binaire 7-Zip sur
+# le PATH, cet émulateur-là ne s'installe pas.
+
+[emulator.cemu]
+name        = "Cemu"
+version     = "2.6"
+url         = "https://github.com/cemu-project/Cemu/releases/download/v2.6/cemu-2.6-windows-x64.zip"
+sha256      = "a6bcc2bc42a362d10213819948f3152fae7d47f70067f25939b51d3ddcfb0896"
+archive     = "zip"
+install_dir = "Cemu"
+profile     = "cemu"
+
+# 284 entrées, et le SEUL des sept à porter un dossier racine : Cemu_2.6\.
+# Le profil porte donc ce préfixe dans son exe, comme RetroArch et Dolphin.
+# Ce préfixe contient le numéro de version : il change à chaque mise à jour du
+# manifeste, et le profil doit changer avec lui.

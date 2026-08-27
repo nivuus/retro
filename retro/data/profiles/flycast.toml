@@ -1,0 +1,52 @@
+# Flycast — Dreamcast.
+#
+# L'archive épinglée au manifeste ne contient qu'UNE entrée : flycast.exe, à
+# la racine. `exe` est donc un nom plat, et il n'y a rien d'autre à extraire.
+#
+# La ligne de commande vient de core/cfg/cl.cpp de la révision v2.7, celle dont
+# le manifeste porte l'empreinte — « Usage: flycast [option]... [<rom path>] ».
+# Flycast n'a PAS d'option -fullscreen : le plein écran est une valeur de
+# configuration, que -config pose de façon transitoire, sans réécrire l'emu.cfg
+# du propriétaire. La clé est lue dans core/sdl/sdl.cpp de la même révision —
+# config::loadBool("window", "fullscreen", ...) — et « yes » est l'une des
+# quatre valeurs vraies que IniFile::getBool accepte.
+#
+# La liste d'extensions vient de core/ui/gui_util.cpp de cette révision : zip,
+# 7z, chd, gdi, cdi, cue, plus bin/lst/dat réservés à l'arcade. Les quatre
+# formats de disque Dreamcast sont retenus ; zip et 7z sont des romsets NAOMI,
+# qui ne sont pas des jeux Dreamcast et n'ont rien à faire dans ce dossier.
+
+schema = 1
+id  = "flycast"
+exe = 'flycast.exe'
+
+[input]
+steam_input = "required"
+mode        = "xinput"
+
+[exit]
+# Vérifié dans core/sdl/sdl_gamepad.cpp (v2.7) : la mise en correspondance par
+# défaut lie SDL_CONTROLLER_BUTTON_BACK — Select — à EMU_BTN_MENU. Le menu de
+# Flycast s'ouvre donc à la manette sans rien configurer, et il offre « Exit ».
+native   = "Back (Select) puis Exit"
+fallback = "alt+f4"
+
+[[system]]
+id         = "dreamcast"
+name       = "Dreamcast"
+folders    = ["Sega Dreamcast", "DC"]
+extensions = [".chd", ".gdi", ".cdi", ".cue"]
+launch     = '-config window:fullscreen=yes "{rom}"'
+# dc_boot.bin est FACULTATIF : l'exécutable livré porte « Forcing HLE BIOS »
+# et l'option « HLE BIOS », et docs.libretro.com marque ce fichier « Optional »
+# — c'est aussi de là que vient son MD5, la seule empreinte publiquement
+# citable pour ce dump. Même statut que gba_bios.bin côté RetroArch : il
+# améliore la fidélité, il ne conditionne pas le lancement.
+#
+# Flycast accepte aussi ce dump sous le nom dc_bios.bin. Ce second nom n'est
+# PAS déclaré : rien ici ne permet de vérifier que les deux portent le même
+# contenu, et déclarer le mauvais couple ferait dire « corrompu » à propos d'un
+# fichier valide — pire qu'un fichier non déclaré.
+bios       = [
+  { file = "dc_boot.bin", md5 = "e10c53c2f8b90bab96ead2d368858623", required = false },
+]

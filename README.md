@@ -80,6 +80,7 @@ retro scan --roms /mnt/roms \
            --emulation-root 'D:\Emulation' \
            --emulation-root-local /mnt/emulation \
            --user-manifest 'G:\retro\emulators.toml' \
+           --user-profiles 'G:\retro\profiles' \
            --output inventaire.json
 
 # 3. faire remonter le tout dans Steam
@@ -94,6 +95,8 @@ retro sync --steam-root /mnt/steam \
 retro status --roms 'G:\ROMs' \
              --roms-windows 'G:\ROMs' \
              --emulation-root 'D:\Emulation' \
+             --user-manifest 'G:\retro\emulators.toml' \
+             --user-profiles 'G:\retro\profiles' \
              --bios 'G:\ROMs\bios'
 ```
 
@@ -126,6 +129,36 @@ reçoit déjà.
 les mêmes valeurs : c'est le manifeste qui décide où chaque émulateur
 s'installe, donc lui seul sait où l'inventaire doit pointer. Les donner à l'un
 et pas à l'autre produit des raccourcis qui ne lancent rien.
+
+`--user-profiles` est le pendant de `--user-manifest` pour les profils, et va
+avec lui : `scan` et `status` le prennent tous les deux, avec les mêmes
+valeurs.
+
+### Vos propres émulateurs
+
+Le dépôt est public et ne référence que des émulateurs au statut juridique
+clair. Rien ne vous limite : vous déclarez les vôtres dans **votre** manifeste
+(`--user-manifest`) et **votre** dossier de profils (`--user-profiles`), tous
+deux hors dépôt.
+
+Vos profils **complètent** ceux du paquet, ils ne les remplacent pas : ajouter
+le vôtre ne vous fait perdre aucun des systèmes livrés. L'absence du dossier
+n'est pas une erreur — il vit souvent sur un partage qui n'est pas monté quand
+la machine se provisionne.
+
+Deux règles de préséance, et c'est tout :
+
+- **À identifiant de profil égal, le vôtre l'emporte**, entièrement, systèmes
+  compris — exactement comme une entrée de votre manifeste remplace celle du
+  noyau.
+- **Un système que vous revendiquez vous revient**, et quitte le profil livré :
+  écrire un profil qui déclare `psx` suffit à faire passer vos jeux
+  PlayStation par votre émulateur plutôt que par le DuckStation livré.
+
+En revanche, **deux profils du même dossier ne peuvent pas revendiquer le même
+système** : un seul dossier de ROMs porte ce nom, et le scan trancherait par
+ordre alphabétique — renommer un fichier changerait alors l'émulateur qui lance
+vos jeux, sans un mot. Ce cas-là est refusé en nommant les deux fichiers.
 
 `retro scan` produit ce JSON, que `retro sync` relit tel quel :
 
@@ -161,11 +194,19 @@ Ce qu'il télécharge est décrit par un manifeste TOML, et rien d'autre :
 - **Le manifeste noyau**, `retro/data/manifests/core.toml`, livré avec le
   paquet. Il ne référence que des émulateurs au statut juridique clair — ce
   dépôt est public, et pointer vers un émulateur contesté est un acte de
-  distribution. Aujourd'hui : RetroArch (buildbot.libretro.com) et Dolphin
-  (dl.dolphin-emu.org).
+  distribution. Aujourd'hui : RetroArch (buildbot.libretro.com), Dolphin
+  (dl.dolphin-emu.org), puis DuckStation, PCSX2, PPSSPP, Flycast, xemu, RPCS3
+  et Cemu, chacun depuis la publication versionnée de son propre projet.
+  RetroArch couvre le rétro ; les sept autres couvrent ce qu'il sert mal —
+  PlayStation, PlayStation 2, PSP, Dreamcast, Xbox, PlayStation 3 et Wii U.
 - **Votre manifeste**, hors dépôt, passé par `--user-manifest`. Même schéma,
   sans cette limite : c'est là que vous déclarez vos propres émulateurs. Son
   absence est normale et n'est pas une erreur.
+
+Déclarer un émulateur au manifeste ne suffit pas à s'en servir : il lui faut
+aussi un **profil**, qui dit quels systèmes il couvre, quelles extensions il
+accepte et comment on le lance. Vos profils vivent eux aussi hors dépôt, dans
+le dossier que `--user-profiles` désigne — voir « Vos propres émulateurs ».
 
 Chaque archive porte au manifeste une **empreinte SHA-256 épinglée**, et elle
 est **vérifiée avant toute extraction**. Une empreinte qui ne correspond pas
@@ -181,8 +222,9 @@ secours 7-Zip, lui, maintient l'extraction sous son `-o`.
 Un émulateur peut être livré en plusieurs archives qui se déversent dans le
 même dossier. Toutes sont téléchargées et vérifiées **avant** que la moindre
 écriture ne touche à l'installation existante — un émulateur amputé est pire
-qu'un émulateur absent, parce qu'il paraît installé et ne lance rien. RetroArch
-est dans ce cas : son archive principale ne contient aucun core.
+qu'un émulateur absent, parce qu'il paraît installé et ne lance rien. Parmi
+les émulateurs livrés, RetroArch est le seul dans ce cas : son archive
+principale ne contient aucun core.
 
 L'installation est idempotente. Un témoin `.retro-version` évite de
 retélécharger des gigaoctets déjà présents à chaque reconstruction de la
@@ -190,10 +232,11 @@ machine.
 
 ### Prérequis : un binaire 7-Zip
 
-**En pratique, RetroArch ne s'installe pas sans un binaire 7-Zip sur le
-`PATH`.** `py7zr`, la bibliothèque Python, ne sait pas lire le filtre **BCJ2**
-— elle le marque « Unsupported » dans son propre code — et c'est précisément
-celui qu'emploient les archives du buildbot libretro.
+**En pratique, ni RetroArch ni RPCS3 ne s'installent sans un binaire 7-Zip sur
+le `PATH`.** `py7zr`, la bibliothèque Python, ne sait pas lire le filtre
+**BCJ2** — elle le marque « Unsupported » dans son propre code — et c'est
+précisément celui qu'emploient les archives du buildbot libretro et celles de
+RPCS3. Les 7z de PCSX2, eux, se lisent sans ce secours.
 
 `retro install` essaie `py7zr` d'abord, puis se rabat sur le premier binaire
 trouvé parmi `7zz`, `7z`, `7za`, `7zr`, `7zr.exe`, `7z.exe`. S'il n'en trouve

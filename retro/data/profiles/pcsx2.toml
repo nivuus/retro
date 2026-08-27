@@ -1,0 +1,50 @@
+# PCSX2 — PlayStation 2.
+#
+# L'archive épinglée au manifeste a été listée : 259 entrées, aucun dossier
+# racine, pcsx2-qt.exe à la racine. `exe` est donc un nom plat.
+#
+# Les options sont lues DANS l'exécutable livré, celui dont le manifeste porte
+# l'empreinte — « Usage: {} [parameters] [--] [boot filename] » :
+#   -batch      « Enables batch mode (exits after shutting down) » ;
+#   -nogui      « Hides main window while running (implies batch mode) » ;
+#   -fullscreen « Enters fullscreen mode immediately after starting ».
+# Sans -batch/-nogui, arrêter le jeu rend la fenêtre de bibliothèque de PCSX2,
+# à la souris, au lieu de rendre la main à Steam.
+#
+# La liste d'extensions vient du filtre de fichiers du même exécutable :
+# *.bin *.iso *.cue *.mdf *.chd *.cso *.zso *.gz *.dump.
+
+schema = 1
+id  = "pcsx2"
+exe = 'pcsx2-qt.exe'
+
+[input]
+steam_input = "required"
+mode        = "xinput"
+
+[exit]
+# Comme DuckStation, PCSX2 ne lie aucun bouton de manette par défaut à
+# l'ouverture de son menu de pause : la liaison est à faire dans ses réglages,
+# et rien d'honnête ne peut être annoncé ici avant. -batch fait quitter
+# l'application dès que le jeu est arrêté depuis ce menu.
+native   = ""
+fallback = "alt+f4"
+
+[[system]]
+id         = "ps2"
+name       = "PlayStation 2"
+folders    = ["PS2"]
+# .bin est écarté : c'est la piste brute d'un .cue, et la compter ferait une
+# entrée Steam de trop par jeu. .gz et .dump le sont aussi — le premier est
+# trop générique pour un dossier de ROMs, le second est un format de trace.
+extensions = [".iso", ".chd", ".cso", ".zso", ".cue", ".mdf"]
+launch     = '-batch -nogui -fullscreen "{rom}"'
+# PCSX2 EXIGE un BIOS PS2 dumpé depuis sa propre console — il n'a aucune
+# émulation de remplacement. Rien n'est déclaré ici pour autant, et c'est
+# délibéré : PCSX2 ne cherche AUCUN nom de fichier particulier, il scanne son
+# dossier bios\ et lit l'en-tête de ce qu'il y trouve. Il n'existe donc pas de
+# couple (nom, md5) qui vaudrait pour tout le monde, et en inventer un ferait
+# dire « corrompu » au rapport à quelqu'un qui a déposé un BIOS parfaitement
+# valide sous un autre nom — l'accusation exacte que le mécanisme de groupes
+# existe pour éviter. Un fichier non vérifiable vaut mieux non déclaré.
+bios       = []

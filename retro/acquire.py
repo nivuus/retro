@@ -18,6 +18,7 @@ lance rien.
 from __future__ import annotations
 
 import hashlib
+import os
 import pathlib
 import shutil
 import subprocess
@@ -135,6 +136,30 @@ def safe_extract(archive: pathlib.Path, kind: str,
         ) from exc
 
 
+def _basculer(source: pathlib.Path, cible: pathlib.Path) -> None:
+    """Met l'arbre extrait en place, sans laisser le ménage décider du sort.
+
+    `shutil.move` entre DEUX VOLUMES copie puis supprime la source, et une
+    suppression qui échoue lève alors que la destination est déjà complète.
+    C'est exactement le symptôme corrigé plus bas : installation entière,
+    témoin jamais écrit. Et c'est le chemin réellement emprunté chez le
+    propriétaire, dont le %TEMP% est sur C: et l'émulation sur D:.
+
+    On copie donc explicitement, et la source reste au nettoyage tolérant du
+    dossier temporaire — dont c'est le rôle, et qui n'emporte plus rien.
+    """
+    try:
+        # Même volume : un renommage, atomique, sans rien à nettoyer ensuite.
+        os.replace(source, cible)
+        return
+    except OSError:
+        # Volumes différents (EXDEV) ou renommage refusé. Un renommage qui
+        # échoue n'écrit rien à moitié ; la copie qui suit dira elle-même ce
+        # qui ne va pas, en nommant le fichier fautif.
+        pass
+    shutil.copytree(source, cible, symlinks=True)
+
+
 def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> str:
     """Installe l'émulateur s'il manque ou si sa version a changé.
 
@@ -186,7 +211,17 @@ def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> str:
             )
         supplements.append((b, part.archive))
 
-    with tempfile.TemporaryDirectory() as tmp:
+    # ignore_cleanup_errors : le nettoyage du temporaire ne doit JAMAIS
+    # emporter une installation par ailleurs terminée. Mesuré en
+    # production sous Windows : le secours binaire 7-Zip laisse un
+    # descripteur ouvert sur l'archive, la suppression lève [WinError 32]
+    # « used by another process » — et cette exception remontait APRÈS le
+    # basculement, donc avant l'écriture du témoin. L'émulateur était
+    # complet, jamais attesté, et le passage suivant retéléchargeait tout.
+    # Ce qu'on abandonne en tolérant l'échec est un dossier de %TEMP% que
+    # l'OS reprend ; ce qu'on garde est l'ordre ci-dessous, qui reste le
+    # seul juge de la complétude.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         racine = pathlib.Path(tmp)
         archive = racine / f"{emu.key}.{emu.archive}"
         archive.write_bytes(blob)
@@ -203,7 +238,7 @@ def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> str:
         if cible.exists():
             shutil.rmtree(cible)
         cible.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(extrait), str(cible))
+        _basculer(extrait, cible)
 
     temoin.write_text(emu.version + "\n", encoding="utf-8")
     return "réinstallé" if deja else "installé"
