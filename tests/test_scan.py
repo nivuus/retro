@@ -188,3 +188,132 @@ def test_le_resultat_est_deterministe(tmp_path, profils):
     racine = faire_roms(tmp_path, ["snes/B.sfc", "snes/A.sfc", "psx/C.cue"])
     assert [r.title for r in scanner(racine, profils)] == \
            [r.title for r in scanner(racine, profils)]
+
+
+# --- l'émulateur doit exister -------------------------------------------
+
+PROFIL_DOLPHIN = """
+schema = 1
+id = "dolphin"
+exe = "Dolphin.exe"
+[[system]]
+id = "gc"
+name = "GameCube"
+extensions = [".iso"]
+launch = '-b -e "{rom}"'
+bios = []
+"""
+
+INSTALL_DIRS = {"retroarch": "RetroArch", "dolphin": "Dolphin"}
+
+
+def faire_emulation(tmp_path, *installes):
+    """La racine d'émulation TELLE QU'ELLE EST SUR CE DISQUE.
+
+    L'inventaire, lui, continue de décrire « D:\\Emulation » : c'est toute la
+    difficulté, et c'est pourquoi les deux chemins sont deux paramètres.
+    """
+    racine = tmp_path / "Emulation"
+    racine.mkdir(exist_ok=True)
+    for chemin in installes:
+        exe = racine.joinpath(*chemin.split("/"))
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        exe.write_bytes(b"MZ")
+    return racine
+
+
+@pytest.fixture
+def deux_profils(tmp_path, profils):
+    p = tmp_path / "dolphin.toml"
+    p.write_text(PROFIL_DOLPHIN, encoding="utf-8")
+    return {**profils, "dolphin": profiles.load_profile(p)}
+
+
+def test_un_systeme_dont_l_emulateur_manque_est_ignore(tmp_path, profils):
+    """Le scan fabriquait le chemin de l'exécutable par concaténation, sans
+    jamais vérifier qu'il existe, et la garde de `sync` l'acceptait puisqu'il
+    est bien sous la racine d'émulation. Une installation ratée — URL morte,
+    réseau absent au provisionnement, dossier vidé à la main — peuplait donc
+    la bibliothèque Steam d'entrées qui ne démarrent pas. Une bibliothèque
+    vide se diagnostique ; une bibliothèque morte se subit.
+    """
+    racine = faire_roms(tmp_path, ["snes/Jeu.sfc"])
+    emulation = faire_emulation(tmp_path)
+    inv = scan.scan(racine, profils, "D:\\Emulation", INSTALL_DIRS,
+                    emulation_root_local=emulation)
+    assert inv == []
+
+
+def test_un_systeme_dont_l_emulateur_existe_est_scanne(tmp_path, profils):
+    """Le pendant du précédent : la vérification ne doit pas tout jeter."""
+    racine = faire_roms(tmp_path, ["snes/Jeu.sfc"])
+    emulation = faire_emulation(tmp_path, "RetroArch/retroarch.exe")
+    inv = scan.scan(racine, profils, "D:\\Emulation", INSTALL_DIRS,
+                    emulation_root_local=emulation)
+    assert [r.title for r in inv] == ["Jeu"]
+    assert inv[0].emulator_exe == "D:\\Emulation\\RetroArch\\retroarch.exe"
+
+
+def test_seul_le_systeme_orphelin_disparait(tmp_path, deux_profils):
+    """Un émulateur manquant ne prive le propriétaire que de SES jeux."""
+    racine = faire_roms(tmp_path, ["snes/Jeu.sfc", "gc/Autre.iso"])
+    emulation = faire_emulation(tmp_path, "RetroArch/retroarch.exe")
+    inv = scan.scan(racine, deux_profils, "D:\\Emulation", INSTALL_DIRS,
+                    emulation_root_local=emulation)
+    assert [(r.title, r.system_name) for r in inv] == [("Jeu", "Super Nintendo")]
+
+
+def test_sans_racine_locale_le_scan_ne_verifie_rien(tmp_path, profils):
+    """Le paramètre est FACULTATIF : un appelant qui n'atteint pas le disque
+    des émulateurs — l'hôte qui prépare un inventaire pour une autre machine —
+    obtient l'inventaire complet, comme avant."""
+    racine = faire_roms(tmp_path, ["snes/Jeu.sfc"])
+    inv = scan.scan(racine, profils, "D:\\Emulation", INSTALL_DIRS)
+    assert [r.title for r in inv] == ["Jeu"]
+
+
+def test_le_systeme_ignore_est_signale(tmp_path, profils):
+    """Ignorer en silence recréerait le défaut sous une autre forme : une
+    bibliothèque incomplète, sans explication. Le rapport porte de quoi agir :
+    le système, le profil, le chemin cherché, et combien de jeux y restent."""
+    racine = faire_roms(tmp_path, ["snes/Jeu.sfc", "snes/Autre.sfc"])
+    emulation = faire_emulation(tmp_path)
+    (ignore,) = scan.ignored_systems(racine, profils, INSTALL_DIRS, emulation)
+    assert ignore.system_name == "Super Nintendo"
+    assert ignore.profile == "retroarch"
+    assert ignore.emulator == emulation / "RetroArch" / "retroarch.exe"
+    assert ignore.roms == 2
+
+
+def test_rien_n_est_signale_quand_l_emulateur_est_la(tmp_path, profils):
+    racine = faire_roms(tmp_path, ["snes/Jeu.sfc"])
+    emulation = faire_emulation(tmp_path, "RetroArch/retroarch.exe")
+    assert scan.ignored_systems(racine, profils, INSTALL_DIRS, emulation) == []
+
+
+def test_le_compte_des_jeux_ignores_est_celui_de_l_inventaire(tmp_path, profils):
+    """Le .m3u évince ses disques : annoncer « 3 jeux ignorés » là où le scan
+    n'en aurait inscrit qu'un ferait chercher deux jeux qui n'existent pas."""
+    racine = faire_roms(tmp_path, [
+        "psx/Jeu.m3u", "psx/Jeu (Disc 1).cue", "psx/Jeu (Disc 2).cue",
+    ])
+    emulation = faire_emulation(tmp_path)
+    (ignore,) = scan.ignored_systems(racine, profils, INSTALL_DIRS, emulation)
+    assert ignore.roms == 1
+
+
+def test_un_dossier_de_rom_vide_n_est_pas_signale(tmp_path, deux_profils):
+    """Un émulateur non installé dont le propriétaire n'a aucun jeu ne lui
+    coûte rien : le signaler noierait les manques qui, eux, lui coûtent des
+    jeux. Le dossier existe — c'est bien l'ABSENCE DE JEUX qui compte, pas
+    celle du dossier."""
+    racine = faire_roms(tmp_path, ["snes/Jeu.sfc"])
+    (racine / "gc").mkdir()
+    emulation = faire_emulation(tmp_path, "RetroArch/retroarch.exe")
+    assert scan.ignored_systems(racine, deux_profils, INSTALL_DIRS,
+                                emulation) == []
+
+
+def test_signaler_sur_une_racine_absente_leve(tmp_path, profils):
+    with pytest.raises(scan.ScanError):
+        scan.ignored_systems(tmp_path / "jamais", profils, INSTALL_DIRS, tmp_path)
