@@ -207,18 +207,31 @@ def _signaler_ignores(ignores: list[scan.IgnoredSystem],
         "attention : ces systèmes sont ignorés, leur émulateur n'est pas "
         "utilisable — leurs jeux n'apparaîtront pas dans Steam :"
     ]
+    # PAR ÉMULATEUR, pas par système : le RetroArch du profil livré en sert
+    # neuf. Répéter neuf fois le même motif et le même chemin de cent
+    # caractères pour UNE panne est ce que le rapport de `status` s'interdit
+    # à lui-même — « un problème n'est énoncé qu'une fois ». Seul le coût se
+    # compte système par système.
+    par_emulateur: dict[str, list] = {}
     for i in ignores:
-        jeu = "jeu" if i.roms == 1 else "jeux"
-        lignes.append(f"  {i.system_name} : {i.roms} {jeu} ignoré"
-                      f"{'' if i.roms == 1 else 's'} (profil « {i.profile} »)")
-        lignes.append(f"    {install_mod.MOTIFS[i.reason]}")
+        par_emulateur.setdefault(i.profile, []).append(i)
+
+    for pid in sorted(par_emulateur):
+        groupe = sorted(par_emulateur[pid], key=lambda i: i.system_name)
+        motif = groupe[0].reason
+        lignes.append(f"  émulateur « {pid} » : {install_mod.MOTIFS[motif]}")
         # Le chemin qui manque VRAIMENT. Annoncer « cherché : ...\\retroarch.exe »
         # pour un émulateur posé à la main enverrait chercher un fichier qui
         # est là : ce qui manque, dans ce cas, est le témoin, donc le dossier.
-        if i.reason == install_mod.SANS_TEMOIN:
-            lignes.append(f"    dossier : {i.install_dir}")
+        if motif == install_mod.SANS_TEMOIN:
+            lignes.append(f"    dossier : {groupe[0].install_dir}")
+            lignes.append(f"    à défaut : {install_mod.REMEDE_SANS_TEMOIN}")
         else:
-            lignes.append(f"    cherché : {i.emulator}")
+            lignes.append(f"    cherché : {groupe[0].emulator}")
+        for i in groupe:
+            jeu = "jeu" if i.roms == 1 else "jeux"
+            lignes.append(f"    {i.system_name} : {i.roms} {jeu} ignoré"
+                          f"{'' if i.roms == 1 else 's'}")
     lignes.append(
         "Installer ce qui manque — retro install --emulation-root "
         f"'{racine_locale}' — puis relancer ce scan."
@@ -289,9 +302,13 @@ def _cmd_scan(args) -> int:
     if ignores:
         perdus = sum(i.roms for i in ignores)
         noms = ", ".join(i.system_name for i in ignores)
-        print(f"{len(ignores)} système(s) ignoré(s) faute d'émulateur "
-              f"installé ({noms}) : {perdus} ROM(s) non répertoriée(s) — "
-              "détail ci-dessus")
+        # « faute d'émulateur installé » mentait sur l'émulateur posé à la
+        # main, dont l'exécutable EST là — et c'est la seule ligne que l'hôte
+        # relaie. « pas utilisable » couvre les trois motifs sans en trahir
+        # aucun.
+        print(f"{len(ignores)} système(s) ignoré(s), leur émulateur n'étant "
+              f"pas utilisable ({noms}) : {perdus} ROM(s) non "
+              "répertoriée(s) — détail ci-dessus")
     return 0
 
 
@@ -347,6 +364,11 @@ def _cmd_status(args) -> int:
             bios_status=etat_bios,
             bios_root=pathlib.Path(args.bios),
             ignored_systems=ignores,
+            # L'exécutable de chaque profil chargé : sans lui, le rapport
+            # déduirait l'état des émulateurs de la liste des systèmes
+            # ignorés, qui ne retient que ceux ayant des ROMs — et le verdict
+            # dépendrait des jeux du propriétaire.
+            emulator_exes={pid: p.exe for pid, p in profils.items()},
         )
         texte = status.format_report(rapport)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair

@@ -10,7 +10,7 @@ import re
 import subprocess
 import tomllib
 
-from retro import cli, manifest, profiles
+from retro import cli, install, manifest, profiles
 
 RACINE = pathlib.Path(__file__).parent.parent
 
@@ -353,3 +353,28 @@ def test_toute_region_declaree_appartient_a_un_groupe():
         if b.get("region") and not b.get("group")
     ]
     assert orphelines == [], f"region sans group : {orphelines}"
+
+
+def test_les_profils_livres_resolvent_en_chemin_local():
+    """Le pont qui manquait entre les données livrées et le code qui les lit.
+
+    Rien ne reliait `exe` — tel qu'il est écrit dans les profils du dépôt — à
+    la fonction qui le traduit en chemin local. La correspondance tenait par
+    convention, et c'est exactement ce qui a laissé passer le défaut : les
+    fixtures portaient « retroarch.exe », les profils livrés
+    « RetroArch-Win64\\retroarch.exe », et sous Linux le second ne se résout
+    pas comme le premier. Aucun test n'aurait vu la différence.
+    """
+    charges = profiles.load_profiles(PROFILS)
+    assert charges, "aucun profil livré : ce test ne prouve rien"
+    composes = 0
+    for pid, profil in charges.items():
+        chemin = install.emulator_exe(pathlib.Path("/Emulation"), "Dir", profil.exe)
+        assert "\\" not in str(chemin), \
+            f"{pid} : séparateur Windows non traduit dans {chemin}"
+        assert chemin.name.lower().endswith(".exe"), f"{pid} : {chemin}"
+        composes += len(pathlib.PurePosixPath(str(chemin)).parts) > 4
+    # Les archives officielles ont un dossier racine : au moins un profil livré
+    # porte donc un exe en PLUSIEURS composants. Si ce compte tombe à zéro, les
+    # fixtures plates redeviennent représentatives — et le trou se rouvre.
+    assert composes, "aucun profil livré n'exerce la traduction des séparateurs"

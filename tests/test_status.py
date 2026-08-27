@@ -243,7 +243,7 @@ def test_un_emulateur_dit_installe_mais_sans_executable_est_un_probleme(tmp_path
         install_dirs={"retroarch": "RetroArch"}, emulation_root=tmp_path,
         systems=[("Super Nintendo", 3)], bios_status=[],
         bios_root=pathlib.Path("/BIOS"),
-        ignored_systems=[_ignore(tmp_path)])
+        ignored_systems=[_ignore(tmp_path, raison=install.INCOMPLET)])
     (probleme,) = [p for p in r.problems if "retroarch" in p.what]
     assert "exécutable" in probleme.what
     assert probleme.where == str(emu / "RetroArch-Win64" / "retroarch.exe")
@@ -297,3 +297,94 @@ def test_le_dossier_d_installation_ne_melange_pas_les_separateurs(tmp_path):
         systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"))
     (probleme,) = r.problems
     assert probleme.where == "/mnt/emulation/emus/RetroArch-1.22"
+
+
+# --- l'état d'un émulateur ne dépend pas des ROMs du propriétaire ---------
+
+EXE_DOLPHIN = "Dolphin-x64\\Dolphin.exe"
+
+
+def _poser(racine, *, executable=True, temoin=True):
+    dossier = racine / "Dolphin"
+    (dossier / "Dolphin-x64").mkdir(parents=True, exist_ok=True)
+    if executable:
+        (dossier / "Dolphin-x64" / "Dolphin.exe").write_bytes(b"MZ")
+    if temoin:
+        (dossier / ".retro-version").write_text("2503\n", encoding="utf-8")
+    return dossier
+
+
+def _rapport(tmp_path, ignores=()):
+    return status.build_report(
+        install_dirs={"dolphin": "Dolphin"}, emulation_root=tmp_path,
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        emulator_exes={"dolphin": EXE_DOLPHIN}, ignored_systems=ignores)
+
+
+def test_un_executable_absent_se_voit_sans_la_moindre_rom(tmp_path):
+    """Le verdict se déduisait de la liste des systèmes ignorés — qui filtre
+    les systèmes SANS ROM. L'état d'un émulateur dépendait donc de la présence
+    de jeux : sur une console fraîchement provisionnée, avant que le
+    propriétaire ait rien déposé, un Dolphin amputé s'annonçait installé.
+    C'est le moment le plus probable, et le rapport y mentait."""
+    _poser(tmp_path, executable=False)
+    r = _rapport(tmp_path)
+    assert ("dolphin", "2503, exécutable introuvable") in r.emulators
+    assert any("exécutable" in p.what for p in r.problems)
+
+
+def test_un_emulateur_pose_a_la_main_se_voit_sans_la_moindre_rom(tmp_path):
+    """« l'émulateur n'est pas installé » en désignant un dossier qui contient
+    l'exécutable est mot pour mot ce que ce module s'interdit d'écrire."""
+    _poser(tmp_path, temoin=False)
+    r = _rapport(tmp_path)
+    assert ("dolphin", "présent, sans témoin de version") in r.emulators
+    (probleme,) = r.problems
+    assert "témoin" in probleme.what
+    assert "n'est pas installé" not in probleme.what
+
+
+def test_un_emulateur_complet_sans_rom_ne_fait_aucun_probleme(tmp_path):
+    _poser(tmp_path)
+    r = _rapport(tmp_path)
+    assert ("dolphin", "2503") in r.emulators
+    assert r.problems == []
+
+
+def test_le_verdict_est_le_meme_avec_et_sans_roms(tmp_path):
+    """La concordance, énoncée comme telle : les jeux du propriétaire chiffrent
+    le coût d'une panne, ils ne décident pas de son existence."""
+    _poser(tmp_path, temoin=False)
+    ignore = scan.IgnoredSystem(
+        folder="gamecube", system_name="GameCube", profile="dolphin",
+        install_dir=tmp_path / "Dolphin",
+        emulator=tmp_path / "Dolphin" / "Dolphin-x64" / "Dolphin.exe",
+        roms=3, reason=install.SANS_TEMOIN)
+    sans = _rapport(tmp_path)
+    avec = _rapport(tmp_path, ignores=[ignore])
+    assert sans.emulators == avec.emulators
+    assert [p.what for p in sans.problems] == [p.what for p in avec.problems]
+    # Seul le COÛT change : c'est ce que les ROMs ajoutent, et rien d'autre.
+    assert sans.problems[0].details == ()
+    assert "3 jeux" in " ".join(avec.problems[0].details)
+
+
+def test_le_remede_du_sans_temoin_nomme_les_deux_issues(tmp_path):
+    """Un profil hors de tout manifeste ne peut pas être installé par
+    « retro install » : lui opposer cette seule commande est un cul-de-sac."""
+    _poser(tmp_path, temoin=False)
+    (probleme,) = _rapport(tmp_path).problems
+    assert "retro install" in probleme.action
+    assert "ne peut installer que ce qui y figure" in probleme.action
+
+
+def test_sans_les_executables_le_rapport_reste_celui_d_avant(tmp_path):
+    """`emulator_exes` est facultatif : un appelant qui n'a pas chargé les
+    profils ne sait pas quel exécutable chercher, et retombe sur le témoin
+    seul — le comportement d'avant, à l'identique."""
+    _poser(tmp_path, executable=False)
+    r = status.build_report(
+        install_dirs={"dolphin": "Dolphin"}, emulation_root=tmp_path,
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"))
+    assert ("dolphin", "2503") in r.emulators
+    assert r.problems == []

@@ -383,3 +383,39 @@ def test_status_ne_reproche_rien_quand_l_emulateur_est_la(tmp_path, capsys):
     assert code == 0
     assert "ignoré" not in out
     assert "l'émulateur « r »" not in out
+
+
+def test_status_dit_la_meme_chose_avec_ou_sans_rom(tmp_path, capsys):
+    """Les deux exécutions doivent concorder.
+
+    Le verdict se déduisait de la liste des systèmes ignorés, qui filtre les
+    systèmes sans ROM : le même disque rendait « r  absent » sur des dossiers
+    vides et « r  présent, sans témoin » dès qu'une ROM y tombait. C'est faux
+    au moment le plus probable — une console fraîchement provisionnée, avant
+    que le propriétaire ait rien déposé.
+    """
+    profils = _profil_minimal(tmp_path)
+    roms = tmp_path / "ROMs" / "snes"
+    roms.mkdir(parents=True)
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+    emu = tmp_path / "Emulation" / "r" / "R-x64"
+    emu.mkdir(parents=True)
+    (emu / "r.exe").write_bytes(b"MZ")  # posé à la main : pas de témoin
+
+    argv = ["status", "--roms", str(tmp_path / "ROMs"),
+            "--profiles", str(profils),
+            "--emulation-root", str(tmp_path / "Emulation"),
+            "--bios", str(bios_dir)]
+    assert cli.main(argv) == 0
+    vide = capsys.readouterr().out
+    (roms / "Jeu.sfc").write_bytes(b"x")
+    assert cli.main(argv) == 0
+    plein = capsys.readouterr().out
+
+    def verdict(texte):
+        return [l for l in texte.splitlines() if l.strip().startswith("r ")]
+
+    assert verdict(vide) == verdict(plein), f"{verdict(vide)} != {verdict(plein)}"
+    assert "sans témoin" in vide
+    assert "l'émulateur « r » n'est pas installé" not in vide

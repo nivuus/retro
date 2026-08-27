@@ -32,6 +32,15 @@ MOTIFS = {
                   f"{acquire.TEMOIN} manque"),
 }
 
+# `retro install` n'installe QUE ce que le manifeste décrit. Opposer cette
+# seule commande à un profil qui ne figure dans aucun manifeste est un
+# cul-de-sac : le propriétaire relance, rien ne change, rien ne l'explique.
+# Les deux issues se disent donc ensemble.
+REMEDE_SANS_TEMOIN = (
+    "déclarer cet émulateur au manifeste utilisateur (--user-manifest) : "
+    "« retro install » ne peut installer que ce qui y figure"
+)
+
 
 def local_path(emulation_root, *chemins: str) -> pathlib.Path:
     """Un chemin DÉCRIT POUR WINDOWS, ouvert sur le disque LOCAL.
