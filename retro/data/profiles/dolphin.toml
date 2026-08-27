@@ -13,6 +13,13 @@
 # Source/Core/UICommon/CommandLineParse.cpp de la révision 2606a, et la liste
 # d'extensions vient du filtre de MainWindow::PromptFileNames de la même
 # révision.
+#
+# Dolphin n'a AUCUNE option de plein écran : il se lançait donc en fenêtre sur
+# la télévision, jeu compris — une panne muette, puisque le jeu tourne. Le
+# plein écran est un réglage, que --config pose pour ce lancement seulement.
+# La forme « <System>.<Section>.<Key>=<Value> » et le couple (Display,
+# Fullscreen) sont lus DANS l'exécutable livré, celui dont le manifeste porte
+# l'empreinte ; « Dolphin » y est le nom de système de Dolphin.ini.
 
 schema = 1
 id  = "dolphin"
@@ -32,7 +39,7 @@ fallback = "alt+f4"
 id         = "gamecube"
 name       = "GameCube"
 extensions = [".iso", ".gcm", ".gcz", ".rvz", ".ciso", ".wia", ".tgc", ".dol", ".elf"]
-launch     = '-b -e "{rom}"'
+launch     = '-b --config Dolphin.Display.Fullscreen=True -e "{rom}"'
 # Le BIOS GameCube (IPL) n'est utilisé que pour afficher l'animation de
 # démarrage ; Dolphin joue sans lui. Rien à exiger.
 bios       = []
@@ -41,5 +48,5 @@ bios       = []
 id         = "wii"
 name       = "Wii"
 extensions = [".iso", ".wbfs", ".rvz", ".gcz", ".ciso", ".wia", ".wad"]
-launch     = '-b -e "{rom}"'
+launch     = '-b --config Dolphin.Display.Fullscreen=True -e "{rom}"'
 bios       = []
