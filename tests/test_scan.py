@@ -4,6 +4,8 @@ import pathlib
 import pytest
 
 from retro import install, profiles, scan
+from retro.steam import appid
+from retro.steam import entry as entry_mod
 
 PROFIL = """
 schema = 1
@@ -181,6 +183,56 @@ def test_collision_sur_le_discriminant_lui_meme(tmp_path, profils):
 def test_marqueur_de_disque_sans_espace(tmp_path, profils):
     """« (Disc1) » est une forme qu'on rencontre réellement."""
     assert scan.clean_title("Jeu (Disc1).cue") == "Jeu (Disc1)"
+
+
+def test_deux_systemes_homonymes_gardent_chacun_leur_entree(tmp_path, profils):
+    """« Tetris » existe sur presque toutes les consoles.
+
+    Les huit systèmes de RetroArch partagent le MÊME exe, donc deux jeux
+    homonymes rendaient le même couple (exe, appname) — donc le même
+    identifiant Steam, et une seule des deux entrées survivait à l'écriture.
+    Mesuré le 2026-08-27 : deux ROMs, un seul appid.
+
+    C'est la désambiguïsation par région, mais appliquée trop tard : elle ne
+    voyait qu'un dossier à la fois, et deux dossiers ne se rencontraient
+    jamais.
+    """
+    racine = faire_roms(tmp_path, ["psx/Tetris.chd", "snes/Tetris.sfc"])
+    inventaire = scanner(racine, profils)
+    assert len(inventaire) == 2
+    ids = {appid.legacy_appid(entry_mod.quote(r.emulator_exe), r.title)
+           for r in inventaire}
+    assert len(ids) == 2, "deux jeux, un seul identifiant Steam"
+    assert sorted(r.title for r in inventaire) == \
+           ["Tetris (PlayStation)", "Tetris (Super Nintendo)"]
+
+
+def test_le_systeme_ne_qualifie_pas_ce_qu_il_ne_departage_pas(tmp_path, profils):
+    """Deux régions du MÊME système : le nom du système ne distingue rien.
+
+    L'ajouter tout de même rendrait « Jeu (Super Nintendo) (USA) » — le cas
+    courant enlaidi pour rien par un qualificatif qui ne sert que le cas rare.
+    """
+    racine = faire_roms(tmp_path, ["snes/Jeu (USA).sfc", "snes/Jeu (Europe).sfc"])
+    titres = sorted(r.title for r in scanner(racine, profils))
+    assert titres == ["Jeu (Europe)", "Jeu (USA)"]
+
+
+def test_un_meme_systeme_range_sous_deux_dossiers(tmp_path, profils):
+    """Le dernier recours doit être VRAIMENT unique.
+
+    Un système répond à son identifiant ET à son nom : « psx\\ » et
+    « PlayStation\\ » désignent le même. Deux fichiers de même nom, l'un dans
+    chacun, ne sont départagés ni par le système, ni par la région, ni par le
+    nom de fichier — seul leur chemin les distingue, et c'est bien le seul
+    qualificatif qu'un système de fichiers garantit unique.
+    """
+    racine = faire_roms(tmp_path, ["psx/Jeu.cue", "PlayStation/Jeu.cue"])
+    inventaire = scanner(racine, profils)
+    assert len(inventaire) == 2
+    ids = {appid.legacy_appid(entry_mod.quote(r.emulator_exe), r.title)
+           for r in inventaire}
+    assert len(ids) == 2, "deux jeux, un seul identifiant Steam"
 
 
 def test_le_resultat_est_deterministe(tmp_path, profils):

@@ -88,41 +88,74 @@ def discriminant(filename: str) -> str:
     return m.group(0).strip(" ()[]") if m else ""
 
 
-def _desambiguiser(couples: list[tuple[str, str]]) -> list[str]:
-    """Rend les titres, en n'ajoutant un discriminant qu'aux titres en collision.
+@dataclasses.dataclass(frozen=True)
+class _Candidat:
+    """Une ROM retenue, et de quoi la distinguer d'une homonyme."""
+    fichier: pathlib.Path
+    chemin: str          # relatif à la racine, en séparateurs Windows
+    pid: str
+    systeme: object
 
-    Sans cela, « Jeu (USA).sfc » et « Jeu (Europe).sfc » rendent tous deux
-    « Jeu », donc le même identifiant Steam, et un seul des deux survit — un
-    jeu qui disparaît de la bibliothèque sans que rien ne le signale. Mesuré le
-    2026-08-26 : trois régions, une seule entrée.
+
+# Ce qui départage deux jeux de même titre, du plus lisible au plus sûr. Un
+# qualificatif n'est posé que s'il départage RÉELLEMENT le groupe en
+# collision : « Jeu (Super Nintendo) (USA) » enlaidirait le cas courant — deux
+# régions d'un même jeu — au nom d'un cas rare que le système ne résout pas.
+_QUALIFICATIFS = (
+    # Le système d'abord : c'est ce qui distingue le Tetris de la Game Boy de
+    # celui de la NES, et c'est ce que le propriétaire lit dans sa
+    # bibliothèque.
+    lambda c: c.systeme.name,
+    # Puis la région, qui départage deux éditions d'un même jeu.
+    lambda c: discriminant(c.fichier.name),
+    # Puis le nom de fichier entier, extension comprise.
+    lambda c: c.fichier.name,
+    # Enfin le chemin complet. C'est le SEUL qualificatif qu'un système de
+    # fichiers garantit unique : deux dossiers peuvent désigner le même
+    # système — « psx\\ » et « PlayStation\\ » répondent tous deux au même
+    # profil — et y porter le même nom de fichier.
+    lambda c: f"{c.chemin}\\{c.fichier.name}",
+)
+
+
+def _desambiguiser(candidats: list[_Candidat]) -> list[str]:
+    """Rend les titres, en ne qualifiant que ceux qui entrent en collision.
+
+    Deux jeux de même titre rendent le même couple (exe, appname), donc le
+    même identifiant Steam, donc UNE SEULE entrée : le second écrase le
+    premier à l'écriture, et le jeu disparaît de la bibliothèque sans que rien
+    ne le signale.
+
+    La comparaison porte sur TOUTE la bibliothèque, jamais sur un dossier à la
+    fois. Mesuré le 2026-08-27 : « Tetris » sur PlayStation et sur Super
+    Nintendo, deux ROMs, un seul identifiant. Les huit systèmes de RetroArch
+    partagent le même exe, donc deux dossiers suffisaient — et le lanceur
+    commun, qui donne le MÊME exe à toute la bibliothèque, aurait étendu le
+    défaut à n'importe quel homonyme.
 
     Les titres uniques ne sont jamais touchés : la bibliothèque reste propre
     dans le cas courant, qui est de loin le plus fréquent.
     """
-    def compter(titres):
-        c = {}
-        for t in titres:
-            c[t] = c.get(t, 0) + 1
-        return c
-
-    titres = [t for _, t in couples]
-    comptes = compter(titres)
-
-    # Premier passage : le discriminant, en pratique la région.
-    passe1 = [t if comptes[t] == 1 else f"{t} ({discriminant(n)})".replace(" ()", "")
-              for n, t in couples]
-
-    # Second passage : ce qui reste en collision reçoit son nom de fichier
-    # ENTIER, extension comprise. C'est la seule clé réellement unique — un
-    # système de fichiers ne porte pas deux fois le même nom au même endroit.
-    #
-    # Cette seconde passe n'est pas une précaution de style : le discriminant
-    # ne retient que le PREMIER fragment parenthésé, donc « Jeu (USA) (Rev 1) »
-    # et « Jeu (USA) (Rev 2) » le partagent. Mesuré le 2026-08-26. Garantir
-    # l'unicité vaut mieux que l'espérer d'une heuristique.
-    comptes2 = compter(passe1)
-    return [t if comptes2[t] == 1 else f"{orig[1]} ({orig[0]})"
-            for t, orig in zip(passe1, couples)]
+    titres = [clean_title(c.fichier.name) for c in candidats]
+    for extraire in _QUALIFICATIFS:
+        groupes: dict[str, list[int]] = {}
+        for i, t in enumerate(titres):
+            groupes.setdefault(t, []).append(i)
+        if all(len(ix) == 1 for ix in groupes.values()):
+            break
+        for indices in groupes.values():
+            if len(indices) == 1:
+                continue
+            valeurs = [extraire(candidats[i]) for i in indices]
+            # Un qualificatif que tout le groupe partage ne départage rien :
+            # le poser allongerait le titre sans lever la collision, et la
+            # passe suivante s'en chargerait par-dessus.
+            if len(set(valeurs)) == 1:
+                continue
+            for i, v in zip(indices, valeurs):
+                if v:
+                    titres[i] = f"{titres[i]} ({v})"
+    return titres
 
 
 # Jusqu'où descendre sous la racine avant de renoncer. Une bibliothèque
@@ -345,24 +378,27 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
         ignored = ignored_systems(roms_root, profils, install_dirs,
                                   emulation_root_local)
     ignores = {i.folder for i in ignored or ()}
-    inventaire = []
 
-    for dossier, chemin, pid, systeme in _dossiers_couverts(roms_root, profils):
-        if chemin in ignores:
-            continue  # émulateur absent : ces jeux ne se lanceraient pas
-        exe = f"{emulation_root}\\{install_dirs[pid]}\\{profils[pid].exe}"
-        start_dir = f"{emulation_root}\\{install_dirs[pid]}"
+    # Toute la bibliothèque est collectée AVANT que le moindre titre ne soit
+    # arrêté : deux jeux homonymes rangés sous deux systèmes différents ne se
+    # rencontraient jamais, et l'un des deux disparaissait de Steam.
+    candidats = [
+        _Candidat(fichier=f, chemin=chemin, pid=pid, systeme=systeme)
+        for dossier, chemin, pid, systeme in _dossiers_couverts(roms_root, profils)
+        # émulateur absent : ces jeux ne se lanceraient pas
+        if chemin not in ignores
+        for f in _retenus(dossier, systeme)
+    ]
 
-        retenus = _retenus(dossier, systeme)
-        titres = _desambiguiser([(f.name, clean_title(f.name)) for f in retenus])
-        for f, titre in zip(retenus, titres):
-            inventaire.append(entry.RomEntry(
-                title=titre,
-                rom_path=f"{roms_root_windows}\\{chemin}\\{f.name}",
-                system_name=systeme.name,
-                emulator_exe=exe,
-                launch_template=systeme.launch,
-                start_dir=start_dir,
-                extra_tags=(),
-            ))
-    return inventaire
+    return [
+        entry.RomEntry(
+            title=titre,
+            rom_path=f"{roms_root_windows}\\{c.chemin}\\{c.fichier.name}",
+            system_name=c.systeme.name,
+            emulator_exe=f"{emulation_root}\\{install_dirs[c.pid]}\\{profils[c.pid].exe}",
+            launch_template=c.systeme.launch,
+            start_dir=f"{emulation_root}\\{install_dirs[c.pid]}",
+            extra_tags=(),
+        )
+        for c, titre in zip(candidats, _desambiguiser(candidats))
+    ]
