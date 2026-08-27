@@ -265,3 +265,194 @@ def test_scan_ne_previent_pas_quand_le_manifeste_couvre_tout(tmp_path, capsys):
               "--manifest", str(noyau), "--user-manifest", str(utilisateur),
               "--emulation-root", "D:\\Emulation"])
     assert capsys.readouterr().err == ""
+
+
+# --- scan : un émulateur absent est ignoré, et signalé ---------------------
+
+def _profils_deux_systemes(tmp_path):
+    """La forme RÉELLE de `exe` : un dossier racine d'archive, en chemin
+    Windows. Une fixture au nom plat ne montre rien du seul cas où
+    --emulation-root-local a une raison d'être, celui où il ne vaut pas
+    --emulation-root."""
+    profils = tmp_path / "profiles"
+    profils.mkdir()
+    (profils / "p.toml").write_text("""
+schema = 1
+id = "retroarch"
+exe = 'RetroArch-Win64\\retroarch.exe'
+[[system]]
+id = "snes"
+name = "Super Nintendo"
+extensions = [".sfc"]
+launch = '-f "{rom}"'
+bios = []
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".chd"]
+launch = '-f "{rom}"'
+bios = []
+""", encoding="utf-8")
+    roms = tmp_path / "ROMs" / "snes"
+    roms.mkdir(parents=True)
+    (roms / "Jeu.sfc").write_bytes(b"x")
+    return profils
+
+
+def test_scan_signale_le_systeme_dont_l_emulateur_manque(tmp_path, capsys):
+    """Le scan inscrivait des raccourcis vers un exécutable jamais vérifié :
+    une installation ratée peuplait Steam d'entrées qui ne démarrent pas. Les
+    ignorer ne suffit pas — sans message, le propriétaire hérite d'une
+    bibliothèque incomplète qu'aucun écran n'explique.
+    """
+    profils = _profils_deux_systemes(tmp_path)
+    emulation = tmp_path / "Emulation"
+    emulation.mkdir()
+    sortie = tmp_path / "inv.json"
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils), "--output", str(sortie),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(emulation)])
+    sortie_std = capsys.readouterr()
+    assert code == 0, sortie_std.err
+    assert json.loads(sortie.read_text(encoding="utf-8")) == []
+    assert "Super Nintendo" in sortie_std.err
+    assert str(emulation / "RetroArch" / "RetroArch-Win64" / "retroarch.exe") \
+        in sortie_std.err
+    assert "\\" not in sortie_std.err, "chemin bâtard, mi-POSIX mi-Windows"
+    assert "retro install" in sortie_std.err
+    # L'hôte peut ne relayer que la sortie standard : le silence y serait le
+    # même défaut sous une autre forme.
+    assert "ignoré" in sortie_std.out
+
+
+def test_scan_n_ignore_rien_quand_l_emulateur_est_installe(tmp_path, capsys):
+    """Le pendant : la vérification ne doit pas vider la bibliothèque."""
+    profils = _profils_deux_systemes(tmp_path)
+    exe = tmp_path / "Emulation" / "RetroArch" / "RetroArch-Win64" / "retroarch.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"MZ")
+    (tmp_path / "Emulation" / "RetroArch" / ".retro-version").write_text(
+        "1.0\n", encoding="utf-8")
+    sortie = tmp_path / "inv.json"
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils), "--output", str(sortie),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(tmp_path / "Emulation")])
+    sortie_std = capsys.readouterr()
+    assert code == 0, sortie_std.err
+    d = json.loads(sortie.read_text(encoding="utf-8"))
+    assert [r["title"] for r in d] == ["Jeu"]
+    assert "ignoré" not in sortie_std.err
+
+
+def test_scan_dit_qu_un_emulateur_pose_a_la_main_n_est_pas_atteste(tmp_path, capsys):
+    """L'exécutable est là, le témoin non. « cherché : ...\\retroarch.exe »
+    enverrait chercher un fichier qui est là : ce qui manque est le témoin,
+    donc le dossier — et la raison doit se lire."""
+    profils = _profils_deux_systemes(tmp_path)
+    dossier = tmp_path / "Emulation" / "RetroArch"
+    (dossier / "RetroArch-Win64").mkdir(parents=True)
+    (dossier / "RetroArch-Win64" / "retroarch.exe").write_bytes(b"MZ")
+    sortie = tmp_path / "inv.json"
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils), "--output", str(sortie),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(tmp_path / "Emulation")])
+    err = capsys.readouterr().err
+    assert code == 0, err
+    assert json.loads(sortie.read_text(encoding="utf-8")) == []
+    assert "témoin" in err
+    assert f"dossier : {dossier}" in err
+
+
+def test_le_scan_ne_calcule_les_systemes_ignores_qu_une_fois(tmp_path, monkeypatch):
+    """Le CLI annonce ce qu'il ignore, puis scanne. Calculer deux fois, c'est
+    deux vérités possibles sur un disque qui bouge : entre le message et
+    l'inventaire, un émulateur qui apparaît ou disparaît les rend
+    contradictoires. L'ensemble calculé est passé, pas recalculé."""
+    profils = _profils_deux_systemes(tmp_path)
+    (tmp_path / "Emulation").mkdir()
+    appels = []
+    vrai = cli.scan.ignored_systems
+
+    def compter(*a, **k):
+        appels.append(a)
+        return vrai(*a, **k)
+
+    monkeypatch.setattr(cli.scan, "ignored_systems", compter)
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--output", str(tmp_path / "inv.json"),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(tmp_path / "Emulation")])
+    assert code == 0
+    assert len(appels) == 1, f"{len(appels)} calculs, donc autant de vérités"
+
+
+def test_le_message_groupe_par_emulateur(tmp_path, capsys):
+    """Un RetroArch amputé sert neuf systèmes dans le profil livré. Répéter
+    neuf blocs identiques — même motif, même chemin de cent caractères — pour
+    UNE panne, c'est ce que le module de rapport s'interdit à lui-même. Le
+    coût, lui, se compte par système."""
+    profils = _profils_deux_systemes(tmp_path)
+    psx = tmp_path / "ROMs" / "psx"
+    psx.mkdir(parents=True)
+    (psx / "Jeu.chd").write_bytes(b"x")
+    emulation = tmp_path / "Emulation"
+    emulation.mkdir()
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--output", str(tmp_path / "inv.json"),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(emulation)])
+    err = capsys.readouterr().err
+    assert code == 0, err
+    chemin = str(emulation / "RetroArch" / "RetroArch-Win64" / "retroarch.exe")
+    assert err.count(chemin) == 1, f"chemin répété :\n{err}"
+    assert err.count("« retroarch »") == 1, f"émulateur répété :\n{err}"
+    assert "Super Nintendo" in err and "PlayStation" in err
+
+
+def test_la_ligne_de_sortie_standard_ne_ment_pas(tmp_path, capsys):
+    """« faute d'émulateur installé » alors que l'exécutable est là, et que le
+    détail dit « l'installation n'est pas attestée ». C'est la seule ligne que
+    l'hôte relaie."""
+    profils = _profils_deux_systemes(tmp_path)
+    dossier = tmp_path / "Emulation" / "RetroArch" / "RetroArch-Win64"
+    dossier.mkdir(parents=True)
+    (dossier / "retroarch.exe").write_bytes(b"MZ")
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--output", str(tmp_path / "inv.json"),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(tmp_path / "Emulation")])
+    sortie = capsys.readouterr()
+    assert code == 0, sortie.err
+    assert "faute d'émulateur installé" not in sortie.out
+    assert "utilisable" in sortie.out
+
+
+def test_le_motif_sans_temoin_nomme_les_deux_issues(tmp_path, capsys):
+    """`retro install` ne peut installer que ce qui est AU MANIFESTE : un
+    profil hors de tout manifeste, exécutable posé à la main, recevait un
+    remède qui ne peut rien faire. Les deux issues doivent se lire."""
+    profils = _profils_deux_systemes(tmp_path)
+    # Aucun manifeste ne décrit cet émulateur : `retro install` n'a rien à
+    # installer, et le dossier d'installation est DEVINÉ d'après le profil.
+    vide = tmp_path / "vide.toml"
+    vide.write_text("schema = 1\n", encoding="utf-8")
+    dossier = tmp_path / "Emulation" / "retroarch" / "RetroArch-Win64"
+    dossier.mkdir(parents=True)
+    (dossier / "retroarch.exe").write_bytes(b"MZ")
+    cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+              "--profiles", str(profils), "--manifest", str(vide),
+              "--output", str(tmp_path / "inv.json"),
+              "--emulation-root", "D:\\Emulation",
+              "--emulation-root-local", str(tmp_path / "Emulation")])
+    err = capsys.readouterr().err
+    # Un fragment PROPRE au remède : « --user-manifest » seul serait déjà
+    # satisfait par l'avertissement sur les dossiers d'installation devinés,
+    # et ce test ne prouverait rien.
+    assert "ne peut installer que ce qui y figure" in err
+    assert "témoin" in err

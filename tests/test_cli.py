@@ -155,7 +155,7 @@ def _profil_minimal(tmp_path):
     (profils / "p.toml").write_text("""
 schema = 1
 id = "r"
-exe = "r.exe"
+exe = 'R-x64\\r.exe'
 [[system]]
 id = "snes"
 name = "SNES"
@@ -339,3 +339,83 @@ def test_une_racine_steam_windows_en_posix_est_refusee(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "--steam-root-windows" in err
     assert "Traceback" not in err
+
+
+def test_status_dit_ce_que_l_emulateur_manquant_coute(tmp_path, capsys):
+    """« l'émulateur r n'est pas installé » ne dit pas au propriétaire
+    pourquoi ses jeux ont disparu de Steam. C'est le seul écran du projet fait
+    pour être lu : le coût du manque y a sa place."""
+    profils = _profil_minimal(tmp_path)
+    roms = tmp_path / "ROMs" / "snes"
+    roms.mkdir(parents=True)
+    (roms / "Jeu.sfc").write_bytes(b"x")
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+    emulation = tmp_path / "Emulation"
+    emulation.mkdir()
+    code = cli.main(["status", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--emulation-root", str(emulation),
+                     "--bios", str(bios_dir)])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "SNES : 1 jeu ignoré" in out
+    assert "retro install" in out
+
+
+def test_status_ne_reproche_rien_quand_l_emulateur_est_la(tmp_path, capsys):
+    """Le pendant : un émulateur installé ne doit produire aucun constat."""
+    profils = _profil_minimal(tmp_path)
+    roms = tmp_path / "ROMs" / "snes"
+    roms.mkdir(parents=True)
+    (roms / "Jeu.sfc").write_bytes(b"x")
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+    emu = tmp_path / "Emulation" / "r"
+    (emu / "R-x64").mkdir(parents=True)
+    (emu / "R-x64" / "r.exe").write_bytes(b"MZ")
+    (emu / ".retro-version").write_text("1.0\n", encoding="utf-8")
+    code = cli.main(["status", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--emulation-root", str(tmp_path / "Emulation"),
+                     "--bios", str(bios_dir)])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "ignoré" not in out
+    assert "l'émulateur « r »" not in out
+
+
+def test_status_dit_la_meme_chose_avec_ou_sans_rom(tmp_path, capsys):
+    """Les deux exécutions doivent concorder.
+
+    Le verdict se déduisait de la liste des systèmes ignorés, qui filtre les
+    systèmes sans ROM : le même disque rendait « r  absent » sur des dossiers
+    vides et « r  présent, sans témoin » dès qu'une ROM y tombait. C'est faux
+    au moment le plus probable — une console fraîchement provisionnée, avant
+    que le propriétaire ait rien déposé.
+    """
+    profils = _profil_minimal(tmp_path)
+    roms = tmp_path / "ROMs" / "snes"
+    roms.mkdir(parents=True)
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+    emu = tmp_path / "Emulation" / "r" / "R-x64"
+    emu.mkdir(parents=True)
+    (emu / "r.exe").write_bytes(b"MZ")  # posé à la main : pas de témoin
+
+    argv = ["status", "--roms", str(tmp_path / "ROMs"),
+            "--profiles", str(profils),
+            "--emulation-root", str(tmp_path / "Emulation"),
+            "--bios", str(bios_dir)]
+    assert cli.main(argv) == 0
+    vide = capsys.readouterr().out
+    (roms / "Jeu.sfc").write_bytes(b"x")
+    assert cli.main(argv) == 0
+    plein = capsys.readouterr().out
+
+    def verdict(texte):
+        return [l for l in texte.splitlines() if l.strip().startswith("r ")]
+
+    assert verdict(vide) == verdict(plein), f"{verdict(vide)} != {verdict(plein)}"
+    assert "sans témoin" in vide
+    assert "l'émulateur « r » n'est pas installé" not in vide

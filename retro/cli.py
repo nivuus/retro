@@ -191,19 +191,86 @@ def _install_dirs_pour(profils: dict, emulateurs: dict) -> dict[str, str]:
     return table
 
 
+def _signaler_ignores(ignores: list[scan.IgnoredSystem],
+                      racine_locale: str) -> None:
+    """Dit ce que le scan a laissé de côté, et comment le récupérer.
+
+    Ignorer un système sans émulateur évite une bibliothèque d'entrées mortes ;
+    l'ignorer EN SILENCE la remplace par une bibliothèque incomplète, tout
+    aussi inexplicable pour le propriétaire. Le message porte donc les trois
+    mêmes choses que les problèmes de `retro status` : ce qui manque, où on a
+    cherché, et quoi faire.
+    """
+    if not ignores:
+        return
+    lignes = [
+        "attention : ces systèmes sont ignorés, leur émulateur n'est pas "
+        "utilisable — leurs jeux n'apparaîtront pas dans Steam :"
+    ]
+    # PAR ÉMULATEUR, pas par système : le RetroArch du profil livré en sert
+    # neuf. Répéter neuf fois le même motif et le même chemin de cent
+    # caractères pour UNE panne est ce que le rapport de `status` s'interdit
+    # à lui-même — « un problème n'est énoncé qu'une fois ». Seul le coût se
+    # compte système par système.
+    par_emulateur: dict[str, list] = {}
+    for i in ignores:
+        par_emulateur.setdefault(i.profile, []).append(i)
+
+    for pid in sorted(par_emulateur):
+        groupe = sorted(par_emulateur[pid], key=lambda i: i.system_name)
+        motif = groupe[0].reason
+        lignes.append(f"  émulateur « {pid} » : {install_mod.MOTIFS[motif]}")
+        # Le chemin qui manque VRAIMENT. Annoncer « cherché : ...\\retroarch.exe »
+        # pour un émulateur posé à la main enverrait chercher un fichier qui
+        # est là : ce qui manque, dans ce cas, est le témoin, donc le dossier.
+        if motif == install_mod.SANS_TEMOIN:
+            lignes.append(f"    dossier : {groupe[0].install_dir}")
+            lignes.append(f"    à défaut : {install_mod.REMEDE_SANS_TEMOIN}")
+        else:
+            lignes.append(f"    cherché : {groupe[0].emulator}")
+        for i in groupe:
+            jeu = "jeu" if i.roms == 1 else "jeux"
+            lignes.append(f"    {i.system_name} : {i.roms} {jeu} ignoré"
+                          f"{'' if i.roms == 1 else 's'}")
+    lignes.append(
+        "Installer ce qui manque — retro install --emulation-root "
+        f"'{racine_locale}' — puis relancer ce scan."
+    )
+    print("\n".join(lignes), file=sys.stderr)
+
+
 def _cmd_scan(args) -> int:
+    # Deux chemins pour la racine d'émulation, comme --roms et --roms-windows :
+    # --emulation-root est ce que la CONSOLE lira dans shortcuts.vdf,
+    # --emulation-root-local est le chemin par lequel CETTE machine atteint les
+    # mêmes fichiers, donc le seul par lequel on puisse vérifier qu'un
+    # émulateur existe. Sur Linux, pathlib.Path("D:\\Emulation") est un chemin
+    # RELATIF : confondre les deux ne vérifierait jamais rien.
+    racine_locale = (pathlib.Path(args.emulation_root_local)
+                     if args.emulation_root_local else None)
     try:
         profils = profiles.load_profiles(pathlib.Path(args.profiles))
         utilisateur = pathlib.Path(args.user_manifest) if args.user_manifest else None
         emulateurs = manifest.load_manifest(pathlib.Path(args.manifest), utilisateur)
         install_dirs = _install_dirs_pour(profils, emulateurs)
+        ignores = scan.ignored_systems(
+            pathlib.Path(args.roms), profils, install_dirs, racine_locale,
+        ) if racine_locale else []
+        # `ignored=ignores` : le scan ne recalcule pas ce qu'on vient de
+        # calculer pour l'annoncer. Deux calculs, ce sont deux vérités
+        # possibles sur un disque qui bouge — un message qui contredirait
+        # l'inventaire qu'il accompagne. Sans racine locale, l'ensemble est
+        # vide et rien n'est ignoré : le comportement d'avant.
         inventaire = scan.scan(
             pathlib.Path(args.roms), profils, args.emulation_root, install_dirs,
             roms_root_windows=args.roms_windows,
+            emulation_root_local=racine_locale, ignored=ignores,
         )
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
         print(str(exc), file=sys.stderr)
         return 2
+
+    _signaler_ignores(ignores, args.emulation_root_local)
 
     donnees = [
         {
@@ -229,6 +296,19 @@ def _cmd_scan(args) -> int:
         print(f"écriture de l'inventaire impossible : {exc}", file=sys.stderr)
         return 2
     print(f"{len(donnees)} ROM(s) répertoriée(s) dans {args.output}")
+    # Aussi sur la sortie standard : c'est elle que l'hôte relaie au
+    # propriétaire, et un inventaire amputé qui s'annonce complet est
+    # exactement le défaut qu'on vient de fermer.
+    if ignores:
+        perdus = sum(i.roms for i in ignores)
+        noms = ", ".join(i.system_name for i in ignores)
+        # « faute d'émulateur installé » mentait sur l'émulateur posé à la
+        # main, dont l'exécutable EST là — et c'est la seule ligne que l'hôte
+        # relaie. « pas utilisable » couvre les trois motifs sans en trahir
+        # aucun.
+        print(f"{len(ignores)} système(s) ignoré(s), leur émulateur n'étant "
+              f"pas utilisable ({noms}) : {perdus} ROM(s) non "
+              "répertoriée(s) — détail ci-dessus")
     return 0
 
 
@@ -262,6 +342,20 @@ def _cmd_status(args) -> int:
         # depuis son canapé, sans clavier ni écran — par exemple sur un profil
         # dont le md5 d'un BIOS a été écrit sans guillemets (bios.py suppose
         # une chaîne et .lower() explose sur l'entier que TOML en tire).
+
+        # `status` lit le disque de CETTE machine — c'est déjà ainsi qu'il
+        # trouve les témoins de version. Le même chemin sert donc à vérifier
+        # que les exécutables existent : « l'émulateur n'est pas installé »
+        # devient « et voici les jeux que ça vous coûte ».
+        #
+        # Le compte des systèmes ci-dessus, lui, reste celui du DISQUE : une
+        # section « Systèmes » vide alors que le propriétaire a des ROMs se
+        # lirait comme une panne d'affichage, et « aucun système avec des
+        # ROMs » serait faux.
+        ignores = scan.ignored_systems(
+            pathlib.Path(args.roms), profils, install_dirs,
+            pathlib.Path(args.emulation_root),
+        )
         etat_bios = bios.check_bios(profils, pathlib.Path(args.bios))
         rapport = status.build_report(
             install_dirs=install_dirs,
@@ -269,6 +363,12 @@ def _cmd_status(args) -> int:
             systems=systemes,
             bios_status=etat_bios,
             bios_root=pathlib.Path(args.bios),
+            ignored_systems=ignores,
+            # L'exécutable de chaque profil chargé : sans lui, le rapport
+            # déduirait l'état des émulateurs de la liste des systèmes
+            # ignorés, qui ne retient que ceux ayant des ROMs — et le verdict
+            # dépendrait des jeux du propriétaire.
+            emulator_exes={pid: p.exe for pid, p in profils.items()},
         )
         texte = status.format_report(rapport)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
@@ -319,7 +419,18 @@ def _build_parser() -> argparse.ArgumentParser:
     # émulateurs déclarés hors dépôt produisaient des raccourcis invalides.
     s.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     s.add_argument("--user-manifest", default=None)
-    s.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
+    s.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT,
+                   help="chemin par lequel la console verra les émulateurs ; "
+                        "c'est lui qui part dans l'inventaire")
+    # Facultatif, et son absence conserve le comportement d'avant : un hôte
+    # peut inventorier pour une machine dont il n'atteint pas le disque des
+    # émulateurs. Donné, il fait vérifier que chaque exécutable existe
+    # vraiment — sans quoi une installation ratée peuple Steam d'entrées qui
+    # ne démarrent pas, et rien ne le dit.
+    s.add_argument("--emulation-root-local", default=None,
+                   help="chemin par lequel CETTE machine atteint les mêmes "
+                        "émulateurs ; donné, les systèmes dont l'exécutable "
+                        "manque sont ignorés et signalés")
     s.add_argument("--output", required=True)
     s.set_defaults(func=_cmd_scan)
 
