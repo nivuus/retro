@@ -447,3 +447,42 @@ def test_le_dossier_racine_de_cemu_suit_la_version_du_manifeste():
         f"la version {version} : l'archive dépose ses fichiers dans "
         f"« Cemu_{version}\\ ». Corriger exe = « {exe} »."
     )
+
+
+# --- le script de compilation du lanceur --------------------------------
+
+def test_le_script_de_compilation_n_est_pas_en_utf8():
+    r"""cmd.exe coupe une ligne sur un caractère UTF-8, y compris en commentaire.
+
+    Mesuré sur la VM le 2026-08-27 : le script a compilé le lanceur
+    CORRECTEMENT tout en crachant huit « 'ucun' is not recognized as an
+    internal or external command » venus de ses propres `rem`. Une réussite qui
+    a l'air d'un échec est aussi mauvaise que l'inverse — et personne n'aurait
+    lu la seule ligne qui comptait au milieu des huit autres.
+
+    En page de code 8 bits, chaque caractère tient sur un octet : le parsing
+    est sûr. Le test porte sur l'ENCODAGE et non sur l'absence d'accents, pour
+    que le script reste écrit en français correct.
+    """
+    from retro import launcher
+    octets = (launcher.SOURCES / "compiler.cmd").read_bytes()
+    # Décodable en cp850 : c'est la condition qui rend le parsing sûr.
+    texte = octets.decode("cp850")
+    assert "csc.exe" in texte
+    # Et surtout PAS de séquence multi-octets UTF-8, qui serait le défaut
+    # mesuré : un « é » y vaut deux octets, dont cmd coupe la ligne.
+    accentues = [o for o in octets if o > 127]
+    assert b"\xc3" not in octets and b"\xe2" not in octets, (
+        "le script semble encodé en UTF-8 : cmd.exe couperait ses lignes")
+    assert accentues, ("le script a perdu ses accents — l'encodage cp850 les "
+                       "porte, il n'y a pas à les remplacer")
+
+
+def test_la_source_du_lanceur_est_en_utf8_avec_bom():
+    """csc.exe lit un .cs dans la page de code locale SANS BOM : les messages
+    d'erreur que le lanceur affiche au propriétaire y perdraient leurs accents,
+    sur sa télévision et dans son journal."""
+    from retro import launcher
+    octets = (launcher.SOURCES / launcher.SOURCE).read_bytes()
+    assert octets.startswith(b"\xef\xbb\xbf"), "BOM UTF-8 absent"
+    octets.decode("utf-8-sig")
