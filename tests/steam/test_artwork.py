@@ -143,3 +143,32 @@ def test_purge_sans_orphelin_ne_touche_a_rien(tmp_path):
 
 def test_purge_sur_dossier_absent(tmp_path):
     assert artwork.prune_orphans(tmp_path / "jamais", [111]) == []
+
+
+def test_une_vignette_verrouillee_n_emporte_pas_la_synchronisation(
+        tmp_path, monkeypatch):
+    """Même motif que le nettoyage du temporaire de `acquire` : un ménage qui
+    échoue ne doit pas emporter le travail utile. La purge précède l'écriture
+    des raccourcis ; sous Windows, le client Steam tient ses vignettes
+    ouvertes et leur suppression lève [WinError 32]. Une bibliothèque entière
+    qui ne remonte pas pour un ornement orphelin serait un mauvais échange."""
+    import os
+
+    (tmp_path / "111p.jpg").write_bytes(b"x")
+    (tmp_path / "111_hero.png").write_bytes(b"x")
+
+    vrai_unlink = os.unlink
+
+    def unlink_refuse(chemin, *args, **kwargs):
+        if os.path.basename(os.fspath(chemin)) == "111p.jpg":
+            raise PermissionError(
+                32, "The process cannot access the file because it is being "
+                    "used by another process")
+        return vrai_unlink(chemin, *args, **kwargs)
+
+    monkeypatch.setattr(os, "unlink", unlink_refuse)
+
+    # Ne lève pas, et ne compte que ce qui a réellement disparu.
+    assert artwork.prune_orphans(tmp_path, [111]) == ["111_hero.png"]
+    assert (tmp_path / "111p.jpg").exists()
+    assert not (tmp_path / "111_hero.png").exists()
