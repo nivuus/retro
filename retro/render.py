@@ -35,8 +35,9 @@ MODES_DECLARES = (NATIVE, FULL)
 LEGER, MOYEN, LOURD = "light", "medium", "heavy"
 COUTS = (LEGER, MOYEN, LOURD)
 
-# Ce qu'une machine sait faire.
+# Ce qu'une machine sait faire, du moins au plus capable.
 MODESTE, MOYENNE, SOLIDE = "modeste", "moyenne", "solide"
+CLASSES = (MODESTE, MOYENNE, SOLIDE)
 
 
 class RenderError(RuntimeError):
@@ -135,6 +136,27 @@ _ARBITRAGE = {
 }
 
 
+def arbitrer(classe: str, cout: str) -> str:
+    """Le mode que `auto` retient pour ce couple, sans passer par une machine.
+
+    Le plan du lanceur en a besoin pour CHAQUE classe : il y écrit l'arbitrage
+    déjà résolu, de sorte que le lanceur classe la machine qu'il mesure et
+    lise la réponse, sans jamais rejouer la décision — donc sans pouvoir en
+    prendre une autre.
+    """
+    if classe not in CLASSES:
+        raise RenderError(
+            f"classe de machine inconnue : « {classe} ». Les classes sont "
+            f"{', '.join(CLASSES)}."
+        )
+    if cout not in COUTS:
+        raise RenderError(
+            f"coût d'émulation inconnu : « {cout} ». Les coûts sont "
+            f"{', '.join(COUTS)}."
+        )
+    return _ARBITRAGE[(classe, cout)]
+
+
 @dataclasses.dataclass(frozen=True)
 class Decision:
     """Le mode retenu, et pourquoi. Le motif n'est pas un ornement : sans lui,
@@ -174,7 +196,7 @@ def resoudre(demande: str, cout: str, machine: Machine) -> Decision:
         )
     classe = classe_machine(machine)
     return Decision(
-        _ARBITRAGE[(classe, cout)],
+        arbitrer(classe, cout),
         f"machine {classe} ({machine.vram_mo} Mo de VRAM, {machine.coeurs} "
         f"cœurs), système {cout}",
     )

@@ -7,6 +7,8 @@ import json
 import pathlib
 import sys
 
+from retro import launcher as launcher_mod
+from retro import render as render_mod
 from retro import bios, install as install_mod
 from retro import manifest, profiles, scan, status
 from retro.steam import accounts, artwork, entry, sync, writer
@@ -318,6 +320,22 @@ def _cmd_scan(args) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
+    # Le plan que lit le lanceur : la commande de chaque émulateur, les
+    # gabarits des trois modes, et l'arbitrage de `auto` déjà résolu pour
+    # chaque classe de machine. Écrit ICI, avec les profils qui viennent
+    # d'être chargés — un plan qui daterait d'un autre jeu de profils ferait
+    # lancer l'ancien émulateur sur une entrée Steam d'apparence normale.
+    if racine_locale is not None:
+        try:
+            plans = launcher_mod.ecrire_plan(
+                racine_locale, args.emulation_root, profils, install_dirs)
+        except OSError as exc:
+            print(f"écriture du plan de lancement impossible : {exc}. Les "
+                  "jeux ne démarreraient pas.", file=sys.stderr)
+            return 2
+        print(f"{len(plans)} plan(s) de lancement écrit(s) dans "
+              f"{launcher_mod.local_dir(racine_locale) / launcher_mod.PLAN}")
+
     _signaler_ignores(ignores, args.emulation_root_local)
 
     donnees = [
@@ -444,6 +462,66 @@ _AIDE_USER_PROFILES = (
 )
 
 
+def _cmd_launcher(args) -> int:
+    """Dépose la source du lanceur commun et son script de compilation.
+
+    Ne compile pas : csc.exe est un outil Windows, et cette commande tourne
+    sur la machine qui PILOTE, laquelle n'est pas forcément celle-là. Le
+    binaire n'est jamais livré tout fait — un dépôt public n'a pas à faire
+    confiance à un exécutable qu'on ne peut pas relire.
+    """
+    racine = pathlib.Path(args.emulation_root_local)
+    try:
+        deposes = launcher_mod.deposer_source(racine)
+    except OSError as exc:
+        print(f"dépôt du lanceur impossible : {exc}", file=sys.stderr)
+        return 2
+    for f in deposes:
+        print(f"déposé : {f}")
+
+    if launcher_mod.est_installe(racine):
+        print("le lanceur est compilé et en place")
+        return 0
+    # Ne PAS rendre 0 : sans binaire, le lanceur n'est pas installé, et
+    # `retro scan` refusera d'inventorier. Rendre 0 ici ferait croire à une
+    # étape terminée, et la panne apparaîtrait deux commandes plus loin.
+    print(
+        "le lanceur n'est pas encore compilé. Depuis Windows, exécuter :\n"
+        f"    {launcher_mod.launcher_dir(args.emulation_root)}\\compiler.cmd\n"
+        "csc.exe du .NET Framework suffit : il est présent sur toute "
+        "installation de Windows, rien à télécharger.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+def _cmd_render(args) -> int:
+    """Lit ou pose le mode de rendu.
+
+    Le mode vit dans un fichier que le lanceur relit à CHAQUE jeu : le
+    changer ne touche aucune option de raccourci, donc aucun identifiant
+    Steam, donc aucune vignette. Rien à resynchroniser.
+    """
+    racine = pathlib.Path(args.emulation_root_local)
+    if args.mode is None:
+        print(launcher_mod.lire_mode(racine))
+        return 0
+    try:
+        fichier = launcher_mod.ecrire_mode(racine, args.mode)
+    except (render_mod.RenderError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(f"mode de rendu : {args.mode} ({fichier})")
+    if not launcher_mod.est_installe(racine):
+        # Le mode est bien posé, mais rien ne le lira. Le taire ferait
+        # croire au propriétaire que son choix s'applique.
+        print("le lanceur n'est pas installé : ce mode ne sera lu par "
+              "personne tant qu'il ne l'est pas (« retro launcher »).",
+              file=sys.stderr)
+        return 1
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """L'analyseur, à part de `main` : le README doit pouvoir se vérifier
     contre les commandes réellement offertes, plutôt que contre une liste
@@ -505,6 +583,21 @@ def _build_parser() -> argparse.ArgumentParser:
                         "manque sont ignorés et signalés")
     s.add_argument("--output", required=True)
     s.set_defaults(func=_cmd_scan)
+
+    lan = sous.add_parser(
+        "launcher", help="déposer le lanceur commun (source + compilation)")
+    lan.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT,
+                     help="la racine telle que la CONSOLE la verra")
+    lan.add_argument("--emulation-root-local", required=True,
+                     help="le chemin par lequel CETTE machine y accède")
+    lan.set_defaults(func=_cmd_launcher)
+
+    ren = sous.add_parser(
+        "render", help="lire ou poser le mode de rendu (native, auto, full)")
+    ren.add_argument("--emulation-root-local", required=True)
+    ren.add_argument("--mode", choices=render_mod.MODES, default=None,
+                     help="sans --mode, affiche le mode courant")
+    ren.set_defaults(func=_cmd_render)
 
     st = sous.add_parser(
         "status", help="rapport lisible : émulateurs, jeux, BIOS, problèmes"

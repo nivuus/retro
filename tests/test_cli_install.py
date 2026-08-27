@@ -1,7 +1,20 @@
 """Les sous-commandes install et scan."""
 import json
+import pathlib
 
-from retro import cli
+import pytest
+
+from retro import cli, launcher
+
+
+def poser_lanceur(racine):
+    """Le lanceur commun, sans lequel `scan` refuse d'inventorier : chaque
+    raccourci Steam pointe sur lui."""
+    dossier = pathlib.Path(racine) / launcher.DIR
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    return pathlib.Path(racine)
+
 
 
 def test_install_sans_manifeste_echoue_proprement(tmp_path, capsys):
@@ -153,9 +166,14 @@ profile     = "r"
     assert e.title == "Jeu"
     assert e.rom_path == "G:\\ROMs\\snes\\Jeu.sfc"
     assert e.system_name == "SNES"
-    assert e.emulator_exe == "D:\\Emulation\\R-1.0\\r.exe"
-    assert e.launch_template == '-f "{rom}"'
+    # Le raccourci appelle le lanceur commun ; c'est le dossier d'installation
+    # — versionné — qui prouve ici que le manifeste a été suivi. L'exécutable
+    # de l'émulateur, lui, part dans le plan que lit le lanceur.
+    assert e.emulator_exe == "D:\\Emulation\\_launcher\\retro-launch.exe"
     assert e.start_dir == "D:\\Emulation\\R-1.0"
+    # Le raccourci ne porte plus la commande de l'émulateur, mais le système
+    # et la ROM : la commande vit dans le plan que lit le lanceur.
+    assert e.launch_template == 'r.snes "{rom}"' 
     assert e.extra_tags == ()
 
 
@@ -232,8 +250,7 @@ def test_scan_honore_le_manifeste_utilisateur(tmp_path, capsys):
                      "--emulation-root", "D:\\Emulation"])
     assert code == 0
     d = json.loads(sortie.read_text(encoding="utf-8"))
-    assert d[0]["emulator_exe"] == (
-        "D:\\Emulation\\DuckStation-v0.1\\duckstation-qt-x64-ReleaseLTCG.exe")
+    assert d[0]["start_dir"] == "D:\\Emulation\\DuckStation-v0.1"
     assert d[0]["start_dir"] == "D:\\Emulation\\DuckStation-v0.1"
 
 
@@ -306,8 +323,7 @@ def test_scan_signale_le_systeme_dont_l_emulateur_manque(tmp_path, capsys):
     bibliothèque incomplète qu'aucun écran n'explique.
     """
     profils = _profils_deux_systemes(tmp_path)
-    emulation = tmp_path / "Emulation"
-    emulation.mkdir()
+    emulation = poser_lanceur(tmp_path / "Emulation")
     sortie = tmp_path / "inv.json"
     code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
                      "--profiles", str(profils), "--output", str(sortie),
@@ -329,6 +345,7 @@ def test_scan_signale_le_systeme_dont_l_emulateur_manque(tmp_path, capsys):
 def test_scan_n_ignore_rien_quand_l_emulateur_est_installe(tmp_path, capsys):
     """Le pendant : la vérification ne doit pas vider la bibliothèque."""
     profils = _profils_deux_systemes(tmp_path)
+    poser_lanceur(tmp_path / "Emulation")
     exe = tmp_path / "Emulation" / "RetroArch" / "RetroArch-Win64" / "retroarch.exe"
     exe.parent.mkdir(parents=True)
     exe.write_bytes(b"MZ")
@@ -351,6 +368,7 @@ def test_scan_dit_qu_un_emulateur_pose_a_la_main_n_est_pas_atteste(tmp_path, cap
     enverrait chercher un fichier qui est là : ce qui manque est le témoin,
     donc le dossier — et la raison doit se lire."""
     profils = _profils_deux_systemes(tmp_path)
+    poser_lanceur(tmp_path / "Emulation")
     dossier = tmp_path / "Emulation" / "RetroArch"
     (dossier / "RetroArch-Win64").mkdir(parents=True)
     (dossier / "RetroArch-Win64" / "retroarch.exe").write_bytes(b"MZ")
@@ -372,7 +390,7 @@ def test_le_scan_ne_calcule_les_systemes_ignores_qu_une_fois(tmp_path, monkeypat
     l'inventaire, un émulateur qui apparaît ou disparaît les rend
     contradictoires. L'ensemble calculé est passé, pas recalculé."""
     profils = _profils_deux_systemes(tmp_path)
-    (tmp_path / "Emulation").mkdir()
+    poser_lanceur(tmp_path / "Emulation")
     appels = []
     vrai = cli.scan.ignored_systems
 
@@ -399,8 +417,7 @@ def test_le_message_groupe_par_emulateur(tmp_path, capsys):
     psx = tmp_path / "ROMs" / "psx"
     psx.mkdir(parents=True)
     (psx / "Jeu.chd").write_bytes(b"x")
-    emulation = tmp_path / "Emulation"
-    emulation.mkdir()
+    emulation = poser_lanceur(tmp_path / "Emulation")
     code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
                      "--profiles", str(profils),
                      "--output", str(tmp_path / "inv.json"),
@@ -419,6 +436,7 @@ def test_la_ligne_de_sortie_standard_ne_ment_pas(tmp_path, capsys):
     détail dit « l'installation n'est pas attestée ». C'est la seule ligne que
     l'hôte relaie."""
     profils = _profils_deux_systemes(tmp_path)
+    poser_lanceur(tmp_path / "Emulation")
     dossier = tmp_path / "Emulation" / "RetroArch" / "RetroArch-Win64"
     dossier.mkdir(parents=True)
     (dossier / "retroarch.exe").write_bytes(b"MZ")
@@ -442,6 +460,7 @@ def test_le_motif_sans_temoin_nomme_les_deux_issues(tmp_path, capsys):
     # installer, et le dossier d'installation est DEVINÉ d'après le profil.
     vide = tmp_path / "vide.toml"
     vide.write_text("schema = 1\n", encoding="utf-8")
+    poser_lanceur(tmp_path / "Emulation")
     dossier = tmp_path / "Emulation" / "retroarch" / "RetroArch-Win64"
     dossier.mkdir(parents=True)
     (dossier / "retroarch.exe").write_bytes(b"MZ")
@@ -538,14 +557,13 @@ def test_scan_fusionne_les_profils_du_proprietaire(tmp_path, capsys):
     par_systeme = {d["system_name"]: d
                    for d in json.loads(sortie.read_text(encoding="utf-8"))}
     # Le profil livré survit à l'ajout : « snes » est toujours là.
-    assert par_systeme["Super Nintendo"]["emulator_exe"] == (
-        "D:\\Emulation\\RetroArch\\RetroArch-Win64\\retroarch.exe")
+    assert par_systeme["Super Nintendo"]["start_dir"] == "D:\\Emulation\\RetroArch"
     # Et « psx » passe par l'émulateur du propriétaire, chemin ET gabarit.
     psx = par_systeme["PlayStation"]
-    assert psx["emulator_exe"] == (
-        "D:\\Emulation\\DuckStation-v0.1\\DuckStation-x64\\"
-        "duckstation-qt-x64-ReleaseLTCG.exe")
-    assert psx["launch_template"] == '-fullscreen -nogui "{rom}"'
+    assert psx["start_dir"] == "D:\\Emulation\\DuckStation-v0.1"
+    # Le raccourci désigne SON profil ; le plan que lit le lanceur portera
+    # sa commande.
+    assert psx["launch_template"] == 'duckstation.psx "{rom}"'
 
 
 def test_scan_sans_dossier_de_profils_du_proprietaire(tmp_path, capsys):
@@ -587,3 +605,95 @@ def test_scan_refuse_deux_profils_du_proprietaire_sur_un_meme_systeme(tmp_path, 
     assert "Traceback" not in err
     assert "psx" in err
     assert "duckstation.toml" in err and "zz-duck.toml" in err
+
+
+# --- le lanceur commun et le mode de rendu ------------------------------
+
+def test_launcher_depose_la_source_et_dit_comment_la_compiler(tmp_path, capsys):
+    """Le binaire n'est jamais livré tout fait : un dépôt public n'a pas à
+    faire confiance à un exécutable qu'on ne peut pas relire."""
+    emulation = tmp_path / "Emulation"
+    code = cli.main(["launcher", "--emulation-root-local", str(emulation),
+                     "--emulation-root", "D:\\Emulation"])
+    dossier = emulation / launcher.DIR
+    assert (dossier / launcher.SOURCE).is_file()
+    assert (dossier / "compiler.cmd").is_file()
+    # PAS zéro : sans binaire, `retro scan` refusera d'inventorier. Rendre 0
+    # ferait croire à une étape terminée, et la panne apparaîtrait deux
+    # commandes plus loin.
+    assert code == 1
+    assert "compiler.cmd" in capsys.readouterr().err
+
+
+def test_launcher_rend_zero_quand_le_binaire_est_la(tmp_path, capsys):
+    emulation = poser_lanceur(tmp_path / "Emulation")
+    code = cli.main(["launcher", "--emulation-root-local", str(emulation)])
+    assert code == 0
+    assert "compilé et en place" in capsys.readouterr().out
+
+
+def test_render_sans_mode_affiche_le_mode_courant(tmp_path, capsys):
+    emulation = poser_lanceur(tmp_path / "Emulation")
+    assert cli.main(["render", "--emulation-root-local", str(emulation)]) == 0
+    assert capsys.readouterr().out.strip() == "auto"
+
+
+def test_render_pose_le_mode(tmp_path, capsys):
+    emulation = poser_lanceur(tmp_path / "Emulation")
+    assert cli.main(["render", "--emulation-root-local", str(emulation),
+                     "--mode", "full"]) == 0
+    capsys.readouterr()
+    cli.main(["render", "--emulation-root-local", str(emulation)])
+    assert capsys.readouterr().out.strip() == "full"
+
+
+def test_render_signale_que_personne_ne_lira_le_mode(tmp_path, capsys):
+    """Le mode est bien posé, mais sans lanceur rien ne le lit. Le taire
+    ferait croire au propriétaire que son choix s'applique."""
+    emulation = tmp_path / "Emulation"
+    code = cli.main(["render", "--emulation-root-local", str(emulation),
+                     "--mode", "native"])
+    assert code == 1
+    assert "ne sera lu par personne" in capsys.readouterr().err
+
+
+def test_render_refuse_un_mode_inconnu(tmp_path, capsys):
+    """argparse tranche avant nous : un mode inventé ne doit pas atteindre le
+    fichier, où il ferait silencieusement retomber le lanceur sur `auto`."""
+    emulation = poser_lanceur(tmp_path / "Emulation")
+    with pytest.raises(SystemExit):
+        cli.main(["render", "--emulation-root-local", str(emulation),
+                  "--mode", "maximum"])
+
+
+def test_scan_ecrit_le_plan_de_lancement(tmp_path, capsys):
+    """Sans plan, le lanceur ne saurait quoi lancer — et l'entrée Steam aurait
+    l'air parfaitement normale."""
+    profils = tmp_path / "profiles"
+    profils.mkdir()
+    (profils / "p.toml").write_text("""
+schema = 1
+id = "r"
+exe = "r.exe"
+[[system]]
+id = "snes"
+name = "SNES"
+extensions = [".sfc"]
+launch = '-f "{rom}"'
+bios = []
+""", encoding="utf-8")
+    roms = tmp_path / "ROMs" / "snes"
+    roms.mkdir(parents=True)
+    (roms / "Jeu.sfc").write_bytes(b"x")
+    emulation = poser_lanceur(tmp_path / "Emulation")
+    (emulation / "r").mkdir()
+    (emulation / "r" / "r.exe").write_bytes(b"MZ")
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--output", str(tmp_path / "inv.json"),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(emulation)])
+    assert code == 0, capsys.readouterr().err
+    plan = emulation / launcher.DIR / launcher.PLAN / "r.snes.ini"
+    assert plan.is_file()
+    assert 'launch=-f "{rom}"' in plan.read_text(encoding="utf-8")

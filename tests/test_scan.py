@@ -3,7 +3,7 @@ import pathlib
 
 import pytest
 
-from retro import install, profiles, scan
+from retro import install, launcher, profiles, scan
 from retro.steam import appid
 from retro.steam import entry as entry_mod
 
@@ -85,14 +85,24 @@ def test_le_chemin_de_rom_est_windows(tmp_path, profils):
     inv = scan.scan(racine, profils, "D:\\Emulation",
                     {"retroarch": "RetroArch"}, roms_root_windows="G:\\ROMs")
     assert inv[0].rom_path == "G:\\ROMs\\snes\\Jeu.sfc"
-    assert inv[0].emulator_exe == \
-        "D:\\Emulation\\RetroArch\\RetroArch-Win64\\retroarch.exe"
+    # Steam appelle le LANCEUR, pas l'émulateur : c'est lui qui mesure la
+    # session et compose la commande au moment du clic.
+    assert inv[0].emulator_exe == "D:\\Emulation\\_launcher\\retro-launch.exe"
+    # Le dossier de travail reste celui de l'émulateur, qui en dépend.
+    assert inv[0].start_dir == "D:\\Emulation\\RetroArch"
 
 
-def test_le_gabarit_de_lancement_vient_du_systeme(tmp_path, profils):
+def test_le_raccourci_ne_porte_que_le_systeme_et_la_rom(tmp_path, profils):
+    """La commande de l'émulateur ne passe plus par Steam.
+
+    Elle vit dans le plan que la synchronisation écrit au lanceur — ce qui
+    permet de changer de mode de rendu, ou de corriger une ligne de commande,
+    sans toucher aux options d'un raccourci, donc sans changer un identifiant,
+    donc sans retélécharger une seule vignette.
+    """
     racine = faire_roms(tmp_path, ["psx/Jeu.cue"])
     inv = scanner(racine, profils)
-    assert "swanstation.dll" in inv[0].launch_template
+    assert inv[0].launch_template == 'retroarch.psx "{rom}"' 
 
 
 def test_extension_inconnue_ignoree(tmp_path, profils):
@@ -281,6 +291,21 @@ def faire_emulation(tmp_path) -> pathlib.Path:
     """
     racine = tmp_path / "Emulation"
     racine.mkdir(exist_ok=True)
+    # Le lanceur commun fait partie d'une racine d'émulation qui fonctionne :
+    # c'est lui que Steam appelle pour chaque jeu. Son absence a son propre
+    # test, plus bas.
+    return poser_lanceur(racine)
+
+
+def poser_lanceur(racine):
+    """Pose le lanceur commun, comme « retro launcher » le poserait.
+
+    Sans lui, `scan` refuse d'inventorier : chaque raccourci Steam pointerait
+    sur un exécutable absent, et aucun jeu ne démarrerait.
+    """
+    dossier = pathlib.Path(racine) / launcher.DIR
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / launcher.EXE).write_bytes(b"MZ")
     return racine
 
 
@@ -337,8 +362,10 @@ def test_un_systeme_dont_l_emulateur_existe_est_scanne(tmp_path, profils):
     inv = scan.scan(racine, profils, "D:\\Emulation", INSTALL_DIRS,
                     emulation_root_local=emulation)
     assert [r.title for r in inv] == ["Jeu"]
-    assert inv[0].emulator_exe == \
-        "D:\\Emulation\\RetroArch\\RetroArch-Win64\\retroarch.exe"
+    # Le raccourci appelle le lanceur ; c'est le DOSSIER de l'émulateur qui
+    # reste dans le raccourci, et c'est bien celui-ci qui a été trouvé sur le
+    # disque — sans quoi le système aurait été ignoré.
+    assert inv[0].start_dir == "D:\\Emulation\\RetroArch"
 
 
 def test_seul_le_systeme_orphelin_disparait(tmp_path, deux_profils):
@@ -621,3 +648,20 @@ def test_un_systeme_relie_depuis_un_autre_volume_reste_lu(tmp_path, profils_fold
     (tmp_path / "ROMs").mkdir(parents=True, exist_ok=True)
     os.symlink(ailleurs, tmp_path / "ROMs" / "Snes")
     assert [e.title for e in _scan(tmp_path, profils_folders)] == ["Zelda"]
+
+
+def test_un_scan_sans_lanceur_est_refuse(tmp_path, profils):
+    """Chaque raccourci pointera sur le lanceur commun.
+
+    Absent, c'est TOUTE la bibliothèque qui ne démarre plus, et l'erreur que
+    Steam affiche ne nomme aucun jeu : la panne la moins diagnosticable que
+    cette console puisse produire. Un inventaire qui pointe sur un exécutable
+    absent est un inventaire qui a l'air parfaitement normal.
+    """
+    racine = faire_roms(tmp_path, ["snes/Jeu.sfc"])
+    emulation = tmp_path / "Emulation"
+    emulation.mkdir()
+    installer(emulation, "RetroArch", EXE_RETROARCH)
+    with pytest.raises(scan.ScanError, match="lanceur commun est introuvable"):
+        scan.scan(racine, profils, "D:\\Emulation", INSTALL_DIRS,
+                  emulation_root_local=emulation)

@@ -12,6 +12,7 @@ import re
 from collections.abc import Sequence
 
 from retro import install as install_mod
+from retro import launcher as launcher_mod
 from retro import profiles as profiles_mod
 from retro.steam import entry
 
@@ -374,6 +375,21 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
     accompagne. Un ensemble vide est une réponse, pas une absence de réponse.
     """
     _verifier_racine(roms_root)
+    # Chaque raccourci pointera sur le lanceur commun. Absent, c'est TOUTE la
+    # bibliothèque qui ne démarre plus, et l'erreur que Steam affiche ne nomme
+    # aucun jeu — la panne la moins diagnosticable que cette console puisse
+    # produire. La même exigence que pour un émulateur, et pour la même
+    # raison : un inventaire qui pointe sur un exécutable absent est un
+    # inventaire qui a l'air normal.
+    if emulation_root_local is not None \
+            and not launcher_mod.est_installe(emulation_root_local):
+        raise ScanError(
+            f"le lanceur commun est introuvable : "
+            f"{launcher_mod.local_dir(emulation_root_local) / launcher_mod.EXE}. "
+            "C'est lui que Steam appelle pour chaque jeu — sans lui, aucune "
+            "entrée de la bibliothèque ne démarrerait, et Steam ne dirait pas "
+            "pourquoi. Le déposer et le compiler : « retro launcher »."
+        )
     if ignored is None and emulation_root_local is not None:
         ignored = ignored_systems(roms_root, profils, install_dirs,
                                   emulation_root_local)
@@ -390,13 +406,20 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
         for f in _retenus(dossier, systeme)
     ]
 
+    # Steam n'appelle PAS l'émulateur : il appelle le lanceur commun, qui
+    # mesure la session et compose la commande au moment du clic. Le raccourci
+    # ne porte donc plus que le système et la ROM — et changer de mode de
+    # rendu ne touche plus à une seule option de lancement, donc à aucun
+    # identifiant, donc à aucune vignette.
+    lanceur = launcher_mod.launcher_exe(emulation_root)
     return [
         entry.RomEntry(
             title=titre,
             rom_path=f"{roms_root_windows}\\{c.chemin}\\{c.fichier.name}",
             system_name=c.systeme.name,
-            emulator_exe=f"{emulation_root}\\{install_dirs[c.pid]}\\{profils[c.pid].exe}",
-            launch_template=c.systeme.launch,
+            emulator_exe=lanceur,
+            launch_template=(f"{launcher_mod.system_key(c.pid, c.systeme.id)} "
+                             '"{rom}"'),
             start_dir=f"{emulation_root}\\{install_dirs[c.pid]}",
             extra_tags=(),
         )

@@ -9,13 +9,20 @@ Vous la lancez à la manette.
 
 ## Ce que ça fait
 
-Quatre commandes. Les trois premières dans cet ordre, la quatrième quand vous
-voulez :
+Six commandes. Les quatre premières dans cet ordre, les deux dernières quand
+vous voulez :
 
 - **`retro install`** installe les émulateurs du manifeste sous la racine
   d'émulation. Il les **télécharge depuis Internet** et les extrait — voir
   « Ce qui est téléchargé » plus bas, qui dit d'où et comment c'est vérifié.
-- **`retro scan`** parcourt votre disque de ROMs et écrit l'inventaire JSON.
+- **`retro launcher`** dépose le lanceur commun sous la racine d'émulation et
+  vous donne la commande qui le compile. C'est lui que Steam appelle pour
+  chaque jeu : il mesure la session au moment du clic, compose la ligne de
+  commande de l'émulateur, et le lance **sans fenêtre de console**. Sa source
+  est versionnée (`retro/data/launcher/`) et se compile avec le `csc.exe` que
+  tout Windows porte — aucun binaire n'est livré tout fait.
+- **`retro scan`** parcourt votre disque de ROMs et écrit l'inventaire JSON,
+  ainsi que le plan de lancement que lit le lanceur.
   Ce sont les profils (`retro/data/profiles/*.toml`) qui disent quel dossier
   appartient à quel système, quelles extensions compter, et quelle ligne de
   commande lance un jeu.
@@ -23,6 +30,14 @@ voulez :
   le `shortcuts.vdf` de Steam, et récupère les cinq assets d'artwork depuis
   SteamGridDB. Chaque jeu reçoit deux tags — `Rétro` et le nom de son système —
   qui deviennent des catégories natives, filtrables à la manette.
+- **`retro render`** lit ou pose le mode de rendu. Trois modes, pour toute la
+  console : `native` rend ce que la console d'origine sortait — résolution
+  interne 1x, ratio d'époque, et le shader CRT là où l'émulateur en a un ;
+  `full` pousse au maximum, à la résolution de la session en cours ; `auto`
+  choisit entre les deux, **système par système**, en croisant le coût
+  d'émulation déclaré dans le profil avec ce que votre machine offre. Le mode
+  vit dans un fichier que le lanceur relit à chaque jeu : en changer ne touche
+  aucune entrée Steam, donc aucune vignette n'est à retélécharger.
 - **`retro status`** est la seule commande faite pour un humain : elle écrit un
   rapport lisible depuis le canapé. Quels émulateurs sont installés et en
   quelle version, combien de jeux par système, **quels BIOS manquent**, et la
