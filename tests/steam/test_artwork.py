@@ -172,3 +172,59 @@ def test_une_vignette_verrouillee_n_emporte_pas_la_synchronisation(
     assert artwork.prune_orphans(tmp_path, [111]) == ["111_hero.png"]
     assert (tmp_path / "111p.jpg").exists()
     assert not (tmp_path / "111_hero.png").exists()
+
+
+# --- Le nom de fichier construit depuis l'URL ------------------------------
+#
+# Mesuré sur la machine cible le 2026-08-27 : sept jeux sur huit recevaient
+# leurs cinq visuels, le huitième aucun, à chaque synchronisation, et le
+# rapport disait « 0 récupéré » — la même chose qu'une bibliothèque déjà
+# complète.
+
+def test_l_extension_ignore_la_query_de_l_url():
+    """« .../a.png?t=1 » : PurePosixPath rendait « .png?t=1 », et le nom
+    construit portait un « ? » — que Windows REFUSE dans un nom de fichier.
+    Invisible sous Linux, où « ? » est parfaitement légal."""
+    assert artwork._extension("https://x/a.png?t=1") == ".png"
+    assert artwork._extension("https://x/a.jpg?w=600&h=900") == ".jpg"
+
+
+def test_l_extension_se_replie_sur_png_si_elle_n_est_pas_lisible():
+    """Mieux vaut une extension à peu près juste qu'un nom que le système
+    refuse d'écrire — ou qu'un exécutable déposé sous le nom d'une vignette."""
+    assert artwork._extension("https://x/a") == ".png"
+    assert artwork._extension("https://x/a.exe?y") == ".png"
+    assert artwork._extension("https://x/a.PNG?x") == ".png"
+
+
+def test_aucun_nom_ecrit_ne_porte_de_caractere_interdit(tmp_path):
+    """Le test qui aurait attrapé le défaut : les noms produits doivent être
+    écrivables sur Windows, quelle que soit la forme de l'URL."""
+    grilles = {"data": [{"url": "https://cdn.example/img/abc.png?t=1756288000"}]}
+
+    def fetch_json(url, headers):
+        return RECHERCHE if "search" in url else grilles
+
+    client = artwork.ArtworkClient(api_key="k", fetch_json=fetch_json,
+                                   fetch_bytes=lambda url: b"x")
+    ecrits = client.fetch_for("Un Jeu", 2398962978, tmp_path)
+    assert ecrits, "aucun asset écrit"
+    interdits = set('<>:"/\\|?*')
+    for nom in ecrits:
+        assert not (set(nom) & interdits), f"nom illégal sous Windows : {nom!r}"
+        assert (tmp_path / nom).is_file()
+
+
+def test_un_echec_est_retenu_pour_le_rapport(tmp_path):
+    """Avaler l'exception reste juste — l'artwork est un ornement. Mais
+    « 0 récupéré » disait la même chose pour une bibliothèque complète, une
+    clé expirée et un nom de fichier refusé par le système."""
+    def fetch_json(url, headers):
+        raise RuntimeError("401 Unauthorized")
+
+    client = artwork.ArtworkClient(api_key="k", fetch_json=fetch_json,
+                                   fetch_bytes=lambda url: b"x")
+    assert client.fetch_for("Un Jeu", 2398962978, tmp_path) == []
+    assert len(client.erreurs) == 1
+    assert "401 Unauthorized" in client.erreurs[0]
+    assert "Un Jeu" in client.erreurs[0]
