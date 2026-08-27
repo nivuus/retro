@@ -175,6 +175,47 @@ système** : un seul dossier de ROMs porte ce nom, et le scan trancherait par
 ordre alphabétique — renommer un fichier changerait alors l'émulateur qui lance
 vos jeux, sans un mot. Ce cas-là est refusé en nommant les deux fichiers.
 
+### Déclarer les modes de rendu d'un système
+
+Chaque système peut déclarer ce que `native` et `full` ajoutent à sa ligne de
+commande. `{render}` dit **où** ces arguments s'insèrent — certains émulateurs
+exigent le fichier en dernier, et personne ne peut deviner la place juste :
+
+```toml
+[[system]]
+id     = "gamecube"
+launch = '-b {render} -e "{rom}"'
+cost   = "medium"          # light | medium | heavy — ce sur quoi `auto` décide
+
+[system.render]
+native_height = 480        # la hauteur que sortait la console d'origine
+max_scale     = 12         # au-delà, l'émulateur refuse ou rame
+
+[system.render.native]
+args = '--config GFX.Settings.InternalResolution=1'
+crt  = '...'               # OU crt_absent = "pourquoi il n'y en a pas"
+
+[system.render.full]
+args = '--config GFX.Settings.InternalResolution={scale}'
+```
+
+Trois variables sont disponibles, substituées **au lancement** : `{width}` et
+`{height}`, la résolution de la session en cours, et `{scale}`, combien de fois
+la résolution d'origine y tient.
+
+Le bloc est **facultatif**, mais tout ce qu'il contient est vérifié au
+chargement, parce que chacune de ces fautes est muette : un `{render}` oublié
+laisserait les arguments nulle part, un seul mode déclaré ferait que l'autre se
+lance en réglages par défaut, une variable mal orthographiée arriverait
+littéralement sur la ligne de commande. Un `args` vide est accepté — beaucoup
+d'émulateurs n'exposent aucun réglage de rendu en ligne de commande — mais
+**exige alors une `note` qui dit pourquoi**, que `retro status` affiche : sans
+elle, rien ne distinguerait « vérifié impossible » de « bloc oublié ».
+
+`retro status` nomme les systèmes qui n'ont encore aucun mode déclaré. Ceux-là
+lancent la même commande dans les trois modes, et il vaut mieux le lire que le
+découvrir.
+
 `retro scan` produit ce JSON, que `retro sync` relit tel quel :
 
 ```json
@@ -182,8 +223,8 @@ vos jeux, sans un mot. Ce cas-là est refusé en nommant les deux fichiers.
   "title": "Chrono Trigger",
   "rom_path": "G:\\ROMs\\snes\\Chrono Trigger (USA).sfc",
   "system_name": "Super Nintendo",
-  "emulator_exe": "D:\\Emulation\\RetroArch\\RetroArch-Win64\\retroarch.exe",
-  "launch_template": "-L \"RetroArch-Win64\\cores\\snes9x_libretro.dll\" -f \"{rom}\"",
+  "emulator_exe": "D:\\Emulation\\_launcher\\retro-launch.exe",
+  "launch_template": "retroarch.snes \"{rom}\"",
   "start_dir": "D:\\Emulation\\RetroArch",
   "extra_tags": []
 }]

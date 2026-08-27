@@ -68,6 +68,14 @@ class SystemRender:
     """
     system_name: str
     declared: bool
+    # Déclaré ne veut pas dire pilotant : un émulateur peut n'exposer AUCUN
+    # réglage de rendu en ligne de commande — DuckStation v0.1-11609 n'a que
+    # dix-sept arguments, aucun de rendu. Le déclarer avec une note dit « la
+    # question a été tranchée, la réponse est non », là où l'absence de bloc
+    # dit « personne n'a encore regardé ». Les confondre ferait rouvrir
+    # l'enquête à chaque passage, ou pire, attendre un effet qui ne viendra
+    # pas.
+    pilote: bool = False
     crt: bool = False
     crt_absent: str = ""
     auto: tuple[tuple[str, str], ...] = ()   # (classe de machine, mode retenu)
@@ -295,7 +303,9 @@ def etat_rendu(profils: dict) -> list[SystemRender]:
                 continue
             notes = tuple(m.note for m in (rendu.native, rendu.full) if m.note)
             etats.append(SystemRender(
-                systeme.name, declared=True, crt=bool(rendu.native.crt),
+                systeme.name, declared=True,
+                pilote=bool(rendu.native.args or rendu.full.args),
+                crt=bool(rendu.native.crt),
                 crt_absent=rendu.native.crt_absent,
                 auto=tuple((classe, render_mod.arbitrer(classe, systeme.cost))
                            for classe in render_mod.CLASSES),
@@ -447,6 +457,12 @@ def _lignes_rendu(report: Report) -> list[str]:
             # obtiendrait exactement ce qu'il avait avant.
             lignes.append(f"  {nom}  aucun mode déclaré — les trois modes "
                           "lancent la même commande")
+            continue
+        if not e.pilote:
+            lignes.append(f"  {nom}  cet émulateur ne pilote pas son rendu en "
+                          "ligne de commande")
+            for note in e.notes:
+                lignes.append(f"  {' ' * largeur}    {note}")
             continue
         crt = "natif avec CRT" if e.crt else "natif sans CRT"
         lignes.append(f"  {nom}  {crt}  |  auto : {_resume_auto(e.auto)}")

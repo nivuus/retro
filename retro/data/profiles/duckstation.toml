@@ -45,7 +45,7 @@ folders    = ["Playstation", "PS1", "PSX", "Playstation 1"]
 # désigne un .cue, et les compter ferait une entrée Steam par piste À CÔTÉ du
 # jeu. Même raison que dans le profil RetroArch d'origine.
 extensions = [".cue", ".chd", ".pbp", ".m3u", ".ccd", ".ecm", ".mds", ".iso"]
-launch     = '-batch -nogui -fullscreen "{rom}"'
+launch     = '-batch -nogui -fullscreen {render} "{rom}"'
 # DuckStation n'a pas de BIOS de remplacement utilisable : sans l'un de ces
 # trois fichiers il retombe sur OpenBIOS, dont la compatibilité est partielle
 # et échoue jeu par jeu — le genre de panne qu'on ne diagnostique pas depuis un
@@ -66,3 +66,31 @@ bios       = [
   { file = "scph5501.bin", md5 = "490f666e1afb15b7362b406ed1cea246", required = true, group = "psx-region", region = "Amérique du Nord" },
   { file = "scph5502.bin", md5 = "32736f17079d0b2b7024407c39bd3050", required = true, group = "psx-region", region = "Europe" },
 ]
+
+# Les trois modes de rendu ne pilotent RIEN ici, et c'est une réponse, pas un
+# oubli. La révision v0.1-11609 — celle dont le manifeste porte l'empreinte —
+# n'accepte que dix-sept arguments, énumérés un par un dans
+# ParseCommandLineParametersAndInitializeConfig de src/duckstation-qt/qthost.cpp :
+# -help, -version, -batch, -nogui, -bios, -fastboot, -slowboot, -resume,
+# -state, -statefile, -exe, -fullscreen, -nofullscreen, -bigpicture,
+# -setupwizard, -earlyconsole, -updatecleanup, et « -- ». Aucun n'est un
+# réglage de rendu ; il n'existe pas de « -set section/clé=valeur » dans cette
+# révision, quoi qu'en disent les recettes qui circulent.
+#
+# Les modes sont donc DÉCLARÉS VIDES, avec la note qui dit pourquoi. Ne rien
+# déclarer du tout aurait voulu dire « personne n'a encore regardé » ; ceci dit
+# « la question a été tranchée, et la réponse est non ». `retro status` répète
+# la note, de sorte que le propriétaire qui choisit « full » et ne voit rien
+# changer sur ses jeux PlayStation puisse lire pourquoi.
+#
+# La résolution interne et le ratio de DuckStation se règlent dans son
+# settings.ini. Les y écrire écraserait les réglages du propriétaire, ce que
+# cet outil ne fait pas.
+cost       = "light"
+[system.render.native]
+args = ""
+note = "DuckStation v0.1-11609 n'expose aucun réglage de rendu en ligne de commande : ses dix-sept arguments sont énumérés dans qthost.cpp, aucun n'en est un. Le rendu se règle dans son settings.ini."
+crt_absent = "aucun shader ne peut être choisi en ligne de commande dans cette révision"
+[system.render.full]
+args = ""
+note = "même raison qu'en mode natif : rien à passer sur la ligne de commande."

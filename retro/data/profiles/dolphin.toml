@@ -14,6 +14,21 @@
 # d'extensions vient du filtre de MainWindow::PromptFileNames de la même
 # révision.
 #
+# Les trois modes de rendu passent par --config, qui est REPETABLE :
+# ParseArguments appelle options.all("config") dans
+# Source/Core/UICommon/CommandLineParse.cpp de la révision 2606a.
+#
+# Les deux réglages viennent de Source/Core/Core/Config/GraphicsSettings.cpp
+# de la même révision :
+#   GFX.Settings.InternalResolution — GFX_EFB_SCALE, défaut 1, c'est-à-dire
+#     la résolution d'origine ; GFX_MAX_EFB_SCALE plafonne à 12 ;
+#   GFX.Settings.AspectRatio — GFX_ASPECT_RATIO, un AspectMode dont l'ordre
+#     est déclaré dans Source/Core/VideoCommon/VideoConfig.h : 0 = Auto,
+#     1 = ForceWide (16:9), 2 = ForceStandard (4:3).
+# Le mode natif force donc le 4:3 et la résolution d'origine ; le mode full
+# laisse le ratio à Auto et multiplie la résolution interne par ce que la
+# session peut afficher.
+#
 # Dolphin n'a AUCUNE option de plein écran : il se lançait donc en fenêtre sur
 # la télévision, jeu compris — une panne muette, puisque le jeu tourne. Le
 # plein écran est un réglage, que --config pose pour ce lancement seulement.
@@ -40,15 +55,38 @@ id         = "gamecube"
 name       = "GameCube"
 folders    = ["GC", "NGC", "Nintendo GameCube"]
 extensions = [".iso", ".gcm", ".gcz", ".rvz", ".ciso", ".wia", ".tgc", ".dol", ".elf"]
-launch     = '-b --config Dolphin.Display.Fullscreen=True -e "{rom}"'
+launch     = '-b --config Dolphin.Display.Fullscreen=True {render} -e "{rom}"'
 # Le BIOS GameCube (IPL) n'est utilisé que pour afficher l'animation de
 # démarrage ; Dolphin joue sans lui. Rien à exiger.
 bios       = []
+cost       = "medium"
+# La GameCube et la Wii sortent toutes deux en 480 lignes au maximum : c'est
+# la hauteur par laquelle celle de la session se divise pour donner l'échelle.
+[system.render]
+native_height = 480
+max_scale     = 12
+[system.render.native]
+args = '--config GFX.Settings.InternalResolution=1 --config GFX.Settings.AspectRatio=2'
+crt_absent = "Dolphin n'embarque aucun shader CRT : ses shaders de post-traitement se déposent à la main dans Load\\Shaders\\, et l'archive épinglée n'en livre aucun."
+[system.render.full]
+args = '--config GFX.Settings.InternalResolution={scale} --config GFX.Settings.AspectRatio=0'
+
 
 [[system]]
 id         = "wii"
 name       = "Wii"
 folders    = ["Nintendo Wii"]
 extensions = [".iso", ".wbfs", ".rvz", ".gcz", ".ciso", ".wia", ".wad"]
-launch     = '-b --config Dolphin.Display.Fullscreen=True -e "{rom}"'
+launch     = '-b --config Dolphin.Display.Fullscreen=True {render} -e "{rom}"'
 bios       = []
+cost       = "medium"
+# La GameCube et la Wii sortent toutes deux en 480 lignes au maximum : c'est
+# la hauteur par laquelle celle de la session se divise pour donner l'échelle.
+[system.render]
+native_height = 480
+max_scale     = 12
+[system.render.native]
+args = '--config GFX.Settings.InternalResolution=1 --config GFX.Settings.AspectRatio=2'
+crt_absent = "Dolphin n'embarque aucun shader CRT : ses shaders de post-traitement se déposent à la main dans Load\\Shaders\\, et l'archive épinglée n'en livre aucun."
+[system.render.full]
+args = '--config GFX.Settings.InternalResolution={scale} --config GFX.Settings.AspectRatio=0'
