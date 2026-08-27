@@ -14,6 +14,9 @@ import dataclasses
 import pathlib
 import tomllib
 
+from retro import render as render_mod
+from retro.render import Render, RenderMode
+
 SCHEMA = 1
 
 
@@ -34,6 +37,11 @@ class System:
     # Déclaratif, dans le TOML : une liste d'exceptions dans le code
     # rouvrirait un module à chaque collection rencontrée.
     folders: tuple[str, ...] = ()
+    # Ce que coûte l'émulation de ce système, pour le mode `auto`. Exigé dès
+    # qu'un bloc `render` est déclaré : sans lui, `auto` n'aurait rien à
+    # croiser avec la machine et déciderait sur une valeur inventée.
+    cost: str = ""
+    render: Render | None = None
 
 
 def folder_key(nom: str) -> str:
@@ -115,6 +123,154 @@ def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
                 "« Un parmi ceux-ci suffit » ne veut alors plus rien dire : le "
                 "groupe entier est exigé, ou il ne l'est pas."
             )
+
+
+# Les seules variables qu'un gabarit de rendu peut employer. Une variable
+# inconnue — « {res} », « {resolution} » — traverserait la substitution telle
+# quelle et arriverait LITTÉRALEMENT sur la ligne de commande de l'émulateur,
+# qui l'ignorerait ou refuserait de démarrer. La faute est muette : le mode
+# aurait l'air appliqué.
+_VARIABLES = ("width", "height", "scale")
+_CLES_RENDER = ("native", "full", "native_height", "max_scale")
+_CLES_MODE = ("args", "note", "crt", "crt_absent")
+
+
+def _valider_variables(path, sid, quoi: str, gabarit: str) -> None:
+    import re
+    inconnues = sorted({m for m in re.findall(r"\{(\w+)\}", gabarit)
+                        if m not in _VARIABLES})
+    if inconnues:
+        raise ProfileError(
+            f"{path} [{sid}] : {quoi} emploie des variables inconnues : "
+            f"{', '.join('{' + v + '}' for v in inconnues)}. Les variables "
+            f"disponibles sont {', '.join('{' + v + '}' for v in _VARIABLES)}. "
+            "Une variable inconnue arriverait telle quelle sur la ligne de "
+            "commande de l'émulateur, qui l'ignorerait ou refuserait de "
+            "démarrer — et le mode aurait pourtant l'air appliqué."
+        )
+
+
+def _lire_mode(path, sid, nom: str, brut) -> RenderMode:
+    """Un bloc [system.render.native] ou [system.render.full]."""
+    if not isinstance(brut, dict):
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}' doit être une table "
+            f"([system.render.{nom}]), pas {type(brut).__name__}."
+        )
+    inconnues = sorted(k for k in brut if k not in _CLES_MODE)
+    if inconnues:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}' contient des clés inconnues : "
+            f"{', '.join(inconnues)}. Les clés sont {', '.join(_CLES_MODE)}. "
+            "Une clé mal orthographiée ne serait jamais lue, et le réglage "
+            "qu'elle porte n'aurait aucun effet sans qu'un mot le dise."
+        )
+    if "args" not in brut:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}' n'a pas de champ 'args'. Un mode "
+            "sans arguments ne changerait rien au lancement : le propriétaire "
+            f"choisirait « {nom} » et obtiendrait les réglages par défaut de "
+            "l'émulateur. Si c'est bien le cas — l'émulateur n'expose rien en "
+            "ligne de commande — le déclarer : args = \"\" avec une 'note' "
+            "qui dit pourquoi."
+        )
+    for champ in _CLES_MODE:
+        if champ in brut and not isinstance(brut[champ], str):
+            raise ProfileError(
+                f"{path} [{sid}] : 'render.{nom}.{champ}' doit être du texte."
+            )
+    args, note = brut["args"].strip(), brut.get("note", "").strip()
+    if not args and not note:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}.args' est vide sans 'note'. Un "
+            "mode vide est peut-être la vérité — tous les émulateurs "
+            "n'exposent pas leurs réglages en ligne de commande — mais rien ne "
+            "le distinguerait d'un bloc oublié, et `retro status` ne pourrait "
+            "pas expliquer au propriétaire pourquoi son choix ne change rien."
+        )
+    _valider_variables(path, sid, f"render.{nom}.args", args)
+
+    crt, crt_absent = brut.get("crt", "").strip(), brut.get("crt_absent", "").strip()
+    if nom == render_mod.NATIVE:
+        # « Ce que la console d'origine fournissait » passait par un tube
+        # cathodique. Le shader n'existe pas partout, et c'est une information
+        # que le propriétaire doit pouvoir lire — pas une clé qu'on devine
+        # absente, ce qu'une faute de frappe produirait tout aussi bien.
+        if bool(crt) == bool(crt_absent):
+            raise ProfileError(
+                f"{path} [{sid}] : 'render.native' doit déclarer SOIT 'crt' — "
+                "les arguments du shader — SOIT 'crt_absent', qui dit pourquoi "
+                "cet émulateur n'en a pas. Ni l'un ni l'autre laisserait le "
+                "mode natif rendre une image propre qu'aucun téléviseur de "
+                "l'époque n'a produite, sans que le rapport puisse le dire ; "
+                "les deux à la fois ne veulent rien dire."
+            )
+        _valider_variables(path, sid, f"render.{nom}.crt", crt)
+    elif crt or crt_absent:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.full' ne prend ni 'crt' ni "
+            "'crt_absent'. Le shader CRT n'a de sens qu'en mode natif — "
+            "déclaré ici, il ne serait jamais appliqué."
+        )
+    return RenderMode(args=args, note=note, crt=crt, crt_absent=crt_absent)
+
+
+def _lire_render(path, sid, brut, launch: str) -> Render:
+    if not isinstance(brut, dict):
+        raise ProfileError(
+            f"{path} [{sid}] : 'render' doit être une table "
+            "([system.render.native] / [system.render.full])."
+        )
+    inconnues = sorted(k for k in brut if k not in _CLES_RENDER)
+    if inconnues:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render' contient des clés inconnues : "
+            f"{', '.join(inconnues)}. Les clés sont {', '.join(_CLES_RENDER)}."
+        )
+    manquants = [m for m in render_mod.MODES_DECLARES if m not in brut]
+    if manquants:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render' ne déclare pas {', '.join(manquants)}. "
+            "Les DEUX modes sont exigés : n'en déclarer qu'un ferait que "
+            "l'autre se lance avec les réglages par défaut de l'émulateur, "
+            "sans rien changer et sans rien dire — et `auto`, qui choisit "
+            "entre les deux, en serait réduit à un seul."
+        )
+    modes = {m: _lire_mode(path, sid, m, brut[m])
+             for m in render_mod.MODES_DECLARES}
+
+    # {render} dit OÙ les arguments s'insèrent. Certains émulateurs exigent le
+    # fichier en dernier, d'autres leurs options avant : personne, ici, ne peut
+    # deviner la place juste. Sans le marqueur, les arguments n'iraient nulle
+    # part — le mode serait déclaré, validé, et sans le moindre effet.
+    if "{render}" not in launch:
+        raise ProfileError(
+            f"{path} [{sid}] : le gabarit launch ne contient pas {{render}} "
+            "alors qu'un bloc 'render' est déclaré. C'est {{render}} qui dit "
+            "OÙ les arguments de rendu s'insèrent dans la commande — sans lui "
+            "ils n'iraient nulle part, et les trois modes se lanceraient tous "
+            "de la même façon."
+        )
+
+    besoin_echelle = any("{scale}" in (m.args + " " + m.crt)
+                         for m in modes.values())
+    for champ in ("native_height", "max_scale"):
+        valeur = brut.get(champ, 0)
+        if not isinstance(valeur, int) or isinstance(valeur, bool):
+            raise ProfileError(
+                f"{path} [{sid}] : 'render.{champ}' doit être un entier."
+            )
+        if besoin_echelle and valeur <= 0:
+            raise ProfileError(
+                f"{path} [{sid}] : {{scale}} est employé mais "
+                f"'render.{champ}' vaut {valeur}. L'échelle se calcule en "
+                "divisant la hauteur de la session par la hauteur d'origine de "
+                "la console, bornée par l'échelle maximale : sans ces deux "
+                "nombres, elle n'est pas calculable."
+            )
+    return Render(native=modes[render_mod.NATIVE], full=modes[render_mod.FULL],
+                  native_height=brut.get("native_height", 0),
+                  max_scale=brut.get("max_scale", 0))
 
 
 def load_profile(path: pathlib.Path) -> Profile:
@@ -253,10 +409,38 @@ def load_profile(path: pathlib.Path) -> Profile:
 
         _valider_groupes(path, data["id"], sid, brut.get("bios", ()))
 
+        # Le bloc `render` est FACULTATIF : les modes se remplissent
+        # émulateur par émulateur, chaque option lue dans l'exécutable livré,
+        # et un profil qui n'en a pas encore doit continuer de lancer ses
+        # jeux. Ce qui est interdit, c'est qu'un système sans modes ait l'air
+        # d'en avoir : `retro status` nomme ceux qui n'en déclarent pas.
+        brut_render = brut.get("render")
+        cout = brut.get("cost", "")
+        if not isinstance(cout, str):
+            raise ProfileError(f"{path} [{sid}] : 'cost' doit être du texte.")
+        if brut_render is not None:
+            if cout not in render_mod.COUTS:
+                raise ProfileError(
+                    f"{path} [{sid}] : 'cost' vaut {cout!r}, attendu l'un de "
+                    f"{', '.join(render_mod.COUTS)}. C'est ce que le mode "
+                    "`auto` croise avec la machine pour choisir entre natif et "
+                    "full — sans lui il déciderait sur une valeur inventée, et "
+                    "un jeu qui rame ressemblerait à du matériel insuffisant."
+                )
+        elif "{render}" in brut["launch"]:
+            raise ProfileError(
+                f"{path} [{sid}] : le gabarit launch contient {{render}} mais "
+                "aucun bloc 'render' n'est déclaré. Le marqueur resterait tel "
+                "quel sur la ligne de commande de l'émulateur."
+            )
+
         systemes.append(System(
             id=sid, name=brut["name"], extensions=exts, launch=brut["launch"],
             bios=tuple(brut.get("bios", ())),
             folders=tuple(declares),
+            cost=cout,
+            render=(_lire_render(path, sid, brut_render, brut["launch"])
+                    if brut_render is not None else None),
         ))
 
     if not systemes:

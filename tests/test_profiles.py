@@ -542,3 +542,206 @@ def test_le_profil_livre_devenu_vide_disparait(tmp_path):
     """Il ne pourrait plus rien lancer, et `retro status` réclamerait
     l'installation d'un émulateur dont plus aucun jeu ne dépend."""
     assert "retroarch" not in _deux_sources(tmp_path, "duckstation")
+
+
+# --- les trois modes de rendu -------------------------------------------
+
+def profil_rendu(corps: str, launch: str = '-f {render} "{rom}"') -> str:
+    """Un profil minimal dont le seul système porte le bloc donné."""
+    return f'''
+schema = 1
+id = "essai"
+exe = "essai.exe"
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '{launch}'
+cost = "light"
+bios = []
+{corps}
+'''
+
+
+RENDU_VALIDE = """
+[system.render.native]
+args = "-scale=1"
+crt = "-shader=crt-geom"
+[system.render.full]
+args = "-scale={scale} --resolution={width}x{height}"
+[system.render]
+native_height = 240
+max_scale = 8
+"""
+
+
+def test_un_bloc_de_rendu_complet_se_charge(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "e.toml",
+                                     profil_rendu(RENDU_VALIDE)))
+    systeme = p.systems[0]
+    assert systeme.cost == "light"
+    assert systeme.render.native.crt == "-shader=crt-geom"
+    assert systeme.render.max_scale == 8
+
+
+def test_un_profil_sans_bloc_de_rendu_reste_valide(tmp_path):
+    """Les modes se remplissent émulateur par émulateur, chaque option lue
+    dans l'exécutable livré. Un profil qui n'en a pas encore doit continuer de
+    lancer ses jeux — c'est `retro status` qui nomme ceux qui n'en ont pas."""
+    p = profiles.load_profile(ecrire(tmp_path, "e.toml",
+                                     profil_rendu("", launch='-f "{rom}"')))
+    assert p.systems[0].render is None
+
+
+def test_un_bloc_de_rendu_sans_marqueur_dans_launch_est_refuse(tmp_path):
+    """Sans {render}, les arguments n'iraient NULLE PART : les trois modes se
+    lanceraient à l'identique, et le propriétaire croirait choisir."""
+    with pytest.raises(profiles.ProfileError, match=r"ne contient pas \{render\}"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu(
+            RENDU_VALIDE, launch='-f "{rom}"')))
+
+
+def test_un_marqueur_sans_bloc_de_rendu_est_refuse(tmp_path):
+    """Le marqueur arriverait littéralement sur la ligne de commande."""
+    with pytest.raises(profiles.ProfileError, match="aucun bloc 'render'"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("")))
+
+
+def test_un_seul_mode_declare_est_refuse(tmp_path):
+    """L'autre se lancerait avec les réglages par défaut, sans rien changer et
+    sans rien dire — et `auto`, qui choisit entre les deux, n'aurait plus le
+    choix."""
+    with pytest.raises(profiles.ProfileError, match="ne déclare pas full"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun shader"
+""")))
+
+
+@pytest.mark.parametrize("faute,motif", [
+    ("[system.render.natif]\nargs = \"-x\"", "clés inconnues"),
+    ("[system.render.native]\nargms = \"-x\"", "clés inconnues"),
+])
+def test_une_faute_de_frappe_sur_un_nom_de_mode_est_refusee(tmp_path, faute, motif):
+    """Une clé mal orthographiée ne serait jamais lue : le réglage qu'elle
+    porte n'aurait aucun effet, et rien ne le dirait."""
+    corps = faute + '\n[system.render.full]\nargs = "-y"\n'
+    with pytest.raises(profiles.ProfileError, match=motif):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu(corps)))
+
+
+def test_un_mode_sans_args_est_refuse(tmp_path):
+    with pytest.raises(profiles.ProfileError, match="pas de champ 'args'"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+crt_absent = "aucun shader"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_un_mode_vide_sans_note_est_refuse(tmp_path):
+    """Un mode vide est peut-être la vérité — tous les émulateurs n'exposent
+    pas leurs réglages en ligne de commande — mais rien ne le distinguerait
+    d'un bloc oublié."""
+    with pytest.raises(profiles.ProfileError, match="est vide sans 'note'"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = ""
+crt_absent = "aucun shader"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_un_mode_vide_avec_note_est_accepte(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = ""
+note = "cet émulateur n'expose aucun réglage de rendu en ligne de commande"
+crt_absent = "ni shader"
+[system.render.full]
+args = "-y"
+""")))
+    assert p.systems[0].render.native.note
+
+
+def test_le_mode_natif_doit_trancher_sur_le_crt(tmp_path):
+    """« Ce que la console d'origine fournissait » passait par un tube
+    cathodique. Ni crt ni crt_absent rendrait une image propre qu'aucun
+    téléviseur de l'époque n'a produite, sans que le rapport puisse le dire."""
+    with pytest.raises(profiles.ProfileError, match="SOIT 'crt'"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_le_crt_et_son_absence_a_la_fois_sont_refuses(tmp_path):
+    with pytest.raises(profiles.ProfileError, match="SOIT 'crt'"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt = "-shader=crt"
+crt_absent = "aucun shader"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_un_crt_en_mode_full_est_refuse(tmp_path):
+    """Déclaré là, il ne serait jamais appliqué."""
+    with pytest.raises(profiles.ProfileError, match="ne prend ni 'crt'"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun"
+[system.render.full]
+args = "-y"
+crt = "-shader=crt"
+""")))
+
+
+def test_une_variable_inconnue_est_refusee(tmp_path):
+    """Elle arriverait TELLE QUELLE sur la ligne de commande de l'émulateur,
+    qui l'ignorerait ou refuserait de démarrer — et le mode aurait pourtant
+    l'air appliqué."""
+    with pytest.raises(profiles.ProfileError, match="variables inconnues"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "--res={resolution}"
+crt_absent = "aucun"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_l_echelle_exige_ce_qui_permet_de_la_calculer(tmp_path):
+    """{scale} se calcule en divisant la hauteur de session par celle de la
+    console d'origine : sans ces deux nombres, elle n'est pas calculable."""
+    with pytest.raises(profiles.ProfileError, match="native_height"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun"
+[system.render.full]
+args = "-scale={scale}"
+""")))
+
+
+def test_un_bloc_de_rendu_sans_cout_est_refuse(tmp_path):
+    """C'est ce que `auto` croise avec la machine : sans lui il déciderait sur
+    une valeur inventée, et un jeu qui rame ressemblerait à du matériel
+    insuffisant."""
+    sans_cout = profil_rendu(RENDU_VALIDE).replace('cost = "light"\n', "")
+    with pytest.raises(profiles.ProfileError, match="'cost' vaut"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", sans_cout))
+
+
+def test_un_cout_mal_orthographie_est_refuse(tmp_path):
+    mauvais = profil_rendu(RENDU_VALIDE).replace('"light"', '"leger"')
+    with pytest.raises(profiles.ProfileError, match="'cost' vaut 'leger'"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", mauvais))
