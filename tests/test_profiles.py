@@ -486,3 +486,59 @@ def test_un_dossier_du_proprietaire_qui_est_un_fichier_refuse(tmp_path):
         profiles.load_profiles(paquet, fichier)
     assert "duckstation.toml" in str(exc.value)
     assert "dossier" in str(exc.value)
+
+
+def _deux_sources(tmp_path, pid_utilisateur):
+    """Un profil livré et un profil du propriétaire qui servent le MÊME dossier
+    de ROMs sous des identifiants de système DIFFÉRENTS."""
+    livres, miens = tmp_path / "livres", tmp_path / "miens"
+    livres.mkdir(); miens.mkdir()
+    (livres / "ra.toml").write_text("""
+schema = 1
+id = "retroarch"
+exe = 'ra.exe'
+[[system]]
+id = "psx"
+name = "PlayStation"
+folders = ["Playstation"]
+extensions = [".cue"]
+launch = '-f "{rom}"'
+bios = []
+""", encoding="utf-8")
+    (miens / "m.toml").write_text(f"""
+schema = 1
+id = "{pid_utilisateur}"
+exe = 'perso.exe'
+[[system]]
+id = "psx-perso"
+name = "PlayStation (le mien)"
+folders = ["Playstation"]
+extensions = [".cue"]
+launch = '-f "{{rom}}"'
+bios = []
+""", encoding="utf-8")
+    return profiles.load_profiles(livres, miens)
+
+
+@pytest.mark.parametrize("pid", ["duckstation", "zz-le-mien"])
+def test_la_preseance_ne_depend_pas_du_nom_du_fichier(tmp_path, pid):
+    """« Le vôtre l'emporte » portait sur le seul identifiant de SYSTÈME. Un
+    profil du propriétaire servant « Playstation » sous un identifiant à lui
+    ne reprenait rien : les deux systèmes survivaient, et le scan tranchait
+    par ordre alphabétique des identifiants de PROFIL. Le propriétaire
+    gagnait ou perdait selon le nom qu'il avait donné à son fichier."""
+    fusionnes = _deux_sources(tmp_path, pid)
+    revendiquent = [
+        p.id for p in fusionnes.values() for s in p.systems
+        if "playstation" in profiles.folder_claims(s)
+    ]
+    assert revendiquent == [pid], (
+        "un seul profil doit revendiquer ce dossier, et ce doit être celui "
+        f"du propriétaire — trouvé : {revendiquent}"
+    )
+
+
+def test_le_profil_livre_devenu_vide_disparait(tmp_path):
+    """Il ne pourrait plus rien lancer, et `retro status` réclamerait
+    l'installation d'un émulateur dont plus aucun jeu ne dépend."""
+    assert "retroarch" not in _deux_sources(tmp_path, "duckstation")

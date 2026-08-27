@@ -432,10 +432,23 @@ def load_profiles(directory: pathlib.Path,
     miens = (_charger_source(user_directory, obligatoire=False)
              if user_directory is not None else {})
 
-    revendiques = {s.id for profil, _ in miens.values() for s in profil.systems}
+    # La préséance porte sur les NOMS DE DOSSIER, pas sur le seul identifiant
+    # de système. Un profil du propriétaire qui sert « Playstation » sous un
+    # identifiant à lui — « psx-perso » — ne reprenait rien du tout : les deux
+    # systèmes survivaient, tous deux revendiquant ce dossier, et `scan`
+    # tranchait par ordre alphabétique des identifiants de PROFIL. Le
+    # propriétaire gagnait ou perdait selon le nom qu'il avait donné à son
+    # fichier, sans qu'aucun message ne le dise. C'est de ces noms-là que le
+    # scan se sert, donc c'est sur eux que la règle doit porter.
+    revendiques = {nom for profil, _ in miens.values() for s in profil.systems
+                   for nom in folder_claims(s)}
     fusionnes: dict[str, Profile] = {}
     for pid, (profil, _) in livres.items():
-        restants = tuple(s for s in profil.systems if s.id not in revendiques)
+        # Un seul nom repris suffit à retirer le système livré : lui en
+        # laisser les autres le remettrait en concurrence sur ceux-là, et on
+        # retomberait sur l'arbitrage silencieux qu'on vient de fermer.
+        restants = tuple(s for s in profil.systems
+                         if not any(n in revendiques for n in folder_claims(s)))
         if not restants:
             continue  # tous ses systèmes sont passés au propriétaire
         fusionnes[pid] = (profil if len(restants) == len(profil.systems)

@@ -190,7 +190,15 @@ def _explorer(base: pathlib.Path, table: dict, parents: tuple[str, ...],
         if trouve:
             couverts.append((enfant, chemin, trouve[0], trouve[1]))
             continue
-        if profondeur < _PROFONDEUR_MAX:
+        # On ne TRAVERSE pas un lien : un lien qui remonte vers un ancêtre —
+        # ou une jonction Windows, qui se comporte pareil — fait retrouver
+        # les mêmes ROMs par un second chemin, et chacune reçoit alors deux
+        # entrées Steam pour le même jeu. La profondeur maximale borne
+        # l'explosion mais pas le doublon. Un lien RECONNU reste accepté
+        # (bloc au-dessus) : ranger un système sur un autre volume et le
+        # relier ici est un usage légitime, et il ne crée aucun cycle
+        # puisqu'un dossier reconnu n'est jamais ouvert plus loin.
+        if profondeur < _PROFONDEUR_MAX and not enfant.is_symlink():
             sous_couverts, sous_orphelins = _explorer(
                 enfant, table, chemin, profondeur + 1)
             if sous_couverts or sous_orphelins:

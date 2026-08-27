@@ -543,3 +543,29 @@ def test_un_constructeur_dont_un_enfant_est_reconnu_n_est_pas_signale(
     faire_roms(tmp_path, ["Nintendo/Snes/Zelda.sfc"])
     vus, _ = scan.unmatched_folders(tmp_path / "ROMs", profils_folders)
     assert vus == []
+
+
+def test_un_lien_qui_remonte_ne_duplique_pas_les_jeux(tmp_path, profils_folders):
+    """Un lien vers un ancêtre — ou une jonction Windows — fait retrouver les
+    mêmes ROMs par un second chemin. Chacune recevait deux entrées Steam pour
+    le même jeu, et la profondeur maximale bornait l'explosion sans empêcher
+    le doublon."""
+    import os
+    faire_roms(tmp_path, ["Snes/Zelda.sfc"])
+    racine = tmp_path / "ROMs"
+    (racine / "ailleurs").mkdir()
+    os.symlink(racine, racine / "ailleurs" / "boucle")
+    inv = _scan(tmp_path, profils_folders)
+    assert [e.title for e in inv] == ["Zelda"]
+
+
+def test_un_systeme_relie_depuis_un_autre_volume_reste_lu(tmp_path, profils_folders):
+    """Ne pas traverser un lien ne doit pas revenir à en ignorer un : ranger
+    un système ailleurs et le relier ici est un usage légitime."""
+    import os
+    ailleurs = tmp_path / "volume2" / "Snes"
+    ailleurs.mkdir(parents=True)
+    (ailleurs / "Zelda.sfc").write_bytes(b"x")
+    (tmp_path / "ROMs").mkdir(parents=True, exist_ok=True)
+    os.symlink(ailleurs, tmp_path / "ROMs" / "Snes")
+    assert [e.title for e in _scan(tmp_path, profils_folders)] == ["Zelda"]
