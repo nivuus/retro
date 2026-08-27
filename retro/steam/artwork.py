@@ -11,6 +11,7 @@ fait très bien remonter les jeux.
 from __future__ import annotations
 
 import pathlib
+import urllib.parse
 
 import requests
 
@@ -40,11 +41,43 @@ def _fetch_bytes(url: str) -> bytes:
     return r.content
 
 
+# Les seules extensions que Steam lit, et donc les seules qu'on accepte d'une
+# URL. Tout le reste devient .png : mieux vaut une extension à peu près juste
+# qu'un nom de fichier que le système refuse d'écrire.
+_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".ico", ".webp"})
+
+
+def _extension(url: str) -> str:
+    """L'extension du fichier désigné par une URL, sans ce qui la suit.
+
+    `PurePosixPath(url).suffix` sur « .../abc.png?t=1 » rend « .png?t=1 » : la
+    query devient partie de l'extension. Le nom construit portait alors un
+    « ? », que Windows REFUSE dans un nom de fichier — OSError, avalée par le
+    filet de fetch_for, et le rapport annonçait « 0 récupéré » sans rien de
+    plus. Sept jeux passaient, un échouait à chaque synchronisation, et rien
+    ne distinguait ce cas d'une bibliothèque déjà complète.
+
+    Invisible sous Linux, où « ? » est un nom de fichier parfaitement légal :
+    seule la machine cible pouvait le montrer.
+    """
+    chemin = urllib.parse.urlsplit(url).path
+    ext = pathlib.PurePosixPath(chemin).suffix.lower()
+    return ext if ext in _EXTENSIONS else ".png"
+
+
 class ArtworkClient:
     def __init__(self, api_key: str | None, fetch_json=_fetch_json, fetch_bytes=_fetch_bytes):
         self.api_key = api_key
         self._fetch_json = fetch_json
         self._fetch_bytes = fetch_bytes
+        # Les échecs rencontrés, pour que le rapport puisse en NOMMER un.
+        # Avaler l'exception reste juste — l'artwork est un ornement — mais
+        # « 0 récupéré » disait la même chose pour une bibliothèque complète,
+        # une clé expirée et un nom de fichier que Windows refuse d'écrire.
+        # Le compteur de manquants disait COMBIEN, jamais POURQUOI, et le
+        # troisième cas a demandé de rejouer la séquence à la main sur la
+        # machine cible pour être seulement vu.
+        self.erreurs: list[str] = []
 
     def fetch_for(self, title: str, legacy_appid: int, grid_dir: pathlib.Path) -> list[str]:
         if not self.api_key:
@@ -78,15 +111,12 @@ class ArtworkClient:
                 if not candidats:
                     continue
                 url = candidats[0]["url"]
-                # L'extension suit la source : Steam accepte .png, .jpg et .ico
-                # indifféremment, et la conserver évite de retélécharger à chaque
-                # passage un asset déjà présent sous un autre suffixe.
-                ext = pathlib.PurePosixPath(url).suffix or ".png"
-                nom = f"{manquants[cle]}{ext}"
+                nom = f"{manquants[cle]}{_extension(url)}"
                 (grid_dir / nom).write_bytes(self._fetch_bytes(url))
                 ecrits.append(nom)
             return ecrits
-        except Exception:  # noqa: BLE001 - volontairement large, voir docstring
+        except Exception as exc:  # noqa: BLE001 - volontairement large, voir docstring
+            self.erreurs.append(f"{title} : {type(exc).__name__} : {exc}")
             return []
 
 

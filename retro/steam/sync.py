@@ -18,6 +18,10 @@ class SyncReport:
     artwork_pruned: int
     artwork_missing: int
     backup: pathlib.Path | None
+    # Le premier échec d'artwork rencontré, ou "". Un seul suffit : ils se
+    # répètent d'une synchronisation à l'autre, et le nommer est ce qui
+    # distingue « rien à faire » de « quelque chose ne marche pas ».
+    artwork_error: str = ""
 
 
 def sync_account(
@@ -69,6 +73,8 @@ def sync_account(
         kept=resultat.kept,
         artwork_written=ecrits,
         artwork_missing=manquants,
+        artwork_error=(artwork_client.erreurs[0]
+                       if getattr(artwork_client, "erreurs", None) else ""),
         artwork_pruned=purges,
         backup=sauvegarde,
     )
@@ -92,6 +98,8 @@ def format_report(reports: list[SyncReport]) -> str:
             f"  artwork : {r.artwork_written} récupéré(s), "
             f"{r.artwork_pruned} purgé(s), {r.artwork_missing} manquant(s)"
         )
+        if r.artwork_error:
+            lignes.append(f"    échec : {r.artwork_error}")
         if r.backup:
             lignes.append(f"  sauvegarde : {r.backup.name}")
     return "\n".join(lignes)
