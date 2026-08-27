@@ -31,63 +31,255 @@ id         = "nes"
 name       = "Nintendo Entertainment System"
 folders    = ["NES", "Famicom", "Nintendo NES"]
 extensions = [".nes", ".fds", ".unf", ".unif"]
-launch     = '-L "RetroArch-Win64\cores\mesen_libretro.dll" -f "{rom}"'
+launch     = '-L "RetroArch-Win64\cores\mesen_libretro.dll" {render} -f "{rom}"'
 # disksys.rom n'est requis que pour le Famicom Disk System (.fds) ; les
 # cartouches s'en passent. Déclaré optionnel pour cette raison.
 bios       = [
   { file = "disksys.rom", md5 = "ca30b50f880eb660a320674ed365ef7a", required = false },
 ]
+cost       = "light"
+[system.render.native]
+# Le shader est le mode natif : « ce que la console d'origine fournissait »
+# sortait d'un tube cathodique, et une image propre n'est pas ce qu'elle
+# rendait. Le chemin est RELATIF, rebasé par RetroArch sur video_shader_dir —
+# case RA_OPT_SET_SHADER de retroarch.c, révision 1.22.2 — d'où le réglage du
+# dossier dans le fichier ci-dessous : sans lui, un dossier déplacé ferait
+# chercher le shader ailleurs, en silence.
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+# crt-geom en SLANG et non en GLSL : le pilote vidéo mesuré sur la machine est
+# d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
+# famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
+# l'air normal.
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+'''
+[system.render.full]
+# Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
+# l'enum aspect_ratio de gfx/video_defines.h, révision 1.22.2). Le shader doit
+# être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
+# s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
+args = '--appendconfig "{render_config}"'
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+'''
 
 [[system]]
 id         = "snes"
 name       = "Super Nintendo"
 folders    = ["SNES", "Super Famicom", "Super NES"]
 extensions = [".smc", ".sfc", ".swc", ".fig"]
-launch     = '-L "RetroArch-Win64\cores\snes9x_libretro.dll" -f "{rom}"'
+launch     = '-L "RetroArch-Win64\cores\snes9x_libretro.dll" {render} -f "{rom}"'
 bios       = []
+cost       = "light"
+[system.render.native]
+# Le shader est le mode natif : « ce que la console d'origine fournissait »
+# sortait d'un tube cathodique, et une image propre n'est pas ce qu'elle
+# rendait. Le chemin est RELATIF, rebasé par RetroArch sur video_shader_dir —
+# case RA_OPT_SET_SHADER de retroarch.c, révision 1.22.2 — d'où le réglage du
+# dossier dans le fichier ci-dessous : sans lui, un dossier déplacé ferait
+# chercher le shader ailleurs, en silence.
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+# crt-geom en SLANG et non en GLSL : le pilote vidéo mesuré sur la machine est
+# d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
+# famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
+# l'air normal.
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+'''
+[system.render.full]
+# Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
+# l'enum aspect_ratio de gfx/video_defines.h, révision 1.22.2). Le shader doit
+# être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
+# s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
+args = '--appendconfig "{render_config}"'
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+'''
 
 [[system]]
 id         = "megadrive"
 name       = "Mega Drive"
 folders    = ["Megadrive", "Genesis", "Sega Genesis", "Sega Mega Drive"]
 extensions = [".md", ".smd", ".gen", ".bin"]
-launch     = '-L "RetroArch-Win64\cores\genesis_plus_gx_libretro.dll" -f "{rom}"'
+launch     = '-L "RetroArch-Win64\cores\genesis_plus_gx_libretro.dll" {render} -f "{rom}"'
 bios       = []
+cost       = "light"
+[system.render.native]
+# Le shader est le mode natif : « ce que la console d'origine fournissait »
+# sortait d'un tube cathodique, et une image propre n'est pas ce qu'elle
+# rendait. Le chemin est RELATIF, rebasé par RetroArch sur video_shader_dir —
+# case RA_OPT_SET_SHADER de retroarch.c, révision 1.22.2 — d'où le réglage du
+# dossier dans le fichier ci-dessous : sans lui, un dossier déplacé ferait
+# chercher le shader ailleurs, en silence.
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+# crt-geom en SLANG et non en GLSL : le pilote vidéo mesuré sur la machine est
+# d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
+# famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
+# l'air normal.
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+'''
+[system.render.full]
+# Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
+# l'enum aspect_ratio de gfx/video_defines.h, révision 1.22.2). Le shader doit
+# être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
+# s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
+args = '--appendconfig "{render_config}"'
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+'''
 
 [[system]]
 id         = "gb"
 name       = "Game Boy"
 folders    = ["Gameboy", "GB"]
 extensions = [".gb", ".dmg"]
-launch     = '-L "RetroArch-Win64\cores\gambatte_libretro.dll" -f "{rom}"'
+launch     = '-L "RetroArch-Win64\cores\gambatte_libretro.dll" {render} -f "{rom}"'
 bios       = []
+cost       = "light"
+[system.render.native]
+# Le shader est le mode natif : « ce que la console d'origine fournissait »
+# sortait d'un tube cathodique, et une image propre n'est pas ce qu'elle
+# rendait. Le chemin est RELATIF, rebasé par RetroArch sur video_shader_dir —
+# case RA_OPT_SET_SHADER de retroarch.c, révision 1.22.2 — d'où le réglage du
+# dossier dans le fichier ci-dessous : sans lui, un dossier déplacé ferait
+# chercher le shader ailleurs, en silence.
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+# crt-geom en SLANG et non en GLSL : le pilote vidéo mesuré sur la machine est
+# d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
+# famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
+# l'air normal.
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+'''
+[system.render.full]
+# Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
+# l'enum aspect_ratio de gfx/video_defines.h, révision 1.22.2). Le shader doit
+# être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
+# s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
+args = '--appendconfig "{render_config}"'
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+'''
 
 [[system]]
 id         = "gbc"
 name       = "Game Boy Color"
 folders    = ["Gameboy Color", "GBC"]
 extensions = [".gbc"]
-launch     = '-L "RetroArch-Win64\cores\gambatte_libretro.dll" -f "{rom}"'
+launch     = '-L "RetroArch-Win64\cores\gambatte_libretro.dll" {render} -f "{rom}"'
 bios       = []
+cost       = "light"
+[system.render.native]
+# Le shader est le mode natif : « ce que la console d'origine fournissait »
+# sortait d'un tube cathodique, et une image propre n'est pas ce qu'elle
+# rendait. Le chemin est RELATIF, rebasé par RetroArch sur video_shader_dir —
+# case RA_OPT_SET_SHADER de retroarch.c, révision 1.22.2 — d'où le réglage du
+# dossier dans le fichier ci-dessous : sans lui, un dossier déplacé ferait
+# chercher le shader ailleurs, en silence.
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+# crt-geom en SLANG et non en GLSL : le pilote vidéo mesuré sur la machine est
+# d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
+# famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
+# l'air normal.
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+'''
+[system.render.full]
+# Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
+# l'enum aspect_ratio de gfx/video_defines.h, révision 1.22.2). Le shader doit
+# être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
+# s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
+args = '--appendconfig "{render_config}"'
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+'''
 
 [[system]]
 id         = "gba"
 name       = "Game Boy Advance"
 folders    = ["Gameboy Advance", "GBA"]
 extensions = [".gba"]
-launch     = '-L "RetroArch-Win64\cores\mgba_libretro.dll" -f "{rom}"'
+launch     = '-L "RetroArch-Win64\cores\mgba_libretro.dll" {render} -f "{rom}"'
 # mGBA a un BIOS de remplacement intégré : gba_bios.bin améliore la fidélité
 # de l'écran de démarrage, il ne conditionne pas le lancement.
 bios       = [
   { file = "gba_bios.bin", md5 = "a860e8c0b6d573d191e4ec7db1b1e4f6", required = false },
 ]
+cost       = "light"
+[system.render.native]
+# Le shader est le mode natif : « ce que la console d'origine fournissait »
+# sortait d'un tube cathodique, et une image propre n'est pas ce qu'elle
+# rendait. Le chemin est RELATIF, rebasé par RetroArch sur video_shader_dir —
+# case RA_OPT_SET_SHADER de retroarch.c, révision 1.22.2 — d'où le réglage du
+# dossier dans le fichier ci-dessous : sans lui, un dossier déplacé ferait
+# chercher le shader ailleurs, en silence.
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+# crt-geom en SLANG et non en GLSL : le pilote vidéo mesuré sur la machine est
+# d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
+# famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
+# l'air normal.
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+'''
+[system.render.full]
+# Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
+# l'enum aspect_ratio de gfx/video_defines.h, révision 1.22.2). Le shader doit
+# être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
+# s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
+args = '--appendconfig "{render_config}"'
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+'''
 
 [[system]]
 id         = "n64"
 name       = "Nintendo 64"
 folders    = ["N64", "Nintendo64"]
 extensions = [".n64", ".v64", ".z64", ".ndd"]
-launch     = '-L "RetroArch-Win64\cores\mupen64plus_next_libretro.dll" -f "{rom}"'
+launch     = '-L "RetroArch-Win64\cores\mupen64plus_next_libretro.dll" {render} -f "{rom}"'
 bios       = []
 
 # « psx » n'est PLUS servi ici : DuckStation le sert, dans son propre profil.
@@ -95,14 +287,80 @@ bios       = []
 # propre, et deux profils livrés ne peuvent pas revendiquer le même dossier de
 # ROMs — le scan trancherait par ordre alphabétique. Le groupe de BIOS des
 # trois SCPH a suivi le système, dans duckstation.toml.
+cost       = "medium"
+[system.render.native]
+# Le shader est le mode natif : « ce que la console d'origine fournissait »
+# sortait d'un tube cathodique, et une image propre n'est pas ce qu'elle
+# rendait. Le chemin est RELATIF, rebasé par RetroArch sur video_shader_dir —
+# case RA_OPT_SET_SHADER de retroarch.c, révision 1.22.2 — d'où le réglage du
+# dossier dans le fichier ci-dessous : sans lui, un dossier déplacé ferait
+# chercher le shader ailleurs, en silence.
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+# crt-geom en SLANG et non en GLSL : le pilote vidéo mesuré sur la machine est
+# d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
+# famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
+# l'air normal.
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+'''
+note = "la résolution interne de ce cœur est une « core option », rangée dans config\\<cœur>\\<cœur>.opt et non dans retroarch.cfg : --appendconfig ne l'atteint pas. Le mode full y donne donc le ratio du cœur et pas de shader, sans monter la résolution interne."
+[system.render.full]
+# Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
+# l'enum aspect_ratio de gfx/video_defines.h, révision 1.22.2). Le shader doit
+# être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
+# s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
+args = '--appendconfig "{render_config}"'
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+'''
 
 [[system]]
 id         = "arcade"
 name       = "Arcade"
 folders    = ["MAME", "FBNeo", "Neo Geo"]
 extensions = [".zip", ".7z"]
-launch     = '-L "RetroArch-Win64\cores\fbneo_libretro.dll" -f "{rom}"'
+launch     = '-L "RetroArch-Win64\cores\fbneo_libretro.dll" {render} -f "{rom}"'
 # FinalBurn Neo cherche ses BIOS de plateau dans system\fbneo\ ; ils dépendent
 # du romset joué (neogeo.zip pour Neo Geo, pgm.zip pour PGM…) et son .info les
 # déclare tous optionnels. Rien à exiger au niveau du système.
 bios       = []
+cost       = "light"
+[system.render.native]
+# Le shader est le mode natif : « ce que la console d'origine fournissait »
+# sortait d'un tube cathodique, et une image propre n'est pas ce qu'elle
+# rendait. Le chemin est RELATIF, rebasé par RetroArch sur video_shader_dir —
+# case RA_OPT_SET_SHADER de retroarch.c, révision 1.22.2 — d'où le réglage du
+# dossier dans le fichier ci-dessous : sans lui, un dossier déplacé ferait
+# chercher le shader ailleurs, en silence.
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+# crt-geom en SLANG et non en GLSL : le pilote vidéo mesuré sur la machine est
+# d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
+# famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
+# l'air normal.
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+'''
+[system.render.full]
+# Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
+# l'enum aspect_ratio de gfx/video_defines.h, révision 1.22.2). Le shader doit
+# être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
+# s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
+args = '--appendconfig "{render_config}"'
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+'''
+

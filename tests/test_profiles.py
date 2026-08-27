@@ -745,3 +745,42 @@ def test_un_cout_mal_orthographie_est_refuse(tmp_path):
     mauvais = profil_rendu(RENDU_VALIDE).replace('"light"', '"leger"')
     with pytest.raises(profiles.ProfileError, match="'cost' vaut 'leger'"):
         profiles.load_profile(ecrire(tmp_path, "e.toml", mauvais))
+
+
+def test_un_fichier_de_reglages_sans_reference_est_refuse(tmp_path):
+    """Un fichier que rien ne référence ne serait jamais lu par l'émulateur :
+    le mode serait déclaré, écrit sur le disque, et sans le moindre effet."""
+    with pytest.raises(profiles.ProfileError, match="que rien ne référence"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-f"
+crt_absent = "aucun"
+config = "video_shader_enable = true"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_une_reference_sans_fichier_de_reglages_est_refusee(tmp_path):
+    """Le chemin d'un fichier qui n'existe pas : l'émulateur s'en plaindrait,
+    ou l'ignorerait — et le mode aurait l'air appliqué."""
+    with pytest.raises(profiles.ProfileError, match=r"\{render_config\} sans 'config'"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = '--appendconfig "{render_config}"'
+crt_absent = "aucun"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_un_mode_avec_fichier_de_reglages_se_charge(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = '--appendconfig "{render_config}"'
+crt_absent = "aucun"
+config = 'video_shader_enable = "true"'
+[system.render.full]
+args = "-y"
+""")))
+    assert 'video_shader_enable' in p.systems[0].render.native.config

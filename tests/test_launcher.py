@@ -187,3 +187,69 @@ def test_le_lanceur_est_sous_la_racine_d_emulation():
     from retro.steam import entry
     exe = launcher.launcher_exe("D:\\Emulation")
     assert entry.is_under_root(entry.quote(exe), "D:\\Emulation")
+
+
+# --- les fichiers de réglages ------------------------------------------
+
+PROFIL_CONFIG = """
+schema = 1
+id = "retroarch"
+exe = 'retroarch.exe'
+[[system]]
+id = "gb"
+name = "Game Boy"
+extensions = [".gb"]
+launch = '-L "core.dll" {render} -f "{rom}"'
+cost = "light"
+bios = []
+[system.render.native]
+args = '--appendconfig "{render_config}"'
+crt = '--set-shader "crt/crt-geom.slangp"'
+config = 'video_shader_enable = "true"'
+[system.render.full]
+args = '--appendconfig "{render_config}"'
+config = 'video_shader_enable = "false"'
+"""
+
+
+@pytest.fixture
+def profils_config(tmp_path):
+    p = tmp_path / "retroarch.toml"
+    p.write_text(PROFIL_CONFIG, encoding="utf-8")
+    return {"retroarch": profiles.load_profile(p)}
+
+
+def test_le_chemin_du_fichier_de_reglages_est_resolu_dans_le_plan(
+        tmp_path, profils_config):
+    """{render_config} est résolu à l'ÉCRITURE, pas au lancement : le chemin
+    d'un fichier ne dépend pas de la session, et le laisser au lanceur lui
+    aurait fait reconstruire la convention de nommage — un second endroit où
+    le nom du fichier serait décidé."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_config,
+                         {"retroarch": "RetroArch"})
+    plan = (tmp_path / launcher.DIR / launcher.PLAN / "retroarch.gb.ini")
+    l = lignes(plan.read_text(encoding="utf-8"))
+    assert l["native"] == ('--appendconfig "D:\\Emulation\\_launcher\\systems'
+                           '\\retroarch.gb.native.cfg" '
+                           '--set-shader "crt/crt-geom.slangp"')
+    assert "{render_config}" not in l["full"]
+
+
+def test_le_fichier_de_reglages_est_ecrit(tmp_path, profils_config):
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_config,
+                         {"retroarch": "RetroArch"})
+    dossier = tmp_path / launcher.DIR / launcher.PLAN
+    assert (dossier / "retroarch.gb.native.cfg").read_text(encoding="utf-8") \
+        == 'video_shader_enable = "true"'
+    assert (dossier / "retroarch.gb.full.cfg").is_file()
+
+
+def test_un_fichier_de_reglages_perime_est_retire(tmp_path, profils_config):
+    """Un réglage resté là après qu'un système a changé d'émulateur
+    s'appliquerait encore, sur une entrée Steam d'apparence normale."""
+    dossier = tmp_path / launcher.DIR / launcher.PLAN
+    dossier.mkdir(parents=True)
+    (dossier / "vieux.sys.native.cfg").write_text("x = 1", encoding="utf-8")
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_config,
+                         {"retroarch": "RetroArch"})
+    assert not (dossier / "vieux.sys.native.cfg").exists()
