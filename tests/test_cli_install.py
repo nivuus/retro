@@ -265,3 +265,68 @@ def test_scan_ne_previent_pas_quand_le_manifeste_couvre_tout(tmp_path, capsys):
               "--manifest", str(noyau), "--user-manifest", str(utilisateur),
               "--emulation-root", "D:\\Emulation"])
     assert capsys.readouterr().err == ""
+
+
+# --- scan : un émulateur absent est ignoré, et signalé ---------------------
+
+def _profils_deux_systemes(tmp_path):
+    profils = tmp_path / "profiles"
+    profils.mkdir()
+    (profils / "p.toml").write_text("""
+schema = 1
+id = "retroarch"
+exe = "retroarch.exe"
+[[system]]
+id = "snes"
+name = "Super Nintendo"
+extensions = [".sfc"]
+launch = '-f "{rom}"'
+bios = []
+""", encoding="utf-8")
+    roms = tmp_path / "ROMs" / "snes"
+    roms.mkdir(parents=True)
+    (roms / "Jeu.sfc").write_bytes(b"x")
+    return profils
+
+
+def test_scan_signale_le_systeme_dont_l_emulateur_manque(tmp_path, capsys):
+    """Le scan inscrivait des raccourcis vers un exécutable jamais vérifié :
+    une installation ratée peuplait Steam d'entrées qui ne démarrent pas. Les
+    ignorer ne suffit pas — sans message, le propriétaire hérite d'une
+    bibliothèque incomplète qu'aucun écran n'explique.
+    """
+    profils = _profils_deux_systemes(tmp_path)
+    emulation = tmp_path / "Emulation"
+    emulation.mkdir()
+    sortie = tmp_path / "inv.json"
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils), "--output", str(sortie),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(emulation)])
+    sortie_std = capsys.readouterr()
+    assert code == 0, sortie_std.err
+    assert json.loads(sortie.read_text(encoding="utf-8")) == []
+    assert "Super Nintendo" in sortie_std.err
+    assert str(emulation / "RetroArch" / "retroarch.exe") in sortie_std.err
+    assert "retro install" in sortie_std.err
+    # L'hôte peut ne relayer que la sortie standard : le silence y serait le
+    # même défaut sous une autre forme.
+    assert "ignoré" in sortie_std.out
+
+
+def test_scan_n_ignore_rien_quand_l_emulateur_est_installe(tmp_path, capsys):
+    """Le pendant : la vérification ne doit pas vider la bibliothèque."""
+    profils = _profils_deux_systemes(tmp_path)
+    exe = tmp_path / "Emulation" / "RetroArch" / "retroarch.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"MZ")
+    sortie = tmp_path / "inv.json"
+    code = cli.main(["scan", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils), "--output", str(sortie),
+                     "--emulation-root", "D:\\Emulation",
+                     "--emulation-root-local", str(tmp_path / "Emulation")])
+    sortie_std = capsys.readouterr()
+    assert code == 0, sortie_std.err
+    d = json.loads(sortie.read_text(encoding="utf-8"))
+    assert [r["title"] for r in d] == ["Jeu"]
+    assert "ignoré" not in sortie_std.err

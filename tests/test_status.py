@@ -3,7 +3,7 @@ import pathlib
 
 import pytest
 
-from retro import bios, status
+from retro import bios, scan, status
 
 
 def test_un_emulateur_installe_est_signale_avec_sa_version(tmp_path):
@@ -202,3 +202,67 @@ def test_un_bios_facultatif_absent_n_est_pas_un_probleme_mais_se_voit():
     texte = status.format_report(r)
     assert "disksys.rom" in texte
     assert "facultatif" in texte.lower()
+
+
+# --- « l'émulateur n'est pas installé » coûte des jeux ---------------------
+
+
+def _ignore(tmp_path, roms=3, profil="retroarch"):
+    return scan.IgnoredSystem(
+        folder="snes", system_name="Super Nintendo", profile=profil,
+        emulator=tmp_path / "RetroArch" / "retroarch.exe", roms=roms,
+    )
+
+
+def test_les_jeux_ignores_completent_le_probleme_de_l_emulateur(tmp_path):
+    """Un problème n'est énoncé qu'UNE fois : l'émulateur absent et les jeux
+    qu'il coûte sont le même constat, pas deux. Deux formulations du même
+    manque se lisent comme deux pannes distinctes."""
+    r = status.build_report(
+        install_dirs={"retroarch": "RetroArch"}, emulation_root=tmp_path,
+        systems=[("Super Nintendo", 3)], bios_status=[],
+        bios_root=pathlib.Path("/BIOS"),
+        ignored_systems=[_ignore(tmp_path)])
+    concernes = [p for p in r.problems if "retroarch" in p.what]
+    assert len(concernes) == 1, [p.what for p in concernes]
+    detail = " ".join(concernes[0].details)
+    assert "Super Nintendo" in detail and "3 jeux" in detail
+
+
+def test_un_emulateur_dit_installe_mais_sans_executable_est_un_probleme(tmp_path):
+    """Le témoin de version est là, l'exécutable non : un dossier vidé à la
+    main, une extraction interrompue. Dire « absent » enverrait le
+    propriétaire installer ce qu'il a déjà — le rapport doit dire ce qui
+    manque VRAIMENT, et où il a été cherché."""
+    emu = tmp_path / "RetroArch"
+    emu.mkdir()
+    (emu / ".retro-version").write_text("1.22.2\n", encoding="utf-8")
+    r = status.build_report(
+        install_dirs={"retroarch": "RetroArch"}, emulation_root=tmp_path,
+        systems=[("Super Nintendo", 3)], bios_status=[],
+        bios_root=pathlib.Path("/BIOS"),
+        ignored_systems=[_ignore(tmp_path)])
+    (probleme,) = [p for p in r.problems if "retroarch" in p.what]
+    assert "exécutable" in probleme.what
+    assert probleme.where == str(emu / "retroarch.exe")
+    assert "Super Nintendo" in " ".join(probleme.details)
+
+
+def test_sans_systeme_ignore_le_rapport_ne_change_pas(tmp_path):
+    """Le paramètre est facultatif : les appelants qui ne peuvent pas savoir
+    ce qui a été ignoré rendent le rapport d'avant, à l'identique."""
+    r = status.build_report(
+        install_dirs={"retroarch": "RetroArch"}, emulation_root=tmp_path,
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"))
+    assert ("retroarch", "absent") in r.emulators
+    assert all(p.details == () for p in r.problems)
+
+
+def test_les_jeux_ignores_se_lisent_dans_le_rapport(tmp_path):
+    texte = status.format_report(status.build_report(
+        install_dirs={"retroarch": "RetroArch"}, emulation_root=tmp_path,
+        systems=[("Super Nintendo", 1)], bios_status=[],
+        bios_root=pathlib.Path("/BIOS"),
+        ignored_systems=[_ignore(tmp_path, roms=1)]))
+    assert "1 jeu ignoré" in texte
+    assert "1 jeux" not in texte

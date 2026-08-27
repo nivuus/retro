@@ -34,9 +34,11 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+from collections.abc import Sequence
 
 from retro import acquire
 from retro.bios import BiosNeed, SystemBios
+from retro.scan import IgnoredSystem
 
 
 @dataclasses.dataclass(frozen=True)
@@ -74,8 +76,26 @@ def _joindre(racine: str, *parties: str) -> str:
     return sep.join([racine.rstrip("\\/"), *parties])
 
 
+def _cout(ignores: Sequence[IgnoredSystem]) -> tuple[str, ...]:
+    """Ce qu'un émulateur manquant coûte, système par système.
+
+    Le propriétaire ne compte pas ses émulateurs, il compte ses jeux : « pas
+    installé » est un constat, « 42 jeux qui n'apparaîtront pas » est la
+    raison d'agir. Ces lignes complètent le problème de l'émulateur au lieu
+    d'en former un second — le même manque énoncé deux fois se lit comme deux
+    pannes distinctes.
+    """
+    lignes = []
+    for i in sorted(ignores, key=lambda i: i.system_name):
+        jeu, s = ("jeu", "") if i.roms == 1 else ("jeux", "s")
+        lignes.append(f"{i.system_name} : {i.roms} {jeu} ignoré{s} — "
+                      f"absent{s} de la bibliothèque Steam")
+    return tuple(lignes)
+
+
 def _etat_emulateurs(
     install_dirs: dict[str, str], emulation_root: pathlib.Path,
+    ignores: Sequence[IgnoredSystem] = (),
 ) -> tuple[list[tuple[str, str]], list[Problem]]:
     """La version installée de chaque émulateur du manifeste, ou son absence.
 
@@ -83,8 +103,18 @@ def _etat_emulateurs(
     version déposé par `acquire` ; son contenu EST la version. Son absence
     n'est jamais une exception ici : un dossier non monté, un émulateur pas
     encore installé, sont des résultats à rapporter, pas des pannes à lever.
+
+    `ignores` vient du scan : ce sont les systèmes dont il n'a rien inscrit,
+    faute d'exécutable. Le témoin et l'exécutable ne disent pas la même chose,
+    et leur désaccord est un cas réel — un dossier vidé à la main, une
+    extraction interrompue. Dire « pas installé » à qui vient d'installer
+    l'enverrait recommencer ce qu'il a déjà fait.
     """
     racine = str(emulation_root)
+    par_profil: dict[str, list[IgnoredSystem]] = {}
+    for i in ignores:
+        par_profil.setdefault(i.profile, []).append(i)
+
     emulateurs = []
     problemes = []
     for pid in sorted(install_dirs):
@@ -93,14 +123,26 @@ def _etat_emulateurs(
             version = temoin.read_text(encoding="utf-8").strip() if temoin.is_file() else None
         except OSError:
             version = None
-        if version:
+        sans_jeux = par_profil.get(pid, [])
+        if version and not sans_jeux:
             emulateurs.append((pid, version))
+        elif version:
+            emulateurs.append((pid, f"{version}, exécutable introuvable"))
+            problemes.append(Problem(
+                what=(f"l'émulateur « {pid} » porte sa version {version}, mais "
+                      "son exécutable est introuvable — l'installation est "
+                      "incomplète"),
+                where=str(sans_jeux[0].emulator),
+                action=f"réinstaller : retro install --emulation-root '{racine}'",
+                details=_cout(sans_jeux),
+            ))
         else:
             emulateurs.append((pid, "absent"))
             problemes.append(Problem(
                 what=f"l'émulateur « {pid} » n'est pas installé",
                 where=_joindre(racine, install_dirs[pid]),
                 action=f"retro install --emulation-root '{racine}'",
+                details=_cout(sans_jeux),
             ))
     return emulateurs, problemes
 
@@ -179,15 +221,22 @@ def build_report(
     systems: list[tuple[str, int]],
     bios_status: list[SystemBios],
     bios_root: pathlib.Path,
+    ignored_systems: Sequence[IgnoredSystem] = (),
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
+
+    `ignored_systems` est ce que le scan a laissé de côté faute d'émulateur.
+    Facultatif — un appelant qui ne peut pas le savoir rend le rapport d'avant
+    — mais sans lui, « l'émulateur X n'est pas installé » ne dit pas ce que ça
+    coûte, et le propriétaire ne relie pas ce constat aux jeux qu'il cherche.
 
     `bios_root` n'est pas décoratif : c'est le dossier que le propriétaire a
     donné à `--bios`, et le seul endroit où il puisse déposer ce qui manque.
     Sans lui, le rapport nommait un fichier sans jamais dire où le mettre.
     """
-    emulateurs, problemes_emulateurs = _etat_emulateurs(install_dirs, emulation_root)
+    emulateurs, problemes_emulateurs = _etat_emulateurs(
+        install_dirs, emulation_root, ignored_systems)
     return Report(
         emulators=emulateurs,
         systems=list(systems),

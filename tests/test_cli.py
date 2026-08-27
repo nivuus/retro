@@ -339,3 +339,47 @@ def test_une_racine_steam_windows_en_posix_est_refusee(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "--steam-root-windows" in err
     assert "Traceback" not in err
+
+
+def test_status_dit_ce_que_l_emulateur_manquant_coute(tmp_path, capsys):
+    """« l'émulateur r n'est pas installé » ne dit pas au propriétaire
+    pourquoi ses jeux ont disparu de Steam. C'est le seul écran du projet fait
+    pour être lu : le coût du manque y a sa place."""
+    profils = _profil_minimal(tmp_path)
+    roms = tmp_path / "ROMs" / "snes"
+    roms.mkdir(parents=True)
+    (roms / "Jeu.sfc").write_bytes(b"x")
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+    emulation = tmp_path / "Emulation"
+    emulation.mkdir()
+    code = cli.main(["status", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--emulation-root", str(emulation),
+                     "--bios", str(bios_dir)])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "SNES : 1 jeu ignoré" in out
+    assert "retro install" in out
+
+
+def test_status_ne_reproche_rien_quand_l_emulateur_est_la(tmp_path, capsys):
+    """Le pendant : un émulateur installé ne doit produire aucun constat."""
+    profils = _profil_minimal(tmp_path)
+    roms = tmp_path / "ROMs" / "snes"
+    roms.mkdir(parents=True)
+    (roms / "Jeu.sfc").write_bytes(b"x")
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+    emu = tmp_path / "Emulation" / "r"
+    emu.mkdir(parents=True)
+    (emu / "r.exe").write_bytes(b"MZ")
+    (emu / ".retro-version").write_text("1.0\n", encoding="utf-8")
+    code = cli.main(["status", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--emulation-root", str(tmp_path / "Emulation"),
+                     "--bios", str(bios_dir)])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "ignoré" not in out
+    assert "l'émulateur « r »" not in out
