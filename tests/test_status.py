@@ -388,3 +388,83 @@ def test_sans_les_executables_le_rapport_reste_celui_d_avant(tmp_path):
         systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"))
     assert ("dolphin", "2503") in r.emulators
     assert r.problems == []
+
+
+# --- la section « Rendu » -----------------------------------------------
+
+def _profils_rendu(tmp_path):
+    from retro import profiles
+    (tmp_path / "p.toml").write_text("""
+schema = 1
+id = "p"
+exe = "p.exe"
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '{render} "{rom}"'
+cost = "light"
+bios = []
+[system.render.native]
+args = "-scale=1"
+crt = "-shader=crt"
+[system.render.full]
+args = "-scale=4"
+[[system]]
+id = "ps3"
+name = "PlayStation 3"
+extensions = [".iso"]
+launch = '"{rom}"'
+bios = []
+""", encoding="utf-8")
+    return {"p": profiles.load_profile(tmp_path / "p.toml")}
+
+
+def test_un_systeme_sans_modes_est_nomme(tmp_path):
+    """Sans cette ligne, le propriétaire choisirait « full » et obtiendrait,
+    pour ce système, exactement ce qu'il avait avant — sans qu'un mot
+    l'explique."""
+    etats = status.etat_rendu(_profils_rendu(tmp_path))
+    muets = [e.system_name for e in etats if not e.declared]
+    assert muets == ["PlayStation 3"]
+
+
+def test_les_systemes_sans_modes_font_UN_probleme_groupe(tmp_path):
+    """Dix-sept lignes identiques noieraient les manques qui coûtent des
+    jeux ; le silence ferait choisir un mode sans effet."""
+    etats = status.etat_rendu(_profils_rendu(tmp_path))
+    problemes = status._probleme_sans_modes(etats)
+    assert len(problemes) == 1
+    assert problemes[0].details == ("PlayStation 3",)
+
+
+def test_aucun_probleme_quand_tout_est_declare(tmp_path):
+    etats = [e for e in status.etat_rendu(_profils_rendu(tmp_path))
+             if e.declared]
+    assert status._probleme_sans_modes(etats) == []
+
+
+def test_l_arbitrage_est_rendu_pour_chaque_classe_de_machine(tmp_path):
+    """`retro status` tourne sur la machine qui PILOTE, pas sur celle qui
+    joue : annoncer un mode d'après le matériel de l'hôte serait une réponse
+    fausse et convaincante."""
+    from retro import render
+    etat = next(e for e in status.etat_rendu(_profils_rendu(tmp_path))
+                if e.declared)
+    assert [c for c, _ in etat.auto] == list(render.CLASSES)
+
+
+def test_le_crt_et_son_absence_se_lisent_dans_le_rapport(tmp_path):
+    etats = status.etat_rendu(_profils_rendu(tmp_path))
+    assert next(e for e in etats if e.declared).crt is True
+
+
+def test_le_resume_de_l_auto_groupe_par_mode():
+    assert status._resume_auto((("modeste", "native"), ("moyenne", "full"),
+                                ("solide", "full"))) == \
+        "native sur machine modeste ; full sur machine moyenne, solide"
+
+
+def test_le_resume_d_un_auto_uniforme_est_court():
+    assert status._resume_auto((("modeste", "full"), ("moyenne", "full"),
+                                ("solide", "full"))) == "full sur toute machine"

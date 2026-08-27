@@ -446,6 +446,13 @@ def _cmd_status(args) -> int:
             # ignorés, qui ne retient que ceux ayant des ROMs — et le verdict
             # dépendrait des jeux du propriétaire.
             emulator_exes={pid: p.exe for pid, p in profils.items()},
+            # Ce que les trois modes de rendu font réellement, et le mode
+            # posé. Un système sans modes déclarés se lit ici, plutôt que de
+            # se découvrir en choisissant « full » et en ne voyant rien
+            # changer.
+            profils=profils,
+            render_mode=launcher_mod.lire_mode(
+                pathlib.Path(args.emulation_root)),
         )
         texte = status.format_report(rapport)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair

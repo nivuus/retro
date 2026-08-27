@@ -38,6 +38,7 @@ import re
 from collections.abc import Sequence
 
 from retro import install as install_mod
+from retro import render as render_mod
 from retro.bios import BiosNeed, SystemBios
 from retro.scan import IgnoredSystem
 
@@ -56,12 +57,34 @@ class Problem:
 
 
 @dataclasses.dataclass(frozen=True)
+class SystemRender:
+    """Ce que les trois modes font RÉELLEMENT pour un système.
+
+    Un système sans bloc de rendu n'est pas une anomalie — les modes se
+    remplissent émulateur par émulateur, chaque option lue dans l'exécutable
+    livré — mais c'en devient une s'il n'est pas dit : le propriétaire
+    choisirait « full » et obtiendrait, pour ce système, exactement ce qu'il
+    avait avant, sans qu'un mot l'explique.
+    """
+    system_name: str
+    declared: bool
+    crt: bool = False
+    crt_absent: str = ""
+    auto: tuple[tuple[str, str], ...] = ()   # (classe de machine, mode retenu)
+    notes: tuple[str, ...] = ()
+
+
+@dataclasses.dataclass(frozen=True)
 class Report:
     emulators: list[tuple[str, str]]
     systems: list[tuple[str, int]]
     bios: list[SystemBios]
     problems: list[Problem]
     bios_root: pathlib.Path
+    # Facultatifs : un appelant qui n'a pas les profils sous la main rend le
+    # rapport d'avant, à l'identique.
+    render_mode: str = ""
+    render: list[SystemRender] = dataclasses.field(default_factory=list)
 
 
 def _joindre(racine: str, *parties: str) -> str:
@@ -255,6 +278,51 @@ def _problemes_bios(bios_status: list[SystemBios],
     return problemes
 
 
+def etat_rendu(profils: dict) -> list[SystemRender]:
+    """Ce que les trois modes font, système par système.
+
+    L'arbitrage de `auto` est rendu POUR CHAQUE CLASSE de machine, et non pour
+    celle-ci : `retro status` tourne sur la machine qui pilote, pas sur celle
+    qui joue. Annoncer un mode d'après le matériel de l'hôte serait une
+    réponse fausse et convaincante.
+    """
+    etats = []
+    for pid in sorted(profils):
+        for systeme in profils[pid].systems:
+            rendu = systeme.render
+            if rendu is None:
+                etats.append(SystemRender(systeme.name, declared=False))
+                continue
+            notes = tuple(m.note for m in (rendu.native, rendu.full) if m.note)
+            etats.append(SystemRender(
+                systeme.name, declared=True, crt=bool(rendu.native.crt),
+                crt_absent=rendu.native.crt_absent,
+                auto=tuple((classe, render_mod.arbitrer(classe, systeme.cost))
+                           for classe in render_mod.CLASSES),
+                notes=notes,
+            ))
+    return sorted(etats, key=lambda e: e.system_name)
+
+
+def _probleme_sans_modes(etats: list[SystemRender]) -> list[Problem]:
+    """Un seul problème groupé, jamais un par système.
+
+    Dix-sept lignes identiques noieraient les manques qui, eux, coûtent des
+    jeux. Mais le taire ferait choisir un mode sans effet, en silence.
+    """
+    muets = [e.system_name for e in etats if not e.declared]
+    if not muets:
+        return []
+    return [Problem(
+        what=f"{len(muets)} système(s) n'ont aucun mode de rendu déclaré : "
+             "les trois modes y lancent la même commande",
+        where="retro/data/profiles/*.toml",
+        action="déclarer [system.render.native] et [system.render.full] pour "
+               "ces systèmes, chaque option lue dans l'exécutable livré",
+        details=tuple(muets),
+    )]
+
+
 def build_report(
     install_dirs: dict[str, str],
     emulation_root: pathlib.Path,
@@ -263,6 +331,8 @@ def build_report(
     bios_root: pathlib.Path,
     ignored_systems: Sequence[IgnoredSystem] = (),
     emulator_exes: dict[str, str] | None = None,
+    profils: dict | None = None,
+    render_mode: str = "",
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -284,12 +354,17 @@ def build_report(
     """
     emulateurs, problemes_emulateurs = _etat_emulateurs(
         install_dirs, emulation_root, ignored_systems, emulator_exes)
+    rendu = etat_rendu(profils) if profils else []
     return Report(
         emulators=emulateurs,
         systems=list(systems),
         bios=list(bios_status),
-        problems=[*problemes_emulateurs, *_problemes_bios(bios_status, bios_root)],
+        problems=[*problemes_emulateurs,
+                  *_problemes_bios(bios_status, bios_root),
+                  *_probleme_sans_modes(rendu)],
         bios_root=bios_root,
+        render_mode=render_mode,
+        render=rendu,
     )
 
 
@@ -344,6 +419,44 @@ def _lignes_problemes(problems: list[Problem]) -> list[str]:
     return lignes
 
 
+def _resume_auto(auto: tuple[tuple[str, str], ...]) -> str:
+    """Ce que `auto` retient, classe de machine par classe de machine.
+
+    Groupé par mode plutôt que listé par classe : « full sur machine solide,
+    moyenne ; natif sur machine modeste » se lit d'un coup, là où trois lignes
+    se comparent.
+    """
+    groupes: dict[str, list[str]] = {}
+    for classe, mode in auto:
+        groupes.setdefault(mode, []).append(classe)
+    if len(groupes) == 1:
+        return f"{next(iter(groupes))} sur toute machine"
+    return " ; ".join(f"{mode} sur machine {', '.join(classes)}"
+                      for mode, classes in groupes.items())
+
+
+def _lignes_rendu(report: Report) -> list[str]:
+    if not report.render:
+        return []
+    largeur = max(len(e.system_name) for e in report.render)
+    lignes = []
+    for e in report.render:
+        nom = e.system_name.ljust(largeur)
+        if not e.declared:
+            # LE cas à ne pas taire : le propriétaire choisirait « full » et
+            # obtiendrait exactement ce qu'il avait avant.
+            lignes.append(f"  {nom}  aucun mode déclaré — les trois modes "
+                          "lancent la même commande")
+            continue
+        crt = "natif avec CRT" if e.crt else "natif sans CRT"
+        lignes.append(f"  {nom}  {crt}  |  auto : {_resume_auto(e.auto)}")
+        if not e.crt:
+            lignes.append(f"  {' ' * largeur}    ({e.crt_absent})")
+        for note in e.notes:
+            lignes.append(f"  {' ' * largeur}    {note}")
+    return lignes
+
+
 def format_report(report: Report) -> str:
     """Le texte que l'hôte relaie tel quel au propriétaire."""
     sections: list[str] = []
@@ -367,6 +480,11 @@ def format_report(report: Report) -> str:
         f"aucun BIOS n'est exigé par les profils chargés (dossier : "
         f"{report.bios_root})",
     )
+
+    sections += _section(
+        f"Rendu — mode « {report.render_mode} »" if report.render_mode
+        else "Rendu",
+        _lignes_rendu(report), "aucun système chargé")
 
     nb = len(report.problems)
     # 0 et 1 prennent le singulier en français : « Problème (1) », pas
