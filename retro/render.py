@@ -62,6 +62,12 @@ class RenderMode:
     # ont pas — c'est alors `crt_absent` qui le dit, et le rapport le répète.
     crt: str = ""
     crt_absent: str = ""
+    # Le contenu d'un fichier de configuration à écrire pour ce mode, quand
+    # l'émulateur n'a pas d'option pour surcharger un réglage. RetroArch est
+    # dans ce cas : il n'accepte qu'un « --appendconfig=FICHIER », et sans ce
+    # fichier son shader CRT resterait éteint quoi qu'on lui passe. Le fichier
+    # est écrit par la synchronisation, et {render_config} porte son chemin.
+    config: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -202,64 +208,17 @@ def resoudre(demande: str, cout: str, machine: Machine) -> Decision:
     )
 
 
-def echelle(hauteur_session: int, hauteur_native: int, maximum: int) -> int:
-    """Combien de fois la résolution d'origine tient dans celle de la session.
-
-    Bornée à `maximum` parce qu'au-delà l'émulateur refuse, ou accepte et rame
-    — et un jeu qui rame est le genre de panne qu'on ne diagnostique pas
-    depuis un canapé. Jamais sous 1 : une session plus basse que la console
-    d'origine ne peut pas demander une demi-résolution interne.
-    """
-    if hauteur_native <= 0 or maximum <= 0:
-        raise RenderError(
-            "hauteur native et échelle maximale doivent être positives : "
-            f"reçu hauteur_native={hauteur_native}, maximum={maximum}"
-        )
-    return max(1, min(maximum, hauteur_session // hauteur_native))
-
-
-def composer(rendu: Render, mode: str, machine: Machine) -> str:
-    """Les arguments de rendu d'un système, variables substituées.
-
-    Le shader CRT du mode natif est ajouté aux arguments : il fait partie de
-    « ce que la console d'origine fournissait », qui passait par un tube
-    cathodique. Un système dont l'émulateur n'en a pas rend simplement ses
-    arguments — `crt_absent` dit pourquoi, et le rapport le répète.
-
-    Rend une chaîne VIDE quand le mode ne pilote rien, ce qui est une réponse
-    et non une panne : certains émulateurs n'exposent aucun réglage en ligne
-    de commande, et leur profil le déclare par une `note`.
-    """
-    import re
-    if mode not in MODES_DECLARES:
-        raise RenderError(
-            f"« {mode} » n'est pas un mode déclarable. Les modes qu'un profil "
-            f"déclare sont {', '.join(MODES_DECLARES)} ; `auto` choisit entre "
-            "eux et n'a pas d'arguments à lui."
-        )
-    m = rendu.native if mode == NATIVE else rendu.full
-    gabarit = " ".join(x for x in (m.args, m.crt if mode == NATIVE else "") if x)
-    if not gabarit:
-        return ""
-
-    besoins = set(re.findall(r"\{(\w+)\}", gabarit))
-    # Substituer une résolution non mesurée écrirait « 0x0 » sur la ligne de
-    # commande : l'émulateur refuserait de démarrer, ou pire, démarrerait dans
-    # une taille absurde. Zéro n'est pas une mesure.
-    if besoins & {"width", "height", "scale"} and not (machine.largeur
-                                                       and machine.hauteur):
-        raise RenderError(
-            f"le mode « {mode} » demande la résolution de la session "
-            f"({', '.join('{' + b + '}' for b in sorted(besoins))}), mais elle "
-            f"n'a pas été mesurée (largeur={machine.largeur}, "
-            f"hauteur={machine.hauteur}). Zéro n'est pas une résolution : "
-            "substituer ces valeurs donnerait une commande que l'émulateur "
-            "refuserait, ou une image dans une taille absurde."
-        )
-    valeurs = {"width": machine.largeur, "height": machine.hauteur}
-    if "scale" in besoins:
-        valeurs["scale"] = echelle(machine.hauteur, rendu.native_height,
-                                   rendu.max_scale)
-    for nom, valeur in valeurs.items():
-        gabarit = gabarit.replace("{" + nom + "}", str(valeur))
-    return gabarit
+# La substitution des variables et le calcul de l'échelle NE SONT PAS ICI.
+#
+# Ils vivaient dans ce module, testés, complets — et appelés par leurs seuls
+# tests. La hauteur de la session n'est connue qu'au lancement, donc le
+# lanceur les faisait déjà, en C# ; cette version-ci était un second exemplaire
+# que rien n'exécutait, et dont personne n'aurait vu la divergence. Le doublon
+# est exactement ce que le plan pré-résolu existe pour éviter : la faute était
+# ici, pas dans le lanceur.
+#
+# Ce que ce module garde est ce qu'il est SEUL à faire, et qui est réellement
+# lu : l'arbitrage de `auto` — écrit dans le plan pour chaque classe — et les
+# seuils qui classent une machine, écrits dans le plan eux aussi. Le lanceur
+# se vérifie, lui, par « retro-launch.exe --explain », qui compose et imprime
+# sans rien lancer.

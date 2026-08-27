@@ -89,81 +89,9 @@ def test_un_cout_inconnu_est_refuse():
         render.resoudre(render.AUTO, "leger", SOLIDE)
 
 
-# --- l'échelle interne --------------------------------------------------
-
-@pytest.mark.parametrize("session,natif,maxi,attendu", [
-    (1080, 240, 8, 4),      # PlayStation sur un écran 1080p
-    (2160, 240, 8, 8),      # 4K : 9x tiendrait, la borne dit 8
-    (720, 1080, 8, 1),      # session plus basse que l'original : jamais 0
-    (1080, 480, 4, 2),
-])
-def test_calcul_de_l_echelle(session, natif, maxi, attendu):
-    assert render.echelle(session, natif, maxi) == attendu
-
-
-def test_une_hauteur_native_absurde_est_refusee():
-    with pytest.raises(render.RenderError):
-        render.echelle(1080, 0, 8)
-
-
-# --- composer la ligne d'arguments --------------------------------------
-
-def rendu(native_args="", full_args="", crt="", crt_absent="x",
-          native_height=0, max_scale=0):
-    return render.Render(
-        native=render.RenderMode(args=native_args, crt=crt,
-                                 crt_absent=crt_absent),
-        full=render.RenderMode(args=full_args),
-        native_height=native_height, max_scale=max_scale)
-
-
-def test_substitution_de_la_resolution_de_session():
-    r = rendu(full_args="--resolution={width}x{height}")
-    assert render.composer(r, render.FULL, SOLIDE) == "--resolution=1920x1080"
-
-
-def test_la_meme_entree_suit_la_session():
-    """Deux clients Apollo, deux résolutions, une seule entrée Steam : c'est
-    tout l'intérêt de composer au lancement plutôt qu'à la synchronisation."""
-    r = rendu(full_args="--resolution={width}x{height}")
-    tv = render.Machine(vram_mo=6144, coeurs=8, largeur=3840, hauteur=2160)
-    assert render.composer(r, render.FULL, tv) == "--resolution=3840x2160"
-    assert render.composer(r, render.FULL, SOLIDE) == "--resolution=1920x1080"
-
-
-def test_substitution_de_l_echelle():
-    r = rendu(full_args="-scale={scale}", native_height=240, max_scale=8)
-    assert render.composer(r, render.FULL, SOLIDE) == "-scale=4"
-
-
-def test_le_crt_accompagne_le_mode_natif():
-    r = rendu(native_args="-scale=1", crt="-shader=crt", crt_absent="")
-    assert render.composer(r, render.NATIVE, SOLIDE) == "-scale=1 -shader=crt"
-
-
-def test_le_crt_ne_suit_pas_le_mode_full():
-    """Un shader CRT en mode full annulerait le mode full."""
-    r = rendu(native_args="-scale=1", full_args="-scale=4",
-              crt="-shader=crt", crt_absent="")
-    assert render.composer(r, render.FULL, SOLIDE) == "-scale=4"
-
-
-def test_un_mode_qui_ne_pilote_rien_rend_une_chaine_vide():
-    """Certains émulateurs n'exposent aucun réglage en ligne de commande.
-    C'est une réponse, pas une panne — et le profil l'a déclaré par une note."""
-    assert render.composer(rendu(), render.NATIVE, SOLIDE) == ""
-
-
-def test_composer_refuse_de_substituer_une_resolution_non_mesuree():
-    """« --resolution=0x0 » ferait refuser l'émulateur, ou pire, démarrerait
-    dans une taille absurde. Zéro n'est pas une mesure."""
-    r = rendu(full_args="--resolution={width}x{height}")
-    with pytest.raises(render.RenderError, match="n'a pas été mesurée"):
-        render.composer(r, render.FULL, render.Machine(vram_mo=1, coeurs=1))
-
-
-def test_composer_refuse_auto():
-    """`auto` a été résolu AVANT d'arriver ici : le laisser passer
-    signifierait qu'un arbitrage a été sauté."""
-    with pytest.raises(render.RenderError, match="n'est pas un mode déclarable"):
-        render.composer(rendu(), render.AUTO, SOLIDE)
+# La substitution et le calcul de l'échelle ne sont plus testés ici : ils ne
+# sont plus ICI. Ils vivaient en double — une fois en Python, appelée par ces
+# seuls tests, une fois en C# dans le lanceur, seule exécutée. Le lanceur se
+# vérifie par « retro-launch.exe --explain » ; le vérifier depuis pytest
+# demanderait un Windows, et un second exemplaire de la logique testé à la
+# place du vrai ne prouve rien.

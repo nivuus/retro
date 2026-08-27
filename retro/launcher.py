@@ -69,8 +69,13 @@ def _gabarit(mode: render_mod.RenderMode, avec_crt: bool) -> str:
     return " ".join(x for x in (mode.args, mode.crt if avec_crt else "") if x)
 
 
+def config_name(cle: str, mode: str) -> str:
+    """Le nom du fichier de réglages d'un mode, s'il en a un."""
+    return f"{cle}.{mode}.cfg"
+
+
 def plan_systeme(profile_id: str, systeme, emulator_exe: str,
-                 workdir: str) -> str:
+                 workdir: str, plan_dir: str = "") -> str:
     """Tout ce que le lanceur doit savoir de CE système, table d'arbitrage
     comprise.
 
@@ -80,13 +85,30 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
     aucune décision, donc il ne peut pas en prendre une autre.
     """
     rendu = systeme.render
+    cle = system_key(profile_id, systeme.id)
+
+    def gabarit(mode_nom: str, mode, avec_crt: bool) -> str:
+        """Le gabarit d'un mode, chemin du fichier de réglages substitué.
+
+        {render_config} est résolu ICI et non par le lanceur : le chemin d'un
+        fichier ne dépend pas de la session, et le laisser au lanceur lui
+        aurait fait reconstruire une convention de nommage — un second endroit
+        où le nom du fichier serait décidé.
+        """
+        texte = _gabarit(mode, avec_crt)
+        if mode.config.strip():
+            texte = texte.replace(
+                "{render_config}",
+                f"{plan_dir}\\{config_name(cle, mode_nom)}")
+        return texte
+
     lignes = [
         "# Écrit par « retro scan ». Toute modification sera écrasée.",
         f"emulator={emulator_exe}",
         f"workdir={workdir}",
         f"launch={systeme.launch}",
-        f"native={_gabarit(rendu.native, avec_crt=True) if rendu else ''}",
-        f"full={_gabarit(rendu.full, avec_crt=False) if rendu else ''}",
+        f"native={gabarit(render_mod.NATIVE, rendu.native, True) if rendu else ''}",
+        f"full={gabarit(render_mod.FULL, rendu.full, False) if rendu else ''}",
         f"native_height={rendu.native_height if rendu else 0}",
         f"max_scale={rendu.max_scale if rendu else 0}",
     ]
@@ -160,7 +182,8 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
     dossier = local_dir(emulation_root_local) / PLAN
     dossier.mkdir(parents=True, exist_ok=True)
 
-    ecrits = []
+    plan_dir = f"{launcher_dir(emulation_root)}\\{PLAN}"
+    ecrits, fichiers = [], set()
     for pid in sorted(profils):
         profil = profils[pid]
         exe = f"{emulation_root}\\{install_dirs[pid]}\\{profil.exe}"
@@ -168,12 +191,25 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
         for systeme in profil.systems:
             cle = system_key(pid, systeme.id)
             (dossier / f"{cle}.ini").write_text(
-                plan_systeme(pid, systeme, exe, workdir), encoding="utf-8")
+                plan_systeme(pid, systeme, exe, workdir, plan_dir),
+                encoding="utf-8")
+            fichiers.add(f"{cle}.ini")
             ecrits.append(cle)
+            # Les fichiers de réglages des modes qui en ont un. RetroArch est
+            # dans ce cas : il n'a aucune option pour surcharger un réglage,
+            # et son shader CRT resterait éteint sans ce fichier.
+            for nom, mode in (("native", systeme.render.native),
+                              ("full", systeme.render.full)
+                              ) if systeme.render else ():
+                if mode.config.strip():
+                    (dossier / config_name(cle, nom)).write_text(
+                        mode.config, encoding="utf-8")
+                    fichiers.add(config_name(cle, nom))
 
-    connus = {f"{cle}.ini" for cle in ecrits}
-    for perime in sorted(dossier.glob("*.ini")):
-        if perime.name not in connus:
+    # Un plan ou un réglage resté là après qu'un système a changé d'émulateur
+    # ferait lancer l'ANCIEN, avec l'ancienne configuration.
+    for perime in sorted([*dossier.glob("*.ini"), *dossier.glob("*.cfg")]):
+        if perime.name not in fichiers:
             perime.unlink()
     return ecrits
 

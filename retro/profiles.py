@@ -130,9 +130,12 @@ def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
 # quelle et arriverait LITTÉRALEMENT sur la ligne de commande de l'émulateur,
 # qui l'ignorerait ou refuserait de démarrer. La faute est muette : le mode
 # aurait l'air appliqué.
-_VARIABLES = ("width", "height", "scale")
+# {width}, {height} et {scale} sont substituées AU LANCEMENT, par le lanceur,
+# qui seul connaît la session. {render_config} l'est à l'écriture du plan : le
+# chemin d'un fichier ne dépend pas de la résolution.
+_VARIABLES = ("width", "height", "scale", "render_config")
 _CLES_RENDER = ("native", "full", "native_height", "max_scale")
-_CLES_MODE = ("args", "note", "crt", "crt_absent")
+_CLES_MODE = ("args", "note", "crt", "crt_absent", "config")
 
 
 def _valider_variables(path, sid, quoi: str, gabarit: str) -> None:
@@ -179,7 +182,22 @@ def _lire_mode(path, sid, nom: str, brut) -> RenderMode:
             raise ProfileError(
                 f"{path} [{sid}] : 'render.{nom}.{champ}' doit être du texte."
             )
+    config = brut.get("config", "")
     args, note = brut["args"].strip(), brut.get("note", "").strip()
+    # Les deux vont ENSEMBLE, dans les deux sens. Un fichier déclaré que rien
+    # ne référence ne serait jamais lu par l'émulateur ; un {render_config}
+    # sans contenu ferait passer le chemin d'un fichier qui n'existe pas.
+    # L'une et l'autre faute laissent le mode sans effet, sans un mot.
+    marqueur = "{render_config}" in (args + " " + brut.get("crt", ""))
+    if bool(config.strip()) != marqueur:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}' déclare "
+            + ("un 'config' que rien ne référence" if config.strip()
+               else "{render_config} sans 'config'")
+            + ". Les deux vont ensemble : 'config' est le CONTENU du fichier "
+            "de réglages, {render_config} est l'endroit de la commande où son "
+            "chemin s'insère. L'un sans l'autre laisse le mode sans effet."
+        )
     if not args and not note:
         raise ProfileError(
             f"{path} [{sid}] : 'render.{nom}.args' est vide sans 'note'. Un "
@@ -212,7 +230,8 @@ def _lire_mode(path, sid, nom: str, brut) -> RenderMode:
             "'crt_absent'. Le shader CRT n'a de sens qu'en mode natif — "
             "déclaré ici, il ne serait jamais appliqué."
         )
-    return RenderMode(args=args, note=note, crt=crt, crt_absent=crt_absent)
+    return RenderMode(args=args, note=note, crt=crt, crt_absent=crt_absent,
+                      config=config)
 
 
 def _lire_render(path, sid, brut, launch: str) -> Render:

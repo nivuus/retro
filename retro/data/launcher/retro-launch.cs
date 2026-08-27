@@ -32,8 +32,89 @@ static class RetroLaunch
     static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")]
     static extern bool SetProcessDPIAware();
+    // Un programme /target:winexe n'a PAS de console : sans cet appel,
+    // Console.Out ecrit dans le vide et « --explain » ne rendrait rien, ce qui
+    // ressemblerait exactement a un lanceur muet. La sortie est de toute facon
+    // ecrite aussi dans un fichier, seul canal sur lequel on puisse compter.
+    [DllImport("kernel32.dll")]
+    static extern bool AttachConsole(int pid);
+    const int ATTACH_PARENT_PROCESS = -1;
 
     const int SM_CXSCREEN = 0, SM_CYSCREEN = 1;
+
+    // Steam n'arrete que le processus QU'IL a lance — celui-ci. L'emulateur,
+    // lui, est un enfant : il survivait a son parent, et le bouton « Arreter »
+    // de Steam ne fermait rien du tout. Mesure le 2026-08-27 sur un emulateur
+    // reste sur son assistant de premier lancement : ni Steam ni la manette ne
+    // pouvaient en sortir, et la bibliotheque restait « en jeu » indefiniment.
+    //
+    // Un job object avec KILL_ON_JOB_CLOSE lie les deux vies : quand ce
+    // processus meurt, de sa belle mort ou tue par Steam, Windows ferme le
+    // job, et l'emulateur meurt avec lui. Le handle reste donc ouvert
+    // volontairement jusqu'a la fin.
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr CreateJobObjectW(IntPtr attrs, string nom);
+    [DllImport("kernel32.dll")]
+    static extern bool SetInformationJobObject(IntPtr job, int classe,
+                                               IntPtr info, uint taille);
+    [DllImport("kernel32.dll")]
+    static extern bool AssignProcessToJobObject(IntPtr job, IntPtr processus);
+
+    const int JobObjectExtendedLimitInformation = 9;
+    const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+    {
+        public long PerProcessUserTimeLimit, PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public UIntPtr Affinity;
+        public uint PriorityClass, SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct IO_COUNTERS
+    {
+        public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount;
+        public ulong ReadTransferCount, WriteTransferCount, OtherTransferCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+    {
+        public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+        public IO_COUNTERS IoInfo;
+        public UIntPtr ProcessMemoryLimit, JobMemoryLimit;
+        public UIntPtr PeakProcessMemoryUsed, PeakJobMemoryUsed;
+    }
+
+    // Rend le job, ou IntPtr.Zero si le systeme l'a refuse. Un echec ici ne
+    // doit PAS empecher le jeu de demarrer : il rend seulement l'arret depuis
+    // Steam moins sur, et le journal le dit.
+    static IntPtr CreerJob()
+    {
+        try
+        {
+            IntPtr job = CreateJobObjectW(IntPtr.Zero, null);
+            if (job == IntPtr.Zero) return IntPtr.Zero;
+            var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            int taille = Marshal.SizeOf(info);
+            IntPtr bloc = Marshal.AllocHGlobal(taille);
+            try
+            {
+                Marshal.StructureToPtr(info, bloc, false);
+                if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                             bloc, (uint)taille))
+                    return IntPtr.Zero;
+            }
+            finally { Marshal.FreeHGlobal(bloc); }
+            return job;
+        }
+        catch (Exception) { return IntPtr.Zero; }
+    }
 
     static string dossier;
     static string journal;
@@ -89,6 +170,21 @@ static class RetroLaunch
                 + "Attendu : <système> \"<chemin de la ROM>\"\n"
                 + "Reçu : " + (reste.Length == 0 ? "(rien)" : reste));
 
+        // « --explain <systeme> <rom> » compose et REND COMPTE sans lancer.
+        // C'est ce qui rend ce fichier verifiable : la substitution des
+        // variables et le calcul de l'echelle n'existent qu'ici, la hauteur de
+        // la session n'etant connue qu'au lancement. Les tenir aussi en Python
+        // pour les tester aurait fait deux exemplaires dont un seul tourne.
+        bool expliquer = false;
+        if (reste.StartsWith("--explain "))
+        {
+            expliquer = true;
+            reste = reste.Substring("--explain ".Length).Trim();
+            espace = reste.IndexOf(' ');
+            if (espace < 0)
+                throw new Exception("--explain attend <systeme> \"<rom>\"");
+        }
+
         string cle = reste.Substring(0, espace);
         string rom = reste.Substring(espace + 1).Trim().Trim('"');
 
@@ -101,11 +197,11 @@ static class RetroLaunch
                 + "les plans.");
 
         var p = LirePlan(plan);
-        if (!File.Exists(rom))
+        if (!expliquer && !File.Exists(rom))
             throw new Exception("La ROM est introuvable :\n\n" + rom
                 + "\n\nLe partage des ROMs est-il monté ?");
         string emulateur = Valeur(p, "emulator");
-        if (!File.Exists(emulateur))
+        if (!expliquer && !File.Exists(emulateur))
             throw new Exception("L'émulateur est introuvable :\n\n" + emulateur
                 + "\n\nRelancer « retro install ».");
 
@@ -143,12 +239,45 @@ static class RetroLaunch
         Noter(cle + " | mode " + effectif + " (" + motif + ") | "
             + largeur + "x" + hauteur + " | " + emulateur + " " + commande);
 
+        if (expliquer)
+        {
+            AttachConsole(ATTACH_PARENT_PROCESS);
+            var rapport = new StringBuilder();
+            rapport.AppendLine("systeme=" + cle);
+            // Sur stdout, pas dans une boite de dialogue : --explain est fait
+            // pour etre lu par la machine qui pilote, a travers WinRM.
+            rapport.AppendLine("mode_demande=" + demande);
+            rapport.AppendLine("mode_effectif=" + effectif);
+            rapport.AppendLine("motif=" + motif);
+            rapport.AppendLine("classe=" + classe);
+            rapport.AppendLine("vram_mo=" + vram);
+            rapport.AppendLine("coeurs=" + coeurs);
+            rapport.AppendLine("resolution=" + largeur + "x" + hauteur);
+            rapport.AppendLine("emulateur=" + emulateur);
+            rapport.AppendLine("commande=" + commande);
+            Console.Out.Write(rapport.ToString());
+            Console.Out.Flush();
+            File.WriteAllText(Path.Combine(dossier, "explain.txt"),
+                              rapport.ToString(), new UTF8Encoding(false));
+            return 0;
+        }
+
+        IntPtr job = CreerJob();
+        if (job == IntPtr.Zero)
+            Noter("ATTENTION : job object indisponible — arreter le jeu depuis "
+                + "Steam pourrait laisser l'emulateur ouvert.");
+
         var psi = new ProcessStartInfo(emulateur, commande);
         psi.WorkingDirectory = Valeur(p, "workdir");
         psi.UseShellExecute = false;
         psi.CreateNoWindow = true;
         using (var jeu = Process.Start(psi))
         {
+            // Avant WaitForExit : entre le demarrage et l'affectation, un
+            // arret de Steam laisserait l'emulateur orphelin.
+            if (job != IntPtr.Zero && !AssignProcessToJobObject(job, jeu.Handle))
+                Noter("ATTENTION : l'emulateur n'a pas pu etre rattache au job "
+                    + "— l'arreter depuis Steam pourrait le laisser ouvert.");
             // Attendre : sans cela, le lanceur rendrait la main immédiatement
             // et Steam croirait la partie terminée dès son démarrage — durée
             // de jeu à zéro, et le bouton « Jouer » de retour pendant la
@@ -262,21 +391,43 @@ static class RetroLaunch
                 long meilleure = 0;
                 foreach (string nom in classe.GetSubKeyNames())
                 {
-                    using (var carte = classe.OpenSubKey(nom))
+                    // Chaque carte dans son propre try : cette arborescence
+                    // contient des sous-cles dont l'ACL refuse la lecture
+                    // (« Configuration », entre autres). Une seule d'entre
+                    // elles faisait perdre TOUT le calcul, et une RTX 4070 de
+                    // 12 Go se retrouvait annoncee a zero — mesure le
+                    // 2026-08-27 : « SecurityException : Requested registry
+                    // access is not allowed », et la machine classee modeste.
+                    try
                     {
-                        if (carte == null) continue;
-                        object v = carte.GetValue("HardwareInformation.qwMemorySize");
-                        if (v is long && (long)v > meilleure) meilleure = (long)v;
+                        using (var carte = classe.OpenSubKey(nom))
+                        {
+                            if (carte == null) continue;
+                            object v = carte.GetValue(
+                                "HardwareInformation.qwMemorySize");
+                            if (v is long && (long)v > meilleure)
+                                meilleure = (long)v;
+                            else if (v is int && (int)v > meilleure)
+                                meilleure = (int)v;
+                        }
                     }
+                    catch (Exception) { continue; }
                 }
+                if (meilleure == 0)
+                    Noter("VRAM : aucune carte ne publie "
+                        + "HardwareInformation.qwMemorySize sous "
+                        + "HKLM\\SYSTEM\\...\\Class\\{4d36e968-...}.");
                 return (int)(meilleure / (1024 * 1024));
             }
         }
-        catch (Exception)
+        catch (Exception e)
         {
             // Une VRAM inconnue vaut zéro, et zéro n'est pas une petite carte :
             // c'est une mesure qui n'a pas eu lieu. Le mode `auto` retombe
-            // alors sur « modeste », le seul choix qui ne promet rien.
+            // alors sur « modeste », le seul choix qui ne promet rien — mais
+            // il faut pouvoir SAVOIR que la mesure a échoué, sinon une machine
+            // à 12 Go se voit classer modeste sans que rien ne l'explique.
+            Noter("VRAM illisible : " + e.GetType().Name + " : " + e.Message);
             return 0;
         }
     }
