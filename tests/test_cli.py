@@ -419,3 +419,42 @@ def test_status_dit_la_meme_chose_avec_ou_sans_rom(tmp_path, capsys):
     assert verdict(vide) == verdict(plein), f"{verdict(vide)} != {verdict(plein)}"
     assert "sans témoin" in vide
     assert "l'émulateur « r » n'est pas installé" not in vide
+
+
+def test_status_lit_aussi_les_profils_du_proprietaire(tmp_path, capsys):
+    """`status` et `scan` doivent voir les MÊMES émulateurs.
+
+    Les donner à l'un et pas à l'autre reproduirait le défaut des manifestes :
+    une commande rapporte l'état d'un parc que l'autre n'inventorie pas, et le
+    propriétaire n'a aucun moyen de trancher. Un émulateur du propriétaire
+    déclaré au manifeste mais dont le profil n'était pas lu était en outre
+    accusé d'être « deviné » : le rapport réclamait de déclarer ce qui l'était
+    déjà.
+    """
+    profils = _profil_minimal(tmp_path)
+    mien = tmp_path / "mes-profils"
+    mien.mkdir()
+    (mien / "duckstation.toml").write_text("""
+schema = 1
+id = "duckstation"
+exe = 'DuckStation-x64\\duckstation-qt-x64-ReleaseLTCG.exe'
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".chd"]
+launch = '-fullscreen "{rom}"'
+bios = []
+""", encoding="utf-8")
+    roms = tmp_path / "ROMs" / "psx"
+    roms.mkdir(parents=True)
+    (roms / "Tekken 3 (Europe).chd").write_bytes(b"x")
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+    code = cli.main(["status", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils), "--user-profiles", str(mien),
+                     "--emulation-root", str(tmp_path / "Emulation"),
+                     "--bios", str(bios_dir)])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "PlayStation : 1 jeu ignoré" in out
+    assert "duckstation" in out

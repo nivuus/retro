@@ -80,6 +80,7 @@ retro scan --roms /mnt/roms \
            --emulation-root 'D:\Emulation' \
            --emulation-root-local /mnt/emulation \
            --user-manifest 'G:\retro\emulators.toml' \
+           --user-profiles 'G:\retro\profiles' \
            --output inventaire.json
 
 # 3. faire remonter le tout dans Steam
@@ -94,6 +95,8 @@ retro sync --steam-root /mnt/steam \
 retro status --roms 'G:\ROMs' \
              --roms-windows 'G:\ROMs' \
              --emulation-root 'D:\Emulation' \
+             --user-manifest 'G:\retro\emulators.toml' \
+             --user-profiles 'G:\retro\profiles' \
              --bios 'G:\ROMs\bios'
 ```
 
@@ -126,6 +129,36 @@ reçoit déjà.
 les mêmes valeurs : c'est le manifeste qui décide où chaque émulateur
 s'installe, donc lui seul sait où l'inventaire doit pointer. Les donner à l'un
 et pas à l'autre produit des raccourcis qui ne lancent rien.
+
+`--user-profiles` est le pendant de `--user-manifest` pour les profils, et va
+avec lui : `scan` et `status` le prennent tous les deux, avec les mêmes
+valeurs.
+
+### Vos propres émulateurs
+
+Le dépôt est public et ne référence que des émulateurs au statut juridique
+clair. Rien ne vous limite : vous déclarez les vôtres dans **votre** manifeste
+(`--user-manifest`) et **votre** dossier de profils (`--user-profiles`), tous
+deux hors dépôt.
+
+Vos profils **complètent** ceux du paquet, ils ne les remplacent pas : ajouter
+Duckstation ne vous fait pas perdre les neuf systèmes du RetroArch livré.
+L'absence du dossier n'est pas une erreur — il vit souvent sur un partage qui
+n'est pas monté quand la machine se provisionne.
+
+Deux règles de préséance, et c'est tout :
+
+- **À identifiant de profil égal, le vôtre l'emporte**, entièrement, systèmes
+  compris — exactement comme une entrée de votre manifeste remplace celle du
+  noyau.
+- **Un système que vous revendiquez vous revient**, et quitte le profil livré :
+  écrire un profil Duckstation qui déclare `psx` suffit à faire passer vos
+  jeux PlayStation par Duckstation plutôt que par le core de RetroArch.
+
+En revanche, **deux profils du même dossier ne peuvent pas revendiquer le même
+système** : un seul dossier de ROMs porte ce nom, et le scan trancherait par
+ordre alphabétique — renommer un fichier changerait alors l'émulateur qui lance
+vos jeux, sans un mot. Ce cas-là est refusé en nommant les deux fichiers.
 
 `retro scan` produit ce JSON, que `retro sync` relit tel quel :
 
@@ -166,6 +199,11 @@ Ce qu'il télécharge est décrit par un manifeste TOML, et rien d'autre :
 - **Votre manifeste**, hors dépôt, passé par `--user-manifest`. Même schéma,
   sans cette limite : c'est là que vous déclarez vos propres émulateurs. Son
   absence est normale et n'est pas une erreur.
+
+Déclarer un émulateur au manifeste ne suffit pas à s'en servir : il lui faut
+aussi un **profil**, qui dit quels systèmes il couvre, quelles extensions il
+accepte et comment on le lance. Vos profils vivent eux aussi hors dépôt, dans
+le dossier que `--user-profiles` désigne — voir « Vos propres émulateurs ».
 
 Chaque archive porte au manifeste une **empreinte SHA-256 épinglée**, et elle
 est **vérifiée avant toute extraction**. Une empreinte qui ne correspond pas
