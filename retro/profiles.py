@@ -200,8 +200,16 @@ def load_profile(path: pathlib.Path) -> Profile:
     )
 
 
-def load_profiles(directory: pathlib.Path) -> dict[str, Profile]:
-    """Tous les profils d'un dossier, indexés par identifiant.
+def _charger_source(directory: pathlib.Path,
+                    obligatoire: bool) -> dict[str, tuple[Profile, pathlib.Path]]:
+    """Les profils d'un dossier, avec le fichier d'où chacun vient.
+
+    `obligatoire` distingue les deux sources, comme `manifest._lire` distingue
+    le manifeste noyau du manifeste utilisateur : le dossier livré avec le
+    paquet doit exister et contenir des profils — son absence est un paquet
+    cassé, ou un --profiles mal orthographié — tandis que celui du
+    propriétaire vit sur un partage qui n'est pas monté au moment du
+    provisionnement, et son absence est NORMALE.
 
     Deux profils de même 'id' sont REFUSÉS. L'affectation seule laissait le
     dernier chargé écraser l'autre, qui disparaissait entièrement : un profil
@@ -213,22 +221,142 @@ def load_profiles(directory: pathlib.Path) -> dict[str, Profile]:
     `load_profile` refuse déjà deux systèmes de même 'id' à l'intérieur d'un
     profil ; c'est la même garde, entre profils.
     """
-    profils = {}
-    origines: dict[str, pathlib.Path] = {}
+    # Un chemin qui existe SANS être un dossier n'est pas « pas encore
+    # monté » : c'est une erreur de frappe — le profil lui-même donné à la
+    # place de son dossier, en général. Le traiter comme une absence rendrait
+    # silencieusement les seuls profils du paquet, et les émulateurs du
+    # propriétaire manqueraient sans qu'aucun message ne le dise.
+    if directory.exists() and not directory.is_dir():
+        raise ProfileError(
+            f"{directory} n'est pas un dossier. Un dossier de profils est "
+            "attendu — celui qui CONTIENT les fichiers .toml, pas l'un "
+            "d'eux."
+        )
+    if not directory.is_dir():
+        if obligatoire:
+            raise ProfileError(
+                f"dossier de profils introuvable : {directory}. Les profils "
+                "livrés avec le paquet ne sont pas facultatifs : sans eux, "
+                "aucun jeu ne pourrait être lancé. Le dossier des profils du "
+                "propriétaire, lui, peut manquer."
+            )
+        return {}
+
+    source: dict[str, tuple[Profile, pathlib.Path]] = {}
     for f in sorted(directory.glob("*.toml")):
         p = load_profile(f)
-        if p.id in profils:
+        if p.id in source:
             raise ProfileError(
-                f"le profil '{p.id}' est déclaré deux fois : {origines[p.id].name} "
-                f"et {f.name}. Le second effacerait le premier en silence, avec "
-                "tous ses systèmes — les ROMs correspondantes disparaîtraient de "
-                "Steam sans qu'aucun message ne le dise. Donner un 'id' distinct "
-                "à chaque profil."
+                f"le profil '{p.id}' est déclaré deux fois : "
+                f"{source[p.id][1].name} et {f.name}. Le second effacerait le "
+                "premier en silence, avec tous ses systèmes — les ROMs "
+                "correspondantes disparaîtraient de Steam sans qu'aucun "
+                "message ne le dise. Donner un 'id' distinct à chaque profil."
             )
-        profils[p.id] = p
-        origines[p.id] = f
-    if not profils:
+        source[p.id] = (p, f)
+
+    _refuser_systemes_partages(source)
+    if obligatoire and not source:
         raise ProfileError(
             f"aucun profil dans {directory} : aucun jeu ne pourrait être lancé"
         )
-    return profils
+    return source
+
+
+def _refuser_systemes_partages(
+        source: dict[str, tuple[Profile, pathlib.Path]]) -> None:
+    """Dans UNE source, un système n'est servi que par un profil.
+
+    Deux profils du même dossier qui revendiquent 'psx' se disputent le même
+    dossier de ROMs. Rien dans le résultat ne le dirait : `scan` retient le
+    premier profil par ordre alphabétique, donc renommer un fichier suffirait
+    à changer l'émulateur qui lance les jeux — et le TOML fautif, lui, reste
+    là. C'est le défaut que `load_profile` refuse déjà À L'INTÉRIEUR d'un
+    profil ; entre profils d'une même source, il n'était vérifié que sur les
+    données livrées, par un test, et jamais sur celles du propriétaire.
+
+    Entre les DEUX sources, la règle est autre : voir `load_profiles`.
+    """
+    servi: dict[str, tuple[str, pathlib.Path]] = {}
+    for pid in sorted(source):
+        profil, fichier = source[pid]
+        for s in profil.systems:
+            if s.id in servi:
+                autre_pid, autre_fichier = servi[s.id]
+                raise ProfileError(
+                    f"le système '{s.id}' est revendiqué par deux profils du "
+                    f"même dossier : '{autre_pid}' ({autre_fichier.name}) et "
+                    f"'{pid}' ({fichier.name}). Un seul dossier de ROMs porte "
+                    "ce nom : les deux profils se le disputeraient, et le "
+                    "scan trancherait par ordre alphabétique — renommer un "
+                    "fichier suffirait alors à changer l'émulateur qui lance "
+                    "ces jeux, sans qu'aucun message ne le dise. Retirer ce "
+                    "système de l'un des deux profils, ou — pour remplacer un "
+                    "émulateur livré — déclarer le vôtre dans le dossier de "
+                    "profils du propriétaire, qui l'emporte."
+                )
+            servi[s.id] = (pid, fichier)
+
+
+def load_profiles(directory: pathlib.Path,
+                  user_directory: pathlib.Path | None = None,
+                  ) -> dict[str, Profile]:
+    """Les profils livrés, surchargés par ceux du propriétaire.
+
+    Le manifeste accepte déjà une surcharge utilisateur : c'est l'échappatoire
+    qui permet au dépôt public de ne référencer aucun émulateur au statut
+    contesté sans brider personne. Déclarer un émulateur au manifeste ne
+    suffit pourtant pas à s'en servir — il lui faut un profil, qui dit quels
+    systèmes il couvre, quelles extensions il accepte et comment on le lance.
+    Les deux surcharges vont donc ensemble, et suivent la MÊME règle : à
+    identifiant égal, le profil du propriétaire remplace celui du paquet,
+    entièrement, comme `dict.update` remplace une entrée de manifeste.
+
+    L'absence du dossier du propriétaire est NORMALE : il vit sur le partage
+    qui n'est pas monté au moment du provisionnement.
+
+    **Un système revendiqué des deux côtés revient au propriétaire**, et
+    QUITTE le profil livré. Pourquoi ce choix, plutôt que le refus qui vaut
+    entre deux profils d'une même source :
+
+    - c'est la raison même d'ajouter un profil standalone. Duckstation sert
+      « psx » mieux que le core que RetroArch y met : le propriétaire écrit
+      son profil pour prendre la place, pas pour être refusé ;
+    - c'est déjà la règle du manifeste, à laquelle ce mécanisme est jumelé.
+      Deux règles différentes pour la même idée — « le vôtre l'emporte » —
+      seraient une source de bugs, et le propriétaire attendrait la même des
+      deux côtés ;
+    - refuser ferait d'une collision une panne TOTALE : `scan`, `status` et
+      la console entière s'arrêteraient sur un fichier que le propriétaire a
+      ajouté pour gagner un émulateur, pas pour en perdre neuf.
+
+    Ce qui reste interdit dans les deux cas, c'est que deux profils se
+    disputent SILENCIEUSEMENT le même dossier de ROMs : ici le perdant est
+    connu d'avance et ne dépend d'aucun ordre alphabétique, et le système ne
+    figure plus que dans un seul profil du résultat — `scan` n'a plus rien à
+    arbitrer.
+
+    Un profil livré dont TOUS les systèmes ont été repris disparaît du
+    résultat : il ne pourrait plus rien lancer, `load_profile` refuse déjà de
+    produire un profil sans système, et le garder ferait réclamer par `retro
+    status` l'installation d'un émulateur dont plus aucun jeu ne dépend.
+    """
+    livres = _charger_source(directory, obligatoire=True)
+    miens = (_charger_source(user_directory, obligatoire=False)
+             if user_directory is not None else {})
+
+    revendiques = {s.id for profil, _ in miens.values() for s in profil.systems}
+    fusionnes: dict[str, Profile] = {}
+    for pid, (profil, _) in livres.items():
+        restants = tuple(s for s in profil.systems if s.id not in revendiques)
+        if not restants:
+            continue  # tous ses systèmes sont passés au propriétaire
+        fusionnes[pid] = (profil if len(restants) == len(profil.systems)
+                          else dataclasses.replace(profil, systems=restants))
+
+    # La surcharge à identifiant égal tient dans ce seul `update`, comme celle
+    # du manifeste : le profil du propriétaire remplace ENTIÈREMENT celui du
+    # paquet, systèmes compris. Écarter l'homonyme plus haut n'y changerait
+    # rien — c'est ici, et nulle part ailleurs, que la préséance se décide.
+    fusionnes.update({pid: profil for pid, (profil, _) in miens.items()})
+    return fusionnes
