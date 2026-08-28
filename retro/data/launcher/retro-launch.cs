@@ -118,6 +118,7 @@ static class RetroLaunch
 
     static string dossier;
     static string journal;
+    const string SI_ABSENT = "si-absent";
 
     static int Main()
     {
@@ -155,6 +156,112 @@ static class RetroLaunch
                 + Environment.NewLine, new UTF8Encoding(false));
         }
         catch (Exception) { /* un journal illisible ne doit pas tuer le jeu */ }
+    }
+
+    // L'amorçage : poser la configuration d'un émulateur qui n'en a jamais eu.
+    //
+    // Mesuré le 2026-08-28 : sans son settings.ini, DuckStation tient
+    // SetupWizardIncomplete pour vrai et ouvre son assistant AVANT d'honorer
+    // sa ligne de commande. Aucun de ses dix-sept arguments ne le saute, et
+    // comme personne ne termine un assistant depuis un canapé, rien n'est
+    // jamais ecrit : le lancement suivant recommence a l'identique.
+    //
+    // Ce qui est pose, et quand, est decide par « retro scan » : cette
+    // methode lit trois lignes du plan et n'en invente aucune.
+    static void Amorcer(Dictionary<string, string> p, string profil)
+    {
+        string cible = Valeur(p, "bootstrap_target");
+        if (cible.Length == 0) return;   // cet emulateur n'a rien a recevoir
+
+        string quand = Valeur(p, "bootstrap_when");
+        if (quand != SI_ABSENT)
+            throw new Exception(
+                "Le plan demande une strategie d'amorcage inconnue : « " + quand
+                + " ». Ce lanceur ne connait que « " + SI_ABSENT + " ».\n\n"
+                + "Recompiler le lanceur (compiler.cmd), ou relancer "
+                + "« retro scan ».");
+
+        cible = Environment.ExpandEnvironmentVariables(cible);
+        bool force = OrdreDeReamorcage(profil);
+        if (File.Exists(cible) && !force) return;
+
+        string source = Valeur(p, "bootstrap_source");
+        if (!File.Exists(source))
+            throw new Exception(
+                "Le fichier de configuration a poser est introuvable :\n\n"
+                + source + "\n\nRelancer « retro scan » depuis l'hote.");
+
+        string parent = Path.GetDirectoryName(cible);
+        if (parent.Length > 0 && !Directory.Exists(parent))
+            Directory.CreateDirectory(parent);
+
+        // Rien n'ecrase une configuration sans sauvegarde : la convention est
+        // celle de shortcuts.vdf.bak-*, deja en usage cote synchronisation.
+        if (File.Exists(cible))
+        {
+            string sauvegarde = cible + ".bak-"
+                + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            File.Copy(cible, sauvegarde, false);
+            Noter("amorcage : " + cible + " sauvegarde en " + sauvegarde);
+        }
+
+        File.Copy(source, cible, true);
+        Noter("amorcage : " + profil + " -> " + cible
+              + (force ? " (ordre de reamorcage)" : ""));
+        InscrireTemoin(profil, cible);
+        if (force) ConsommerOrdre(profil);
+    }
+
+    // Le propriétaire a-t-il demande de reposer la configuration de ce profil ?
+    static bool OrdreDeReamorcage(string profil)
+    {
+        string fichier = Path.Combine(dossier, "reamorcer.txt");
+        if (!File.Exists(fichier)) return false;
+        foreach (string ligne in File.ReadAllLines(fichier, Encoding.UTF8))
+            if (ligne.Trim() == profil) return true;
+        return false;
+    }
+
+    // Un ordre ne vaut qu'un passage : le laisser ferait une sauvegarde et une
+    // reecriture a chaque lancement, et le propriétaire ne pourrait plus jamais
+    // regler son emulateur lui-meme.
+    static void ConsommerOrdre(string profil)
+    {
+        string fichier = Path.Combine(dossier, "reamorcer.txt");
+        var restants = new List<string>();
+        foreach (string ligne in File.ReadAllLines(fichier, Encoding.UTF8))
+            if (ligne.Trim().Length > 0 && ligne.Trim() != profil)
+                restants.Add(ligne.Trim());
+        if (restants.Count == 0) File.Delete(fichier);
+        else File.WriteAllLines(fichier, restants, new UTF8Encoding(false));
+    }
+
+    // Le temoin : « retro status » tourne sur l'hote, qui n'atteint ni
+    // C:\Users ni %APPDATA%. Il ne peut donc pas CONSTATER qu'un emulateur est
+    // amorce — seulement lire ce que le lanceur a ecrit la ou l'hote regarde.
+    // C'est une trace, jamais une source de verite : Amorcer() consulte la
+    // cible, jamais ce fichier.
+    static void InscrireTemoin(string profil, string cible)
+    {
+        try
+        {
+            string fichier = Path.Combine(dossier, "bootstrap.txt");
+            var lignes = new List<string>();
+            if (File.Exists(fichier))
+                foreach (string l in File.ReadAllLines(fichier, Encoding.UTF8))
+                    if (l.Length > 0 && !l.StartsWith(profil + "\t"))
+                        lignes.Add(l);
+            lignes.Add(profil + "\t"
+                + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\t" + cible);
+            lignes.Sort();
+            File.WriteAllLines(fichier, lignes, new UTF8Encoding(false));
+        }
+        catch (Exception e)
+        {
+            // Un temoin illisible ne doit pas priver le propriétaire de son jeu :
+            // la configuration, elle, est posee.
+            Noter("temoin d'amorcage non ecrit : " + e.Message);
+        }
     }
 
     static int Lancer()
@@ -255,11 +362,36 @@ static class RetroLaunch
             rapport.AppendLine("resolution=" + largeur + "x" + hauteur);
             rapport.AppendLine("emulateur=" + emulateur);
             rapport.AppendLine("commande=" + commande);
+            string cibleAmorcage = Valeur(p, "bootstrap_target");
+            rapport.AppendLine("amorcage_cible=" + cibleAmorcage);
+            rapport.AppendLine("amorcage_a_poser="
+                + (cibleAmorcage.Length == 0 ? "rien"
+                   : (File.Exists(Environment.ExpandEnvironmentVariables(
+                          cibleAmorcage)) ? "non (la cible existe)" : "oui")));
             Console.Out.Write(rapport.ToString());
             Console.Out.Flush();
             File.WriteAllText(Path.Combine(dossier, "explain.txt"),
                               rapport.ToString(), new UTF8Encoding(false));
             return 0;
+        }
+
+        // Avant de lancer : poser la configuration si l'emulateur n'en a
+        // aucune. Un echec n'empeche PAS le jeu de demarrer — il ouvrira son
+        // assistant, mais le propriétaire aura lu pourquoi. Abandonner ici
+        // rendrait la main a Steam, ce qui ressemble exactement a un jeu
+        // qu'on vient de quitter.
+        try
+        {
+            Amorcer(p, cle.Split('.')[0]);
+        }
+        catch (Exception e)
+        {
+            Noter("ECHEC de l'amorcage : " + e.Message);
+            MessageBoxW(IntPtr.Zero,
+                e.Message + "\n\nLe jeu va tout de meme demarrer : "
+                + "l'emulateur ouvrira peut-etre son assistant de "
+                + "configuration.",
+                "Console retro — configuration non posee", 0x30);
         }
 
         IntPtr job = CreerJob();
