@@ -221,7 +221,7 @@ static class RetroLaunch
                 Noter("ordre de reamorcage sans objet pour " + profil
                     + " : ce profil ne porte plus de configuration a poser ; "
                     + "l'ordre est retire sans rien ecrire.");
-                ConsommerOrdre(profil);
+                ConsommerOrdre(profil, false);
             }
             return;
         }
@@ -332,7 +332,7 @@ static class RetroLaunch
         Noter("amorcage : " + profil + " -> " + cible
               + (force ? " (ordre de reamorcage)" : ""));
         InscrireTemoin(profil, cible);
-        if (force) ConsommerOrdre(profil);
+        if (force) ConsommerOrdre(profil, true);
     }
 
     // Le propriétaire a-t-il demande de reposer la configuration de ce profil ?
@@ -352,13 +352,19 @@ static class RetroLaunch
     // Protegee comme InscrireTemoin : reamorcer.txt est aussi ecrit depuis
     // l'hote a travers un partage reseau, et un verrou ou un attribut lecture
     // seule y ferait lever une exception ALORS QUE la configuration a deja
-    // ete posee — Amorcer() n'appelle cette methode qu'apres avoir copie le
-    // fichier avec succes. Une exception non rattrapee ferait donc annoncer
+    // ete posee — sur le chemin nominal, Amorcer() n'appelle cette methode
+    // qu'apres avoir copie le fichier avec succes. Une exception non rattrapee ferait donc annoncer
     // « ECHEC de l'amorcage » pour un amorcage reussi, et laisserait surtout
     // l'ordre en place : chaque lancement suivant reposerait la configuration
     // et ajouterait une sauvegarde de plus — precisement ce que cette methode
     // existe pour empecher.
-    static void ConsommerOrdre(string profil)
+    //
+    // « configurationPosee » ne sert qu'au message : le meme echec n'a pas la
+    // meme suite selon qu'une configuration vient d'etre ecrite (elle le sera
+    // de nouveau a chaque lancement) ou que l'ordre etait devenu sans objet
+    // (rien n'a ete ecrit, mais l'ordre attendra le retour du bloc). Dire
+    // « la configuration a bien ete posee » dans le second cas serait faux.
+    static void ConsommerOrdre(string profil, bool configurationPosee)
     {
         string fichier = Path.Combine(dossier, "reamorcer.txt");
         try
@@ -382,12 +388,17 @@ static class RetroLaunch
             // REPETEE — l'ordre restant en place, chaque lancement suivant
             // sauvegarde puis ecrase, indefiniment. Un journal ne se lit pas
             // depuis un canape.
-            string consequence =
-                "La configuration a bien ete posee, mais elle sera reposee "
-                + "(avec une sauvegarde de plus) a CHAQUE lancement tant que "
-                + "« " + profil + " » restera dans " + fichier
-                + " -- retirer cette ligne, ou supprimer ce fichier, pour "
-                + "l'empecher.";
+            string consequence = configurationPosee
+                ? "La configuration a bien ete posee, mais elle sera reposee "
+                  + "(avec une sauvegarde de plus) a CHAQUE lancement tant que "
+                  + "« " + profil + " » restera dans " + fichier
+                  + " -- retirer cette ligne, ou supprimer ce fichier, pour "
+                  + "l'empecher."
+                : "Rien n'a ete ecrit : ce profil ne porte plus de "
+                  + "configuration a poser. L'ordre, lui, reste dans "
+                  + fichier + ", et il s'appliquera le jour ou ce profil en "
+                  + "portera une de nouveau -- retirer cette ligne, ou "
+                  + "supprimer ce fichier.";
             Noter("ordre de reamorcage non consomme pour " + profil + " : "
                 + e.Message + ". " + consequence);
             AvertirEnFond("Console retro — ordre de reamorcage non consomme",
