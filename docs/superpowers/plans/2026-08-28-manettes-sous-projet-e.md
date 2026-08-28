@@ -99,18 +99,38 @@ Input »*. Vérifié le 2026-08-28 : la manette répond immédiatement après.
 
 Trois conséquences, et ce sont des tâches :
 
-1. **Ce réglage doit être vérifié, pas espéré.** Une console dont les manettes
-   dépendent d'une case cochée dans une interface graphique, sans que rien ne
-   le dise, retombera muette au premier raccourci recréé. Cherche si l'état de
-   Steam Input par application est lisible dans les fichiers de configuration
-   de Steam (`userdata/<id>/config/`), et si oui, fais-le dire par
-   `retro status`. Si ce n'est pas lisible, écris-le dans le LISEZ-MOI de la
-   console, en toutes lettres.
+1. **Ce réglage n'est pas hors de portée : il est écrit dans un VDF, et
+   `retro` sait déjà tout ce qu'il faut pour l'atteindre.** Relevé sur la
+   machine le 2026-08-28, après l'avoir posé à la main sur un jeu :
 
-2. **Vérifie si le réglage survit à `retro sync`.** L'identifiant d'un raccourci
-   dérive de ses options de lancement — c'est déjà écrit dans `launcher.py`, à
-   propos du mode de rendu qui vit dans un fichier pour cette raison même. Si
-   l'identifiant change, le réglage Steam Input est perdu avec lui, en silence.
+       userdata/<accountid>/config/localconfig.vdf
+         UserLocalConfigStore / apps / "<appid signé>" / UseSteamControllerConfig = "0"
+
+   `"-1117161211"` y désigne le raccourci dont `SteamAppId` vaut `3177806085` —
+   soit exactement `to_signed(legacy_appid(exe, app_name))`, que
+   `retro/steam/appid.py` calcule déjà pour l'artwork. Le module `vdf_io` sait
+   lire et écrire ce format, et la synchronisation ouvre déjà `shortcuts.vdf`
+   dans le même dossier.
+
+   **`retro status` doit donc nommer les jeux dont Steam Input est resté
+   actif**, et la synchronisation devrait poser `UseSteamControllerConfig`
+   à `0` sur chaque entrée qu'elle écrit — le réglage est par jeu, et une
+   bibliothèque de cinquante jeux ne se règle pas à la main cinquante fois.
+
+   **Deux précautions à établir avant d'écrire quoi que ce soit dans ce
+   fichier :** Steam le réécrit intégralement en se fermant, donc toute
+   modification faite pendant qu'il tourne est perdue — la synchronisation
+   doit refuser d'écrire, ou prévenir, si Steam est lancé, exactement comme
+   elle le fait déjà pour `shortcuts.vdf`. Et `localconfig.vdf` porte bien
+   plus que des manettes : sauvegarde-le avant, comme la synchronisation
+   sauvegarde déjà `shortcuts.vdf` (`shortcuts.vdf.bak-*` sur la machine).
+
+2. **L'identifiant, lui, est stable.** `legacy_appid` dérive de
+   `crc32(exe + app_name)`, PAS des options de lancement : le réglage survit
+   donc aux synchronisations tant que le lanceur et le nom du jeu ne bougent
+   pas. Vérifié en lisant `retro/steam/appid.py`. Un renommage de ROM, en
+   revanche, change le nom, donc l'appid, donc perd le réglage en silence —
+   c'est un cas que `retro status` doit savoir dire.
 
 3. **La sortie du jeu, elle, tient bon — mais pas par où le profil le dit.**
    Les profils déclarent `fallback = "alt+f4"`, et `ryujinx.toml` affirme que
