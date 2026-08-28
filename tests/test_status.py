@@ -593,8 +593,11 @@ def test_un_lanceur_perime_est_un_probleme():
         lanceur_perime=True)
     perimes = [p for p in rapport.problems if "plus ancien que sa source" in p.what]
     assert len(perimes) == 1
-    # Le geste, pas seulement le constat : c'est la règle du module.
+    # Le geste ET le chemin, pas seulement le constat : c'est la règle du
+    # module, et « recompiler » sans dire où n'aide personne.
     assert "compiler.cmd" in perimes[0].action
+    assert "D:\\Emulation\\_launcher\\compiler.cmd" in perimes[0].action
+    assert "/" not in perimes[0].where, perimes[0].where
 
 
 def test_un_lanceur_a_jour_ne_produit_aucun_probleme():

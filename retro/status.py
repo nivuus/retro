@@ -369,7 +369,8 @@ def _probleme_sans_modes(etats: list[SystemRender]) -> list[Problem]:
     )]
 
 
-def _probleme_lanceur_perime(perime: bool) -> list[Problem]:
+def _probleme_lanceur_perime(perime: bool,
+                             emulation_root: pathlib.Path) -> list[Problem]:
     """Le binaire en place est plus vieux que la source déposée à côté.
 
     Un lanceur compilé avant une évolution du plan ignore EN SILENCE les
@@ -384,9 +385,13 @@ def _probleme_lanceur_perime(perime: bool) -> list[Problem]:
         what="le lanceur en place est plus ancien que sa source : il ignore "
              "en silence ce que les plans portent de nouveau (l'amorçage des "
              "émulateurs, notamment) — aucune erreur ne le signale",
-        where=f"{launcher_mod.DIR}\\{launcher_mod.EXE}",
-        action=f"le recompiler depuis Windows : {launcher_mod.DIR}\\"
-               f"{launcher_mod.RECOMPILER}",
+        # Le chemin, comme pour tout problème de ce rapport : « recompiler »
+        # sans dire OÙ envoie chercher un script dans une arborescence que le
+        # propriétaire ne connaît pas par cœur.
+        where=_joindre(str(emulation_root), launcher_mod.DIR, launcher_mod.EXE),
+        action="le recompiler depuis Windows : "
+               + _joindre(str(emulation_root), launcher_mod.DIR,
+                          launcher_mod.RECOMPILER),
     )]
 
 
@@ -484,7 +489,7 @@ def build_report(
                   *_problemes_bios(bios_status, bios_root),
                   *_probleme_sans_modes(rendu),
                   *_probleme_steam_input(steam_input_muets, steam_input_echec),
-                  *_probleme_lanceur_perime(lanceur_perime)],
+                  *_probleme_lanceur_perime(lanceur_perime, emulation_root)],
         bios_root=bios_root,
         render_mode=render_mode,
         render=rendu,
