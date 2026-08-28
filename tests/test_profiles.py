@@ -872,6 +872,28 @@ def test_un_contenu_sans_marque_est_refuse(tmp_path):
     assert profiles.MARQUE_BOOTSTRAP in str(e.value)
 
 
+def test_le_profil_duckstation_livre_ferme_les_deux_causes_mesurees():
+    """Le profil livré n'est pas un exemple : c'est lui que `retro scan` lira.
+
+    Mesuré le 2026-08-28 : DEUX causes distinctes ouvraient l'assistant de
+    DuckStation à la place d'un jeu — l'assistant de première configuration
+    lui-même, et une fenêtre de mise à jour qui bloquait le lancement même
+    l'assistant désactivé. Un profil qui n'en fermerait qu'une laisserait le
+    symptôme intact pour la moitié des propriétaires qui l'installent."""
+    chemin = (pathlib.Path(__file__).parent.parent / "retro" / "data"
+              / "profiles" / "duckstation.toml")
+    profil = profiles.load_profile(chemin)
+    assert profil.bootstrap is not None
+    assert profil.bootstrap.target == (
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
+    # La première cause mesurée : sans elle, l'assistant de première
+    # configuration s'ouvre avant tout jeu et rien n'est jamais écrit.
+    assert "SetupWizardIncomplete = false" in profil.bootstrap.content
+    # La seconde, découverte le même jour : sans elle, une fenêtre « Mise à
+    # jour disponible » bloque le lancement aussi sûrement que l'assistant.
+    assert "CheckAtStartup = false" in profil.bootstrap.content
+
+
 # --- l'identifiant d'un profil se découpe et nomme un fichier --------------
 
 def _avec_id(identifiant: str) -> str:

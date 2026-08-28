@@ -37,6 +37,17 @@ données, chargé sa base de jeux et écrit `playtime.dat` contenant
 `SCES-02105` — le serial PAL de Crash Team Racing. Il est allé jusqu'à
 démarrer le jeu.
 
+**Une seconde cause du même symptôme, découverte le même jour.** L'assistant
+désactivé ne suffit pas : DuckStation ouvrait encore, par-dessus tout, une
+fenêtre modale « Mise à jour disponible » (71,31 Mo) qu'aucune manette ne
+peut fermer — elle bloquait le lancement exactement comme l'assistant.
+`[AutoUpdater]` / `CheckAtStartup = false` la ferme. La raison de fond
+dépasse le confort : `retro` épingle la version de chaque émulateur dans son
+manifeste, avec son empreinte SHA256, et `acquire` écrit un témoin
+`.retro-version` à côté de l'installation ; une mise à jour appliquée par
+l'émulateur lui-même ferait diverger l'installation de ce que le manifeste
+atteste, en silence.
+
 Trois faits en découlent, et ils sont la raison d'être de cette conception :
 
 1. **`retro install` ne produit pas un émulateur utilisable.** Il extrait une
@@ -285,7 +296,7 @@ départ pour la mesure, pas des faits établis — sauf DuckStation, relevé le
 
 | Émulateur | Cible présumée | Assistant au premier lancement ? | Mesuré |
 |---|---|---|---|
-| DuckStation | `%USERPROFILE%\Documents\DuckStation\settings.ini` | **oui — mesuré** | 2026-08-28 |
+| DuckStation | `%USERPROFILE%\Documents\DuckStation\settings.ini` | **oui — deux causes mesurées : l'assistant, et un vérificateur de mise à jour** | 2026-08-28 |
 | PCSX2 | `%USERPROFILE%\Documents\PCSX2\inis\PCSX2.ini` | à établir | non |
 | RetroArch | `retroarch.cfg`, sous l'installation | à établir | non |
 | Dolphin | `User\Config\Dolphin.ini` | à établir | non |

@@ -24,22 +24,83 @@ schema = 1
 id  = "duckstation"
 exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 
-# Amorçage : pas de bloc [bootstrap]. Ce que DuckStation doit recevoir pour
-# lancer un jeu au lieu de son assistant de première configuration reste À
-# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
-# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
-# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
-# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
-# « cet émulateur se débrouille » : voir
+# Amorçage : mesuré le 2026-08-28, voir
 # docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
-# La CIBLE, elle, est mesurée : %USERPROFILE%\Documents\DuckStation\settings.ini,
-# le 2026-08-28. C'est son absence qui faisait tenir SetupWizardIncomplete
-# pour vrai et ouvrait l'assistant avant tout jeu. Le contenu, lui, se relève
-# réglage par réglage, l'émulateur arrêté proprement pour qu'il l'écrive.
-# Le chemin des BIOS en fera partie : « retro status --bios » vérifie le
-# dossier que le propriétaire a choisi pendant que l'émulateur cherche dans
-# le sien, et sans ce réglage le rapport annonce « BIOS présent » alors que
-# l'émulateur ne les voit pas — le pire des états, un rapport qui ment.
+#
+# Sans [Main] SetupWizardIncomplete = false, DuckStation ouvre son assistant
+# de première configuration AVANT d'honorer sa ligne de commande, et aucun de
+# ses dix-sept arguments (énumérés dans qthost.cpp, voir plus bas) ne le
+# saute. C'est la cause mesurée du défaut d'origine : cinq lancements de Crash
+# Team Racing depuis Steam, ligne de commande correcte à chaque fois, et
+# pourtant aucun fichier de données créé — une instance est même restée
+# plusieurs heures sur cet assistant sans que personne ne le termine depuis
+# un canapé. Le même lancement, ce settings.ini posé au préalable, a démarré
+# le jeu et écrit playtime.dat avec SCES-02105, le serial PAL de Crash Team
+# Racing.
+#
+# [AutoUpdater] CheckAtStartup = false ferme une SECONDE cause du même
+# symptôme, découverte le même jour : même l'assistant désactivé, DuckStation
+# ouvrait une fenêtre modale « Mise à jour disponible » (71,31 Mo) par-dessus
+# tout, qu'aucune manette ne peut fermer — elle bloquait le lancement
+# exactement comme l'assistant. La raison de fond justifie de la couper
+# plutôt que de l'accepter : `retro` épingle la version de chaque émulateur
+# dans son manifeste, avec son empreinte SHA256, et `acquire` écrit un témoin
+# `.retro-version` à côté ; une mise à jour appliquée par l'émulateur
+# lui-même ferait diverger l'installation de ce que le manifeste atteste, en
+# silence.
+#
+# Chaque clé ci-dessous a été VÉRIFIÉE PAR SON EFFET dans l'interface de
+# DuckStation v0.1-11609 (captures à l'appui), et c'est la seule preuve
+# retenue : la simple survie d'une clé dans le fichier ne prouve rien
+# d'elle-même — mesuré, une clé volontairement inventée
+# (`CetteClefNExistePas`) survit tout aussi bien à un aller-retour,
+# DuckStation préservant ce qu'il ne comprend pas. Chaque valeur ici a donc
+# été posée, la fenêtre de réglages ouverte et photographiée, et la case
+# vérifiée dans l'état attendu.
+#
+# Le chemin des BIOS ([BIOS] SearchDirectory) a lui aussi été mesuré — la
+# clé existe, et l'interface affiche bien « Répertoire du BIOS » avec la
+# valeur posée, les trois régions restant en « Détection automatique » —
+# mais il n'entre DÉLIBÉRÉMENT PAS ici : sa valeur (G:\retro\bios sur la
+# machine de mesure) est propre à chaque installation, alors que ce profil
+# est livré, donc public. Il lui faudra un jeton substitué à la
+# synchronisation, sur le modèle de {render_config} dans retro/launcher.py,
+# alimenté par une option de « retro scan ». Ce que son absence coûte
+# aujourd'hui : `retro status --bios` vérifie le dossier que le propriétaire
+# a choisi pendant que DuckStation cherche dans le sien, donc le rapport peut
+# annoncer « BIOS présent » sur un émulateur qui n'en voit aucun.
+[bootstrap]
+target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
+content = '''
+; Écrit par « retro ». Ce fichier n'est posé que s'il est absent : une fois
+; qu'il existe, vos réglages ne sont jamais retouchés.
+[Main]
+; Sans elle, l'assistant de première configuration s'ouvre avant tout jeu.
+SetupWizardIncomplete = false
+; « Démarrer en plein écran », cochée : un jeu dans une fenêtre laisse le
+; bureau Windows visible derrière une manette.
+StartFullscreen = true
+; « Confirmer la fermeture du jeu », décochée : une confirmation est une
+; boîte de plus à fermer sans souris.
+ConfirmPowerOff = false
+; « Mettre en pause lors de la perte de focus », décochée : sur une session
+; distante, le focus se perd sans que le joueur ait rien fait.
+PauseOnFocusLoss = false
+; « Enregistrer l'état lors de la fermeture du jeu », décochée.
+SaveStateOnExit = false
+; « Désactiver l'économiseur d'écran », cochée : une console de salon ne
+; doit pas voir l'écran de veille tomber pendant une partie.
+InhibitScreensaver = true
+
+; Seconde cause du même symptôme : sans elle, une fenêtre « Mise à jour
+; disponible » bloque le lancement, aussi sûrement que l'assistant.
+[AutoUpdater]
+CheckAtStartup = false
+
+[Display]
+; « Masquer le curseur en plein écran », cochée.
+HideCursorInFullscreen = true
+'''
 
 [input]
 steam_input = "required"
