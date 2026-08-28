@@ -23,6 +23,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 static class RetroLaunch
 {
@@ -191,7 +192,17 @@ static class RetroLaunch
                 "Le fichier de configuration a poser est introuvable :\n\n"
                 + source + "\n\nRelancer « retro scan » depuis l'hote.");
 
+        // GetDirectoryName rend null pour une racine ("C:\") : tester
+        // parent.Length sans ce garde leverait une NullReferenceException,
+        // dont le message « Object reference not set to an instance of an
+        // object » ne nomme rien — la politique de ce depot l'interdit. Une
+        // cible sans dossier parent est de toute facon une erreur du plan :
+        // aucune configuration d'emulateur ne se pose a la racine d'un disque.
         string parent = Path.GetDirectoryName(cible);
+        if (parent == null)
+            throw new Exception(
+                "La cible d'amorcage n'a pas de dossier parent valide :\n\n"
+                + cible + "\n\nRelancer « retro scan ».");
         if (parent.Length > 0 && !Directory.Exists(parent))
             Directory.CreateDirectory(parent);
 
@@ -199,9 +210,42 @@ static class RetroLaunch
         // celle de shortcuts.vdf.bak-*, deja en usage cote synchronisation.
         if (File.Exists(cible))
         {
-            string sauvegarde = cible + ".bak-"
-                + DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            File.Copy(cible, sauvegarde, false);
+            // L'horodatage a une resolution d'une seconde : deux lancements
+            // du meme profil dans la meme seconde visent le meme nom, et
+            // File.Copy(..., false) refuse a bon droit de l'ecraser — mais
+            // il faut alors essayer un AUTRE nom plutot que de faire echouer
+            // l'amorcage. Meme parade que sauvegarder() cote synchronisation
+            // (retro/steam/writer.py) : un suffixe « -N » croissant, borne
+            // pour ne jamais boucler indefiniment.
+            string based = cible + ".bak-" + DateTime.Now.ToString(
+                "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+            string sauvegarde = based;
+            bool copiee = false;
+            for (int n = 0; n < 1000 && !copiee; n++)
+            {
+                sauvegarde = n == 0 ? based : based + "-" + n;
+                try
+                {
+                    File.Copy(cible, sauvegarde, false);
+                    copiee = true;
+                }
+                catch (IOException)
+                {
+                    // Un filtre d'exception (« catch (...) when ») serait du
+                    // C# 6 ; compiler.cmd appelle le csc.exe du .NET
+                    // Framework 4.0.30319, dont rien ne garantit la version
+                    // de langage sur la machine du proprietaire. Le test est
+                    // donc fait EN CLAIR, dans le catch : si ce nom est deja
+                    // pris, essayer le suivant ; toute autre IOException
+                    // (disque plein, permission) n'est pas une collision de
+                    // nom et remonte telle quelle.
+                    if (!File.Exists(sauvegarde)) throw;
+                }
+            }
+            if (!copiee)
+                throw new Exception(
+                    "Impossible de sauvegarder " + cible + " : 1000 noms de "
+                    + "sauvegarde sont deja pris.");
             Noter("amorcage : " + cible + " sauvegarde en " + sauvegarde);
         }
 
@@ -225,15 +269,41 @@ static class RetroLaunch
     // Un ordre ne vaut qu'un passage : le laisser ferait une sauvegarde et une
     // reecriture a chaque lancement, et le propriétaire ne pourrait plus jamais
     // regler son emulateur lui-meme.
+    //
+    // Protegee comme InscrireTemoin : reamorcer.txt est aussi ecrit depuis
+    // l'hote a travers un partage reseau, et un verrou ou un attribut lecture
+    // seule y ferait lever une exception ALORS QUE la configuration a deja
+    // ete posee — Amorcer() n'appelle cette methode qu'apres avoir copie le
+    // fichier avec succes. Une exception non rattrapee ferait donc annoncer
+    // « ECHEC de l'amorcage » pour un amorcage reussi, et laisserait surtout
+    // l'ordre en place : chaque lancement suivant reposerait la configuration
+    // et ajouterait une sauvegarde de plus — precisement ce que cette methode
+    // existe pour empecher.
     static void ConsommerOrdre(string profil)
     {
         string fichier = Path.Combine(dossier, "reamorcer.txt");
-        var restants = new List<string>();
-        foreach (string ligne in File.ReadAllLines(fichier, Encoding.UTF8))
-            if (ligne.Trim().Length > 0 && ligne.Trim() != profil)
-                restants.Add(ligne.Trim());
-        if (restants.Count == 0) File.Delete(fichier);
-        else File.WriteAllLines(fichier, restants, new UTF8Encoding(false));
+        try
+        {
+            var restants = new List<string>();
+            foreach (string ligne in File.ReadAllLines(fichier, Encoding.UTF8))
+                if (ligne.Trim().Length > 0 && ligne.Trim() != profil)
+                    restants.Add(ligne.Trim());
+            if (restants.Count == 0) File.Delete(fichier);
+            else File.WriteAllLines(fichier, restants, new UTF8Encoding(false));
+        }
+        catch (Exception e)
+        {
+            // Le proprietaire doit lire la consequence, pas seulement
+            // l'echec : sans cela rien ne dit que sa configuration sera
+            // reposee au prochain lancement, ni ce qu'il faut faire pour
+            // l'empecher.
+            Noter("ordre de reamorcage non consomme pour " + profil + " : "
+                + e.Message + ". La configuration a bien ete posee, mais "
+                + "sera reposee (avec une nouvelle sauvegarde) au prochain "
+                + "lancement tant que « " + profil + " » restera dans "
+                + fichier + " -- retirer cette ligne, ou supprimer ce "
+                + "fichier, pour l'empecher.");
+        }
     }
 
     // Le temoin : « retro status » tourne sur l'hote, qui n'atteint ni
@@ -251,8 +321,15 @@ static class RetroLaunch
                 foreach (string l in File.ReadAllLines(fichier, Encoding.UTF8))
                     if (l.Length > 0 && !l.StartsWith(profil + "\t"))
                         lignes.Add(l);
-            lignes.Add(profil + "\t"
-                + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\t" + cible);
+            // InvariantCulture : dans un format personnalise, « : » est le
+            // separateur d'heure DE LA CULTURE (pas un litteral) et l'annee
+            // suit son calendrier. Ce temoin est un contrat relu par
+            // retro/launcher.py::lire_amorcages, qui attend exactement
+            // « yyyy-MM-dd HH:mm:ss » : une culture exotique sur la console
+            // casserait cette lecture en silence.
+            lignes.Add(profil + "\t" + DateTime.Now.ToString(
+                "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+                + "\t" + cible);
             lignes.Sort();
             File.WriteAllLines(fichier, lignes, new UTF8Encoding(false));
         }
@@ -382,16 +459,51 @@ static class RetroLaunch
         // qu'on vient de quitter.
         try
         {
-            Amorcer(p, cle.Split('.')[0]);
+            // cle est « <profil>.<systeme> » (system_key, cote Python). Le
+            // dual exact coupe au DERNIER point, pas au premier : c'est le
+            // systeme, ajoute en dernier par system_key, dont l'identifiant
+            // est garanti sans point — pas le profil, qui peut porter le
+            // sien puisque rien ne l'interdit cote Python et que les profils
+            // du proprietaire sont fusionnes avec ceux du depot.
+            int dernierPoint = cle.LastIndexOf('.');
+            string profilCle = dernierPoint < 0 ? cle : cle.Substring(0, dernierPoint);
+            Amorcer(p, profilCle);
         }
         catch (Exception e)
         {
+            // Le journal garde la trace complete, synchrone, avant tout le
+            // reste : meme si la boite ci-dessous ne s'affiche jamais, rien
+            // n'est perdu.
             Noter("ECHEC de l'amorcage : " + e.Message);
-            MessageBoxW(IntPtr.Zero,
-                e.Message + "\n\nLe jeu va tout de meme demarrer : "
-                + "l'emulateur ouvrira peut-etre son assistant de "
-                + "configuration.",
-                "Console retro — configuration non posee", 0x30);
+            // MessageBoxW est MODALE : appelee ici, elle bloquerait Lancer()
+            // jusqu'a ce que quelqu'un clique — et une console de salon
+            // pilotee a la seule manette n'a personne pour le faire. Le jeu
+            // ne demarrerait alors JAMAIS, et Steam resterait « en jeu »
+            // indefiniment : exactement l'aller sans retour que l'en-tete de
+            // ce fichier decrit comme le pire etat possible. L'afficher sur
+            // un thread d'arriere-plan laisse Lancer() se poursuivre tout de
+            // suite ; IsBackground fait mourir ce thread avec le processus,
+            // donc il ne peut jamais retenir le lanceur apres la fin du jeu,
+            // et STA est ce qu'exige une boite de dialogue Win32.
+            string messageBoite = e.Message + "\n\nLe jeu va tout de meme "
+                + "demarrer : l'emulateur ouvrira peut-etre son assistant de "
+                + "configuration.";
+            try
+            {
+                var boite = new Thread(() => MessageBoxW(IntPtr.Zero,
+                    messageBoite, "Console retro — configuration non posee",
+                    0x30));
+                boite.IsBackground = true;
+                boite.SetApartmentState(ApartmentState.STA);
+                boite.Start();
+            }
+            catch (Exception e2)
+            {
+                // Un thread qui ne demarre pas ne doit pas, lui non plus,
+                // empecher le jeu de demarrer : le journal a deja la trace
+                // complete ci-dessus.
+                Noter("boite de dialogue d'amorcage non affichee : " + e2.Message);
+            }
         }
 
         IntPtr job = CreerJob();
