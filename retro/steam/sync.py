@@ -5,7 +5,7 @@ import dataclasses
 import pathlib
 
 from retro.steam import appid as appid_mod
-from retro.steam import accounts, artwork, entry, reconcile, vdf_io, writer
+from retro.steam import accounts, artwork, entry, reconcile, steam_input, vdf_io, writer
 
 
 @dataclasses.dataclass(frozen=True)
@@ -22,6 +22,13 @@ class SyncReport:
     # répètent d'une synchronisation à l'autre, et le nommer est ce qui
     # distingue « rien à faire » de « quelque chose ne marche pas ».
     artwork_error: str = ""
+    # Combien de jeux ont eu Steam Input éteint lors de ce passage. Zéro est le
+    # cas normal d'une synchronisation qui n'ajoute rien : le réglage tient.
+    steam_input_disabled: int = 0
+    # Ce qui a empêché d'y toucher, ou "". Signalé plutôt que levé : les
+    # raccourcis sont le cœur du travail et ils sont déjà écrits — mais une
+    # manette muette ne se diagnostique pas depuis un canapé, donc ça se dit.
+    steam_input_error: str = ""
 
 
 def sync_account(
@@ -66,6 +73,25 @@ def sync_account(
     purges = len(artwork.prune_orphans(account.grid_dir, resultat.orphaned_appids))
 
     sauvegarde = writer.write_shortcuts(account.shortcuts_path, resultat.entries)
+
+    # Steam Input APRÈS l'écriture des raccourcis, et sans pouvoir la faire
+    # échouer : une bibliothèque écrite dont les manettes restent à régler vaut
+    # mieux qu'une synchronisation qui abandonne tout parce qu'un fichier
+    # voisin manque.
+    #
+    # Seules NOS entrées : localconfig.vdf porte les réglages du propriétaire,
+    # et ses jeux à lui ne nous regardent pas.
+    notres = [r["appid"] for r in resultat.entries
+              if entry.is_owned(r, emulation_root)]
+    eteints, echec = 0, ""
+    try:
+        a_regler = steam_input.actifs(account.localconfig_path, notres)
+        if a_regler:
+            steam_input.desactiver(account.localconfig_path, a_regler)
+            eteints = len(a_regler)
+    except steam_input.LocalConfigError as exc:
+        echec = str(exc)
+
     return SyncReport(
         account_id=account.account_id,
         created=resultat.created,
@@ -77,6 +103,8 @@ def sync_account(
                        if getattr(artwork_client, "erreurs", None) else ""),
         artwork_pruned=purges,
         backup=sauvegarde,
+        steam_input_disabled=eteints,
+        steam_input_error=echec,
     )
 
 
@@ -100,6 +128,16 @@ def format_report(reports: list[SyncReport]) -> str:
         )
         if r.artwork_error:
             lignes.append(f"    échec : {r.artwork_error}")
+        # Toujours dite, même à zéro : « Steam Input : rien à faire » est une
+        # information, « rien » n'en est pas une. Une manette muette est la
+        # panne la plus coûteuse de cette console, et la plus silencieuse.
+        if r.steam_input_error:
+            lignes.append(f"  Steam Input : NON RÉGLÉ — {r.steam_input_error}")
+        elif r.steam_input_disabled:
+            lignes.append(
+                f"  Steam Input : désactivé sur {r.steam_input_disabled} jeu(x)")
+        else:
+            lignes.append("  Steam Input : déjà désactivé partout")
         if r.backup:
             lignes.append(f"  sauvegarde : {r.backup.name}")
     return "\n".join(lignes)

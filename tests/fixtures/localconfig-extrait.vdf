@@ -1,0 +1,34 @@
+// Extrait SYNTHÉTIQUE de localconfig.vdf, à la forme du fichier réel relevé
+// sur la console le 2026-08-28. Aucune donnée personnelle : ni identifiant de
+// compte, ni pseudonyme, ni groupe familial — le fichier réel en porte, et il
+// n'a rien à faire dans un dépôt public.
+//
+// Trois cas sont représentés, et ce sont les trois que le code doit
+// distinguer : un jeu dont Steam Input est déjà désactivé, un jeu où il est
+// actif, et une valeur JSON échappée ailleurs dans le document — c'est elle
+// qui dit si un aller-retour de lecture-écriture abîme le reste du fichier.
+"UserLocalConfigStore"
+{
+	"system"
+	{
+		"Deck_SeasonalSale"		"{\"sale\":\"\",\"nextCheck\":\"2026-08-28T07:50:17.370Z\"}"
+	}
+	"ControllerTypesUsed"		"controller_xbox360,"
+	"apps"
+	{
+		"-1117161211"
+		{
+			"UseSteamControllerConfig"		"0"
+			"SteamControllerRumble"		"-1"
+			"SteamControllerRumbleIntensity"		"320"
+		}
+		"-2000000000"
+		{
+			"UseSteamControllerConfig"		"2"
+		}
+		"730"
+		{
+			"LastPlayed"		"1787822263"
+		}
+	}
+}

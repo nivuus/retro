@@ -1,7 +1,7 @@
 """Synchronisation d'un compte, de bout en bout, sans Steam ni réseau."""
 import pathlib
 
-from retro.steam import accounts, appid, artwork, entry, sync, vdf_io
+from retro.steam import accounts, appid, artwork, entry, steam_input, sync, vdf_io
 
 
 class ArtworkMuet(artwork.ArtworkClient):
@@ -247,3 +247,75 @@ def test_un_seul_jeu_deja_a_jour_s_accorde_au_singulier(tmp_path):
     texte = sync.format_report([r])
     assert "1 jeu déjà à jour" in texte
     assert "1 jeux" not in texte
+
+
+# --- Steam Input -------------------------------------------------------------
+#
+# Steam Input masque la manette a l'emulateur : mesure sur la console le
+# 2026-08-28, et la seule prise est un reglage par jeu dans localconfig.vdf.
+# Une bibliotheque ne se regle pas jeu par jeu a la main.
+
+LOCALCONFIG_VIDE = '"UserLocalConfigStore"\n{\n\t"apps"\n\t{\n\t}\n}\n'
+
+
+def _poser_localconfig(compte, contenu=LOCALCONFIG_VIDE):
+    compte.localconfig_path.write_text(contenu, encoding="utf-8")
+
+
+def test_desactive_steam_input_sur_les_jeux_ecrits(tmp_path):
+    compte = faire_compte(tmp_path)
+    _poser_localconfig(compte)
+
+    rapport = sync.sync_account(
+        compte, [rom("Jeu")], "D:\\Emulation", ArtworkMuet())
+
+    ecrits = vdf_io.load_shortcuts(compte.shortcuts_path)
+    assert steam_input.actifs(compte.localconfig_path,
+                              [e["appid"] for e in ecrits]) == []
+    assert rapport.steam_input_disabled == 1
+
+
+def test_ne_touche_pas_a_steam_input_des_jeux_etrangers(tmp_path):
+    """Le fichier appartient au proprietaire : on n'y regle que NOS entrees."""
+    compte = faire_compte(tmp_path)
+    _poser_localconfig(compte)
+    compte.shortcuts_path.write_bytes(vdf_io.dumps_shortcuts([etranger("Perso")]))
+
+    sync.sync_account(compte, [rom("Jeu")], "D:\\Emulation", ArtworkMuet())
+
+    assert steam_input.etats(compte.localconfig_path).get(42) is None
+
+
+def test_une_seconde_synchronisation_ne_reecrit_pas_localconfig(tmp_path):
+    """Sans cela, chaque passage deposerait une sauvegarde de plus."""
+    compte = faire_compte(tmp_path)
+    _poser_localconfig(compte)
+    sync.sync_account(compte, [rom("Jeu")], "D:\\Emulation", ArtworkMuet())
+    avant = compte.localconfig_path.read_text(encoding="utf-8")
+
+    rapport = sync.sync_account(compte, [rom("Jeu")], "D:\\Emulation", ArtworkMuet())
+
+    assert compte.localconfig_path.read_text(encoding="utf-8") == avant
+    assert rapport.steam_input_disabled == 0
+
+
+def test_un_localconfig_absent_est_signale_sans_bloquer_la_synchro(tmp_path):
+    """Les raccourcis sont le coeur du travail : ils s'ecrivent quand meme.
+
+    Mais le dire, car une manette muette ne se diagnostique pas depuis un
+    canape — c'est exactement la panne qui a coute une matinee le 2026-08-28."""
+    compte = faire_compte(tmp_path)  # pas de localconfig.vdf
+
+    rapport = sync.sync_account(
+        compte, [rom("Jeu")], "D:\\Emulation", ArtworkMuet())
+
+    assert len(vdf_io.load_shortcuts(compte.shortcuts_path)) == 1
+    assert rapport.steam_input_disabled == 0
+    assert "localconfig.vdf" in rapport.steam_input_error
+
+
+def test_le_rapport_nomme_steam_input(tmp_path):
+    compte = faire_compte(tmp_path)
+    _poser_localconfig(compte)
+    rapport = sync.sync_account(compte, [rom("Jeu")], "D:\\Emulation", ArtworkMuet())
+    assert "Steam Input" in sync.format_report([rapport])

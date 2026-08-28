@@ -281,7 +281,7 @@ static class RetroLaunch
         //
         // Mesure sur la machine le 2026-08-28 : le meme outil SDL, dans la
         // meme session, voit UNE manette sans cette variable et ZERO avec.
-        // Ryujinx repondait « No matching controllers found » a chaque
+        // l'emulateur repondait « No matching controllers found » a chaque
         // lancement, sans qu'aucun message ne nomme la cause.
         //
         // La retirer ICI, et pas dans les reglages de Steam : le masquage est

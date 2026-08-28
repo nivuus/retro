@@ -17,9 +17,9 @@ consigne la mesure.
 
 ## Ce qui a été mesuré, et qui commande tout le reste
 
-Le 2026-08-28, sur la machine, une manette USB branchée au client Moonlight
-(Nintendo Switch) restait muette dans Ryujinx alors qu'elle répondait dans
-Steam Big Picture. La chaîne a été suivie maillon par maillon :
+Le 2026-08-28, sur la machine, une manette USB branchée au client Moonlight (la
+console du salon) restait muette dans l'émulateur personnel alors qu'elle
+répondait dans Steam Big Picture. La chaîne a été suivie maillon par maillon :
 
 | Maillon | Preuve | État |
 |---|---|---|
@@ -27,27 +27,27 @@ Steam Big Picture. La chaîne a été suivie maillon par maillon :
 | Apollo → ViGEmBus | `Nefarius\ViGEmBus\Gen1` présent, service `Running` | intact |
 | ViGEmBus → Windows | `XnaComposite \| Xbox 360 Controller for Windows \| USB\VID_045E&PID_028E\01`, statut `OK` | intact |
 | Windows → Steam | Big Picture répond aux boutons | intact |
-| Windows → Ryujinx | `input_config` ne contenait **que** le clavier | **rompu** |
+| Windows → émulateur | `input_config` ne contenait **que** le clavier | **rompu** |
 | Steam → émulateur | `SDL_GAMECONTROLLER_IGNORE_DEVICES` inclut `0x045e/0x028e` | **rompu** |
 
-Trois faits en découlent, et ils sont la raison d'être de ce sous-projet :
+Quatre faits en découlent, et ils sont la raison d'être de ce sous-projet :
 
 1. **Le pad n'est pas branché à la machine : il est créé par Apollo, et il
    n'existe QUE pendant une session Moonlight.** Hors session, SDL n'énumère
    rien — vérifié. Une configuration d'entrée écrite à la synchronisation ne
    peut donc pas contenir l'identifiant réel du périphérique.
 2. **Cet identifiant n'est pas prévisible.** Apollo choisit le type de pad
-   virtuel selon ce que le client annonce : X360 ici, mais il sait aussi
-   émuler une DualShock, dont le VID/PID — donc le GUID SDL — sont autres.
-   Une valeur figée serait juste tant que rien ne change, et **fausse en
-   silence** le jour où elle ne l'est plus.
+   virtuel selon ce que le client annonce : X360 ici, mais il sait aussi émuler
+   une DualShock, dont le VID/PID — donc le GUID SDL — sont autres. Une valeur
+   figée serait juste tant que rien ne change, et **fausse en silence** le jour
+   où elle ne l'est plus.
 3. **Steam masque la manette à tout ce qu'il lance.** Le client pose
    `SDL_GAMECONTROLLER_IGNORE_DEVICES` dans l'environnement du processus —
-   relevé dans le PEB de Ryujinx vivant — avec la liste des manettes que
-   Steam Input prend en charge, `0x045e/0x028e` comprise : exactement ce que
-   le pad d'Apollo se déclare être. **Et il ne fournit aucun périphérique
-   virtuel en échange** : aucun `VID_28DE` n'existe sur la machine pendant la
-   session. Mesure directe, même outil, même session, même manette :
+   relevé dans le PEB de l'émulateur personnel vivant — avec la liste des
+   manettes que Steam Input prend en charge, `0x045e/0x028e` comprise :
+   exactement ce que le pad d'Apollo se déclare être. **Et il ne fournit aucun
+   périphérique virtuel en échange** : aucun `VID_28DE` n'existe sur la machine
+   pendant la session. Mesure directe, même outil, même session, même manette :
 
    | Condition | Manettes vues par SDL |
    |---|---|
@@ -55,19 +55,19 @@ Trois faits en découlent, et ils sont la raison d'être de ce sous-projet :
    | `SDL_GAMECONTROLLER_IGNORE_DEVICES=0x045e/0x028e` | **0** |
 
    C'est la cause première, et elle vaut pour **les neuf émulateurs à la
-   fois**, pas seulement pour Ryujinx : tout ce que Steam lance est aveugle à
-   la manette. Corrigé le 2026-08-28 dans `retro-launch.cs`, qui retire la
-   variable de l'environnement qu'il transmet — c'est le seul passage obligé
-   entre Steam et les émulateurs, et le masquage étant reposé par le client à
-   chaque lancement, un réglage par raccourci serait à refaire à chaque
-   synchronisation.
+   fois**, pas seulement pour l'émulateur personnel : tout ce que Steam lance
+   est aveugle à la manette. Corrigé le 2026-08-28 dans `retro-launch.cs`, qui
+   retire la variable de l'environnement qu'il transmet — c'est le seul passage
+   obligé entre Steam et les émulateurs, et le masquage étant reposé par le
+   client à chaque lancement, un réglage par raccourci serait à refaire à
+   chaque synchronisation.
 
 4. **`steam_input = "required"` ne fait rien.** `profiles.py:82` le
    typographie, `profiles.py:474` le lit, et **aucun code ne l'applique
    jamais**. Le modèle réel est implicite : « l'émulateur détectera bien tout
-   seul ». DuckStation et RetroArch le font. Ryujinx ne le fait pas, et
-   l'inventaire des neuf émulateurs installés montre qu'**aucun** n'a de
-   configuration d'entrée utilisateur, nulle part.
+   seul ». DuckStation et RetroArch le font. L'émulateur personnel ne le fait
+   pas, et l'inventaire des neuf émulateurs installés montre qu'**aucun** n'a
+   de configuration d'entrée utilisateur, nulle part.
 
 **Le problème est donc exactement celui de la résolution d'écran, que ce dépôt
 a déjà résolu** : une donnée qui n'est connue qu'au lancement, dans une
@@ -87,7 +87,7 @@ d'atteinte.** Le premier est la variable `SDL_GAMECONTROLLER_IGNORE_DEVICES`,
 que le lanceur retire — mesuré efficace. Le second est
 `gameoverlayrenderer64.dll`, que Steam injecte dans tout ce qu'il lance et qui
 pose son propre hook sur XInput en dialoguant avec le client par IPC. Priver
-l'émulateur des variables Steam a été essayé et **vérifié sur le processus
+L'émulateur des variables Steam a été essayé et **vérifié sur le processus
 vivant** — `SteamAppId`, `SteamGameId`, `SteamOverlayGameId` absents,
 `SteamNoOverlayUIDrawing` posé — sans aucun effet sur le masquage. Le code
 correspondant a été retiré : il ne servait à rien, et il privait au passage le
@@ -99,9 +99,9 @@ Input »*. Vérifié le 2026-08-28 : la manette répond immédiatement après.
 
 Trois conséquences, et ce sont des tâches :
 
-1. **Ce réglage n'est pas hors de portée : il est écrit dans un VDF, et
-   `retro` sait déjà tout ce qu'il faut pour l'atteindre.** Relevé sur la
-   machine le 2026-08-28, après l'avoir posé à la main sur un jeu :
+1. **Ce réglage n'est pas hors de portée : il est écrit dans un VDF, et `retro`
+   sait déjà tout ce qu'il faut pour l'atteindre.** Relevé sur la machine le
+   2026-08-28, après l'avoir posé à la main sur un jeu :
 
        userdata/<accountid>/config/localconfig.vdf
          UserLocalConfigStore / apps / "<appid signé>" / UseSteamControllerConfig = "0"
@@ -112,29 +112,42 @@ Trois conséquences, et ce sont des tâches :
    lire et écrire ce format, et la synchronisation ouvre déjà `shortcuts.vdf`
    dans le même dossier.
 
+   **FAIT le 2026-08-28** — `retro/steam/steam_input.py` lit et écrit ce
+   réglage, et `sync_account` l'éteint sur les seules entrées que `retro`
+   possède, après avoir écrit les raccourcis et sans pouvoir faire échouer
+   cette écriture. Le rapport de synchronisation le dit à chaque passage, y
+   compris quand il n'y avait rien à faire. Validé contre le fichier réel de
+   la console : l'appid recalculé depuis `(exe, appname)` retrouve exactement
+   l'entrée posée à la main dans l'interface de Steam.
+
+   Reste à faire : `retro status` ne dit encore rien de Steam Input, faute
+   d'avoir la racine Steam parmi ses options — c'est une option à ajouter, et
+   un rapport qui se tait sur une manette muette est précisément ce que ce
+   sous-projet reproche au reste.
+
    **`retro status` doit donc nommer les jeux dont Steam Input est resté
-   actif**, et la synchronisation devrait poser `UseSteamControllerConfig`
-   à `0` sur chaque entrée qu'elle écrit — le réglage est par jeu, et une
+   actif**, et la synchronisation devrait poser `UseSteamControllerConfig` à
+   `0` sur chaque entrée qu'elle écrit — le réglage est par jeu, et une
    bibliothèque de cinquante jeux ne se règle pas à la main cinquante fois.
 
-   **Deux précautions à établir avant d'écrire quoi que ce soit dans ce
-   fichier :** Steam le réécrit intégralement en se fermant, donc toute
-   modification faite pendant qu'il tourne est perdue — la synchronisation
-   doit refuser d'écrire, ou prévenir, si Steam est lancé, exactement comme
-   elle le fait déjà pour `shortcuts.vdf`. Et `localconfig.vdf` porte bien
-   plus que des manettes : sauvegarde-le avant, comme la synchronisation
-   sauvegarde déjà `shortcuts.vdf` (`shortcuts.vdf.bak-*` sur la machine).
+   **Deux précautions à établir avant d'écrire quoi que ce soit dans ce fichier
+   :** Steam le réécrit intégralement en se fermant, donc toute modification
+   faite pendant qu'il tourne est perdue — la synchronisation doit refuser
+   d'écrire, ou prévenir, si Steam est lancé, exactement comme elle le fait
+   déjà pour `shortcuts.vdf`. Et `localconfig.vdf` porte bien plus que des
+   manettes : sauvegarde-le avant, comme la synchronisation sauvegarde déjà
+   `shortcuts.vdf` (`shortcuts.vdf.bak-*` sur la machine).
 
-2. **L'identifiant, lui, est stable.** `legacy_appid` dérive de
-   `crc32(exe + app_name)`, PAS des options de lancement : le réglage survit
-   donc aux synchronisations tant que le lanceur et le nom du jeu ne bougent
-   pas. Vérifié en lisant `retro/steam/appid.py`. Un renommage de ROM, en
-   revanche, change le nom, donc l'appid, donc perd le réglage en silence —
-   c'est un cas que `retro status` doit savoir dire.
+2. **L'identifiant, lui, est stable.** `legacy_appid` dérive de `crc32(exe +
+   app_name)`, PAS des options de lancement : le réglage survit donc aux
+   synchronisations tant que le lanceur et le nom du jeu ne bougent pas.
+   Vérifié en lisant `retro/steam/appid.py`. Un renommage de ROM, en revanche,
+   change le nom, donc l'appid, donc perd le réglage en silence — c'est un cas
+   que `retro status` doit savoir dire.
 
 3. **La sortie du jeu, elle, tient bon — mais pas par où le profil le dit.**
-   Les profils déclarent `fallback = "alt+f4"`, et `ryujinx.toml` affirme que
-   ce raccourci « émis par Steam Input est la seule sortie sans clavier ».
+   Les profils déclarent `fallback = "alt+f4"`, et le profil personnel affirme
+   que ce raccourci « émis par Steam Input est la seule sortie sans clavier ».
    C'est inexact, et la mesure du 2026-08-28 le montre : **Steam Input
    désactivé, le bouton Xbox ouvre toujours l'overlay Steam, et l'overlay
    permet de quitter la partie.** La sortie dépend de l'overlay, pas de Steam
@@ -146,8 +159,8 @@ Trois conséquences, et ce sont des tâches :
    `SteamAppId`/`SteamGameId` — donc de l'overlay avec elles. Le retirer a
    rendu la sortie.
 
-   **Corrige la phrase de `ryujinx.toml`**, qui décrit un mécanisme pour un
-   autre : elle enverrait le prochain lecteur chercher une panne du côté de
+   **Corrige la phrase de le profil personnel**, qui décrit un mécanisme pour
+   un autre : elle enverrait le prochain lecteur chercher une panne du côté de
    Steam Input alors que la sortie n'en dépend pas. Et garde en tête, pour la
    conception, que la sortie repose tout de même sur un composant de Steam :
    une sortie côté lanceur — une combinaison de manette maintenue quelques
@@ -162,14 +175,14 @@ Trois conséquences, et ce sont des tâches :
 - **Le lanceur ne décide rien.** Toute politique — quel mapping, pour quel
   joueur, sur quel émulateur — est calculée en Python et écrite dans le plan.
   Un arbitrage réimplémenté en C# aurait divergé au premier changement.
-- **Un identifiant deviné est un défaut, pas une approximation.** Ryujinx
-  n'émet aucun message quand l'identifiant d'une entrée ne correspond à aucun
-  périphérique : l'entrée est ignorée, et la manette reste muette exactement
-  comme si rien n'avait été écrit. **Toute valeur qui n'a pas été relevée sur
-  la machine doit être traitée comme fausse.**
+- **Un identifiant deviné est un défaut, pas une approximation.** L'émulateur
+  personnel n'émet aucun message quand l'identifiant d'une entrée ne correspond
+  à aucun périphérique : l'entrée est ignorée, et la manette reste muette
+  exactement comme si rien n'avait été écrit. **Toute valeur qui n'a pas été
+  relevée sur la machine doit être traitée comme fausse.**
 - **Rien n'écrase une configuration d'émulateur sans sauvegarde préalable ni
-  sans en-tête disant qui l'a écrite.** Les fichiers du plan portent déjà
-  « Écrit par « retro scan ». Toute modification sera écrasée. » — les
+  sans en-tête disant qui l'a écrite.** Les fichiers du plan portent déjà «
+  Écrit par « retro scan ». Toute modification sera écrasée. » — les
   configurations d'entrée porteront la même phrase, dans la syntaxe de
   commentaire de leur format.
 - **Aucun binaire dans le dépôt.** Le lanceur est livré en source et compilé
@@ -183,46 +196,45 @@ Trois conséquences, et ce sont des tâches :
 Rien dans ce sous-projet ne peut être conçu sur une supposition : le format
 exact de l'identifiant que chaque émulateur attend n'est connu que mesuré.
 
-**Un outil de relevé existe déjà**, écrit pendant le diagnostic :
-`D:\state\retro-tmp\PadProbe.cs`, compilé en
-`D:\Emulation\Ryujinx\publish\retro-pad-probe.exe`. Il appelle le SDL2 de
-Ryujinx, énumère les manettes et écrit `index`, GUID .NET et nom dans
-`D:\state\retro-tmp\pads.txt`. Hors session il rapporte `0` manette, ce qui est
-la bonne réponse.
+**Un outil de relevé existe déjà**, écrit pendant le diagnostic : une source C#
+qui charge le SDL2 de l'émulateur, compilée à côté de lui, énumère les manettes
+et écrit leur index, leur GUID .NET et leur nom dans un fichier du partage.
+Hors session il rapporte `0` manette, ce qui est la bonne réponse.
 
 **Ce qu'il faut obtenir :**
 
-- le relevé **en session**, manette branchée au client : l'identifiant réel,
-  au format que Ryujinx attend (`<index>-<GUID>`), et le nom SDL ;
+- le relevé **en session**, manette branchée au client : l'identifiant réel, au
+  format que l'émulateur personnel attend (`<index>-<GUID>`), et le nom SDL ;
 - le même relevé avec **deux manettes**, pour établir comment les index se
   distribuent — c'est ce qui décide si `Player2` est adressable ;
 - la reprise de cet outil **dans le dépôt**, sous `retro/data/launcher/`, à
   côté de `retro-launch.cs`, avec la même règle : source livrée, binaire
-  jamais. Il devient une brique du lanceur, pas un fichier de diagnostic
-  oublié dans un dossier temporaire.
+  jamais. Il devient une brique du lanceur, pas un fichier de diagnostic oublié
+  dans un dossier temporaire.
 
 **Le relevé a été fait le 2026-08-28**, session ouverte, manette USB branchée
-au client Switch — et il a donné, successivement, QUATRE identifiants pour la
-même manette physique. Un seul était le bon :
+au client de la console — et il a donné, successivement, QUATRE identifiants
+pour la même manette physique. Un seul était le bon :
 
 | Origine | Identifiant | Bon ? |
 |---|---|---|
 | déduit du VID/PID exposé par Windows | `0-00000003-045e-0000-8e02-000000000000` | non |
 | SDL, réglages par défaut (pilote rawinput) | `0-69b90003-045e-0000-8e02-000000007200` | non |
 | SDL, `SDL_JOYSTICK_RAWINPUT=0` (pilote xinput) | `0-67fa0003-045e-0000-8e02-000014017801` | non |
-| **écrit par Ryujinx lui-même** | `0-00000003-045e-0000-8e02-000000007200` | **oui** |
+| **écrit par l'émulateur lui-même** | `0-00000003-045e-0000-8e02-000000007200` | **oui** |
 
 Les trois premiers sont exacts *du point de vue de SDL* : le GUID encode le
 pilote qui expose la manette, et le troisième a été obtenu en reproduisant à
-l'identique l'initialisation de Ryujinx — mêmes hints, mêmes flags, `SDL_INIT_VIDEO`
-compris, relevés dans son code source. Aucun ne correspond pourtant à ce que
-Ryujinx enregistre : **il remet à zéro le CRC** que SDL insère dans les octets 2
-et 3 du GUID (`69b9` → `0000`). Rien dans son code public ne l'annonce, et
-`GenerateGamepadId` se lit pourtant `joystickIndex + "-" + guid.ToString()`.
+l'identique l'initialisation de l'émulateur — mêmes hints, mêmes flags,
+`SDL_INIT_VIDEO` compris, relevés dans son code source. Aucun ne correspond
+pourtant à ce que l'émulateur enregistre : **il remet à zéro le CRC** que SDL
+insère dans les octets 2 et 3 du GUID (`69b9` → `0000`). Rien dans son code
+public ne l'annonce, et `GenerateGamepadId` se lit pourtant `joystickIndex +
+"-" + guid.ToString()`.
 
 **La règle qui en découle, et qui commande la tâche 6 :** l'identifiant d'un
 périphérique n'est PAS une propriété du périphérique, c'est une propriété de
-l'émulateur qui le nomme. Un relevé fait par un outil tiers — fût-il bâti sur
+L'émulateur qui le nomme. Un relevé fait par un outil tiers — fût-il bâti sur
 le SDL même de l'émulateur — ne vaut rien. **Le seul relevé valide est celui
 que l'émulateur écrit lui-même dans sa propre configuration**, une fois la
 manette choisie dans son interface.
@@ -234,19 +246,20 @@ atteignable à distance, et c'est la manœuvre à réutiliser pour les huit autr
 - une capture d'écran de la session interactive, déposée sur le partage, dit ce
   que l'émulateur affiche — son journal, lui, ne dit rien ;
 - des clics envoyés par `SetCursorPos` + `mouse_event` pilotent l'interface ;
-- les deux outils doivent tourner **dans la session interactive** :
-  `schtasks /create … /it` puis `/run`. Lancés par WinRM, donc en session 0, ils
-  ne voient ni l'écran ni les manettes — le même outil SDL y rapporte `0`
-  manette alors que le pad est présent et sain ;
-- la tâche doit pointer un exécutable **compilé en `/target:winexe`**, sans quoi
-  la console `cmd.exe` qu'elle ouvre vole le focus et les clics se perdent ;
-- les boîtes de dialogue de Ryujinx s'ouvrent centrées sur une résolution qui
-  n'est pas celle de la fenêtre : la colonne d'onglets se retrouve au-dessus du
-  bord de l'écran, hors d'atteinte. Il faut repositionner la fenêtre
-  (`MoveWindow`) avant de pouvoir cliquer quoi que ce soit.
+- les deux outils doivent tourner **dans la session interactive** : `schtasks
+  /create … /it` puis `/run`. Lancés par WinRM, donc en session 0, ils ne
+  voient ni l'écran ni les manettes — le même outil SDL y rapporte `0` manette
+  alors que le pad est présent et sain ;
+- la tâche doit pointer un exécutable **compilé en `/target:winexe`**, sans
+  quoi la console `cmd.exe` qu'elle ouvre vole le focus et les clics se perdent
+  ;
+- les boîtes de dialogue de cet émulateur s'ouvrent centrées sur une résolution
+  qui n'est pas celle de la fenêtre : la colonne d'onglets se retrouve
+  au-dessus du bord de l'écran, hors d'atteinte. Il faut repositionner la
+  fenêtre (`MoveWindow`) avant de pouvoir cliquer quoi que ce soit.
 
-**Deux pièges du diagnostic, à ne pas refaire.** Le mode `trace` de Ryujinx a
-produit **506 Mo** de journal en quelques minutes, saturé la machine au point
+**Deux pièges du diagnostic, à ne pas refaire.** Le mode `trace` de l'émulateur
+a produit **506 Mo** de journal en quelques minutes, saturé la machine au point
 de faire expirer les commandes WinRM, et ralenti le jeu assez pour fausser
 l'essai en cours : ne l'active jamais pendant une mesure de réactivité, `debug`
 suffit. Et un journal lu deux secondes après le démarrage ne prouve rien —
@@ -281,8 +294,8 @@ qui produit un fichier.
   - ceux qui ont un **fichier dédié aux manettes** (Cemu, Dolphin, RPCS3,
     PPSSPP, RetroArch) — on l'écrit en entier, c'est sans risque ;
   - ceux dont les manettes vivent **dans le fichier de réglages général**
-    (Ryujinx, PCSX2, DuckStation, Flycast, Xemu) — l'écrire en entier
-    détruirait les réglages graphiques du propriétaire.
+    (l'émulateur personnel, PCSX2, DuckStation, Flycast, Xemu) — l'écrire en
+    entier détruirait les réglages graphiques du propriétaire.
 - `steam_input` doit **disparaître ou devenir effectif**. Un champ que le code
   lit sans jamais l'appliquer est un mensonge documenté : il a fait croire
   pendant tout le diagnostic que la question des manettes était traitée.
@@ -290,11 +303,12 @@ qui produit un fichier.
 
 **La question ouverte, à trancher par la mesure et non par le raisonnement :**
 pour la seconde famille, vaut-il mieux fusionner dans le fichier existant, ou
-donner à l'émulateur un dossier de données qui appartient à `retro` ? Ryujinx
-accepte `--root-data-dir` ; s'il le fait vraiment — **à vérifier sur la
-machine, pas dans une documentation** — alors `retro` possède l'intégralité de
-son `Config.json` sans rien écraser à personne, et la fusion JSON en C#
-disparaît du problème. Regarde si les quatre autres ont un équivalent.
+donner à l'émulateur un dossier de données qui appartienne à `retro` ? L'un
+d'eux expose une option de dossier de données ; si elle fait vraiment ce
+qu'elle annonce — **à vérifier sur la machine, pas dans une documentation** —
+alors `retro` possède l'intégralité de son `Config.json` sans rien écraser à
+personne, et la fusion JSON en C# disparaît du problème. Regarde si les quatre
+autres ont un équivalent.
 
 ---
 
@@ -311,8 +325,8 @@ disparaît du problème. Regarde si les quatre autres ont un équivalent.
 - son chemin substitué **en Python**, comme `{render_config}` l'est déjà, et
   pour la même raison : laisser le lanceur reconstruire une convention de
   nommage créerait un second endroit où le nom du fichier serait décidé ;
-- **la purge des gabarits périmés**, au même titre que les plans et les `.cfg` :
-  un gabarit resté là après qu'un émulateur a changé de profil réécrirait sa
+- **la purge des gabarits périmés**, au même titre que les plans et les `.cfg`
+  : un gabarit resté là après qu'un émulateur a changé de profil réécrirait sa
   configuration d'entrée à chaque lancement, avec un mapping d'un autre âge ;
 - le gabarit est **par profil**, pas par système : la manette d'un émulateur ne
   change pas selon la console qu'il émule.
@@ -371,7 +385,7 @@ souvenir de forum est exactement le défaut que la contrainte globale interdit.
 
 | Émulateur | Fichier d'entrée | Famille | Auto-détecte ? |
 |---|---|---|---|
-| Ryujinx | `%APPDATA%\Ryujinx\Config.json` | générale | **non** (mesuré) |
+| l'émulateur personnel | `%APPDATA%\<émulateur>\Config.json` | générale | **non** (mesuré) |
 | DuckStation | `settings.ini` | générale | oui (mesuré : jouable) |
 | RetroArch | `autoconfig\*.cfg` | dédiée | oui |
 | Dolphin | `User\Config\GCPadNew.ini` | dédiée | à établir |
@@ -384,13 +398,14 @@ souvenir de forum est exactement le défaut que la contrainte globale interdit.
 
 Les colonnes « famille » et « auto-détecte » de la seconde moitié du tableau
 sont des **hypothèses de travail**, pas des faits : les deux seules lignes
-mesurées sont Ryujinx et DuckStation. Vérifie chaque ligne avant de t'appuyer
-dessus, et corrige le tableau.
+mesurées sont l'émulateur personnel et DuckStation. Vérifie chaque ligne avant
+de t'appuyer dessus, et corrige le tableau.
 
-**Un émulateur qui auto-détecte correctement n'a pas besoin de gabarit** —
-n'en écris pas pour le plaisir de la symétrie. Mais dis-le dans le profil, et
-dis pourquoi : sans cela, rien ne distingue « cet émulateur se débrouille »
-d'un bloc oublié, et c'est précisément la confusion qui a laissé Ryujinx muet.
+**Un émulateur qui auto-détecte correctement n'a pas besoin de gabarit** — n'en
+écris pas pour le plaisir de la symétrie. Mais dis-le dans le profil, et dis
+pourquoi : sans cela, rien ne distingue « cet émulateur se débrouille » d'un
+bloc oublié, et c'est précisément la confusion qui a laissé l'émulateur
+personnel muet.
 
 ---
 
@@ -400,12 +415,12 @@ d'un bloc oublié, et c'est précisément la confusion qui a laissé Ryujinx mue
 - [ ] Aucun test ne touche le réseau, aucun n'exige Windows
 - [ ] Aucun identifiant écrit qui n'ait été relevé sur la machine
 - [ ] Sur la console, session Moonlight ouverte, manette branchée : un jeu par
-      émulateur couvert, la manette répond, et la sortie du jeu se fait à la
-      manette
+  émulateur couvert, la manette répond, et la sortie du jeu se fait à la
+  manette
 - [ ] `_launcher\journal.txt` nomme, à chaque lancement, le nombre de manettes
-      vues et le fichier de configuration écrit
+  vues et le fichier de configuration écrit
 - [ ] Une configuration d'émulateur modifiée à la main est bien écrasée au
-      lancement suivant, et sa sauvegarde existe
+  lancement suivant, et sa sauvegarde existe
 
 ## Ce que ce sous-projet ne fait pas
 

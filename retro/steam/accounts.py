@@ -27,6 +27,15 @@ class SteamAccount:
     def grid_dir(self) -> pathlib.Path:
         return self.config_dir / "grid"
 
+    @property
+    def localconfig_path(self) -> pathlib.Path:
+        """Les réglages personnels du compte — dont Steam Input, par jeu.
+
+        Voisin de shortcuts.vdf, et bien plus large que lui : on n'y touche
+        qu'à une clé. Voir `steam_input`.
+        """
+        return self.config_dir / "localconfig.vdf"
+
 
 def discover_accounts(steam_root: pathlib.Path) -> list[SteamAccount]:
     """Liste tous les comptes Steam locaux sous ``steam_root/userdata``.
