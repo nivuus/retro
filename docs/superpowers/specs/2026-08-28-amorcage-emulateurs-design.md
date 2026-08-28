@@ -122,11 +122,11 @@ tâche 3 du sous-projet E.
 # Pourquoi ce bloc existe, et ce que chaque clé fait là — en commentaire, comme
 # partout ailleurs dans ce dépôt.
 target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
-content = """
+content = '''
 ; Écrit par « retro ». Ce fichier n'est posé que s'il est absent.
 [Main]
 SetupWizardIncomplete = false
-"""
+'''
 ```
 
 - `target` — chemin **Windows**, avec ses variables d'environnement. C'est le
@@ -281,8 +281,7 @@ ne pas se mettre en pause à la perte du focus, masquer le curseur, empêcher la
 mise en veille, et le chemin des BIOS.
 
 **Le chemin des BIOS n'est pas un détail de confort.** `retro status --bios`
-vérifie le dossier que le propriétaire a choisi — `G:\retro\bios` sur cette
-machine — tandis qu'un émulateur cherche dans le sien. Sans ce réglage, le
+vérifie le dossier que le propriétaire a choisi — tandis qu'un émulateur cherche dans le sien. Sans ce réglage, le
 rapport annonce « BIOS présent » pendant que l'émulateur ne le voit pas : c'est
 un mensonge du rapport, et le pire des états. Chaque profil dont les systèmes
 déclarent des `bios` doit donc porter le réglage correspondant, ou dire
@@ -328,7 +327,7 @@ dossier.
   sauvegarde d'abord.
 - **Ça ne fournit aucun BIOS.** L'amorçage dit à l'émulateur où les chercher ;
   les y déposer reste au propriétaire, et `retro status --bios` dit lesquels
-  manquent. Sur cette machine, `G:\retro\bios` est vide : Crash Team Racing
+  manquent. Sur la machine de mesure, ce dossier est vide : Crash Team Racing
   démarrera sur OpenBIOS tant qu'un `scph5502.bin` n'y sera pas.
 - **Ça ne configure pas les manettes.** C'est le sous-projet E, qui écrira dans
   les mêmes fichiers avec une autre stratégie, par le même contrat.

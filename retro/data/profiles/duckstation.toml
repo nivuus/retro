@@ -61,7 +61,7 @@ exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 # Le chemin des BIOS ([BIOS] SearchDirectory) a lui aussi été mesuré — la
 # clé existe, et l'interface affiche bien « Répertoire du BIOS » avec la
 # valeur posée, les trois régions restant en « Détection automatique » —
-# mais il n'entre DÉLIBÉRÉMENT PAS ici : sa valeur (G:\retro\bios sur la
+# mais il n'entre DÉLIBÉRÉMENT PAS ici : sa valeur (le dossier que le propriétaire a choisi, sur la
 # machine de mesure) est propre à chaque installation, alors que ce profil
 # est livré, donc public. Il lui faudra un jeton substitué à la
 # synchronisation, sur le modèle de {render_config} dans retro/launcher.py,
