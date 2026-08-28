@@ -24,6 +24,23 @@ schema = 1
 id  = "duckstation"
 exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 
+# Amorçage : pas de bloc [bootstrap]. Ce que DuckStation doit recevoir pour
+# lancer un jeu au lieu de son assistant de première configuration reste À
+# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
+# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
+# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
+# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
+# « cet émulateur se débrouille » : voir
+# docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
+# La CIBLE, elle, est mesurée : %USERPROFILE%\Documents\DuckStation\settings.ini,
+# le 2026-08-28. C'est son absence qui faisait tenir SetupWizardIncomplete
+# pour vrai et ouvrait l'assistant avant tout jeu. Le contenu, lui, se relève
+# réglage par réglage, l'émulateur arrêté proprement pour qu'il l'écrive.
+# Le chemin des BIOS en fera partie : « retro status --bios » vérifie le
+# dossier que le propriétaire a choisi pendant que l'émulateur cherche dans
+# le sien, et sans ce réglage le rapport annonce « BIOS présent » alors que
+# l'émulateur ne les voit pas — le pire des états, un rapport qui ment.
+
 [input]
 steam_input = "required"
 mode        = "xinput"

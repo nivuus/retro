@@ -22,6 +22,20 @@ schema = 1
 id  = "cemu"
 exe = 'Cemu_2.6\Cemu.exe'
 
+# Amorçage : pas de bloc [bootstrap]. Ce que Cemu doit recevoir pour
+# lancer un jeu au lieu de son assistant de première configuration reste À
+# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
+# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
+# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
+# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
+# « cet émulateur se débrouille » : voir
+# docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
+# Cas particulier, à trancher par la mesure : sa configuration vit peut-être
+# SOUS le dossier d'installation, que « retro install » supprime à chaque
+# montée de version. Si aucun dossier de données hors installation n'est
+# exposé, le profil le dira, et l'amorçage se rejouera après chaque mise à
+# jour — la cible ayant disparu avec le dossier.
+
 [input]
 steam_input = "required"
 mode        = "xinput"

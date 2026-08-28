@@ -486,3 +486,29 @@ def test_la_source_du_lanceur_est_en_utf8_avec_bom():
     octets = (launcher.SOURCES / launcher.SOURCE).read_bytes()
     assert octets.startswith(b"\xef\xbb\xbf"), "BOM UTF-8 absent"
     octets.decode("utf-8-sig")
+
+
+def test_chaque_profil_livre_dit_ou_en_est_son_amorcage():
+    """« Un bloc absent sans explication ne se distingue pas d'un bloc
+    oublié » (la conception de l'amorçage), et `retro status` renvoie
+    justement au profil : « aucune configuration à poser (voir son profil) ».
+    Un profil muet envoie donc le propriétaire lire une page qui ne dit rien —
+    neuf fois de suite, ce qui était l'état livré.
+
+    Le test se désarme profil par profil : celui qui PORTE un bloc n'a plus
+    rien à expliquer.
+    """
+    for f in sorted(PROFILS.glob("*.toml")):
+        if profiles.load_profile(f).bootstrap is not None:
+            continue
+        commentaires = "\n".join(l for l in f.read_text(encoding="utf-8").splitlines()
+                                 if l.lstrip().startswith("#"))
+        assert "[bootstrap]" in commentaires, (
+            f"{f.name} : aucun commentaire ne dit pourquoi ce profil n'a pas "
+            "de bloc [bootstrap]"
+        )
+        assert "mesur" in commentaires.lower(), (
+            f"{f.name} : le commentaire ne dit pas que l'amorçage reste à "
+            "mesurer sur la machine — sans quoi rien ne distingue « pas "
+            "encore regardé » de « cet émulateur se débrouille »"
+        )
