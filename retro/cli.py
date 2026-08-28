@@ -479,6 +479,13 @@ def _cmd_status(args) -> int:
                 pathlib.Path(args.emulation_root)),
             steam_input_muets=muets,
             steam_input_echec=echec_steam_input,
+            # Le témoin que le lanceur écrit : `status` ne peut pas
+            # constater l'état d'un fichier qui vit dans le profil de
+            # l'utilisateur Windows. Même racine que `lire_mode` ci-dessus,
+            # et même limite : sur la machine, les deux chemins se
+            # confondent.
+            amorcages=launcher_mod.lire_amorcages(
+                pathlib.Path(args.emulation_root)),
         )
         texte = status.format_report(rapport)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair

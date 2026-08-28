@@ -83,6 +83,40 @@ class SystemRender:
 
 
 @dataclasses.dataclass(frozen=True)
+class Amorcage:
+    """Ce qu'un émulateur a reçu comme configuration, ou n'a pas reçu.
+
+    Trois états, et ils appellent trois lectures différentes : configuration
+    posée (avec sa date), profil qui en déclare une mais dont aucun jeu n'a
+    encore été lancé, et profil qui n'en déclare aucune. Le dernier n'est une
+    anomalie que s'il n'est pas dit : « cet émulateur démarre nu » et « le
+    bloc a été oublié » se ressemblent exactement, vus du canapé.
+    """
+    profile_id: str
+    declare: bool
+    date: str = ""
+    target: str = ""
+
+
+def etat_amorcage(profils: dict,
+                  amorcages: dict[str, tuple[str, str]]) -> list[Amorcage]:
+    """L'état d'amorçage de chaque profil, croisé avec le témoin du lanceur.
+
+    Le témoin ne peut renseigner que les profils qui DÉCLARENT un amorçage :
+    un profil sans bloc `[bootstrap]` n'aura jamais de ligne dans le témoin,
+    et ce n'est pas une panne — c'est cet émulateur qui se règle seul.
+    """
+    etats = []
+    for pid in sorted(profils):
+        declare = getattr(profils[pid], "bootstrap", None) is not None
+        date, cible = amorcages.get(pid, ("", ""))
+        etats.append(Amorcage(profile_id=pid, declare=declare,
+                              date=date if declare else "",
+                              target=cible if declare else ""))
+    return etats
+
+
+@dataclasses.dataclass(frozen=True)
 class Report:
     emulators: list[tuple[str, str]]
     systems: list[tuple[str, int]]
@@ -93,6 +127,7 @@ class Report:
     # rapport d'avant, à l'identique.
     render_mode: str = ""
     render: list[SystemRender] = dataclasses.field(default_factory=list)
+    amorcages: list[Amorcage] = dataclasses.field(default_factory=list)
 
 
 def _joindre(racine: str, *parties: str) -> str:
@@ -379,6 +414,7 @@ def build_report(
     render_mode: str = "",
     steam_input_muets: Sequence[str] = (),
     steam_input_echec: str = "",
+    amorcages: dict[str, tuple[str, str]] | None = None,
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -402,6 +438,11 @@ def build_report(
     `bios_root` n'est pas décoratif : c'est le dossier que le propriétaire a
     donné à `--bios`, et le seul endroit où il puisse déposer ce qui manque.
     Sans lui, le rapport nommait un fichier sans jamais dire où le mettre.
+
+    `amorcages` est le témoin que le lanceur écrit sur la machine — profil →
+    (date, cible). `retro status` tourne sur l'hôte, qui n'atteint ni
+    `C:\\Users` ni `%APPDATA%` de la console : c'est la seule trace dont il
+    dispose pour dire qu'une configuration a bien été posée.
     """
     emulateurs, problemes_emulateurs = _etat_emulateurs(
         install_dirs, emulation_root, ignored_systems, emulator_exes)
@@ -417,6 +458,7 @@ def build_report(
         bios_root=bios_root,
         render_mode=render_mode,
         render=rendu,
+        amorcages=etat_amorcage(profils, amorcages or {}) if profils else [],
     )
 
 
@@ -515,6 +557,29 @@ def _lignes_rendu(report: Report) -> list[str]:
     return lignes
 
 
+def _lignes_amorcage(report: Report) -> list[str]:
+    """Ce que chaque profil a reçu — ou pas — comme configuration.
+
+    Trois formulations, une par état de `Amorcage` : le propriétaire doit
+    pouvoir vérifier qu'une configuration a bien été posée sans ouvrir
+    l'émulateur, et un profil qui n'en déclare aucune doit être NOMMÉ pour ne
+    pas se confondre avec un bloc oublié.
+    """
+    lignes = []
+    for a in report.amorcages:
+        if not a.declare:
+            lignes.append(f"  · {a.profile_id} : aucune configuration à "
+                          "poser (voir son profil)")
+        elif a.date:
+            lignes.append(f"  · {a.profile_id} : amorcé le {a.date} "
+                          f"({a.target})")
+        else:
+            lignes.append(f"  · {a.profile_id} : pas encore amorcé — sa "
+                          "configuration sera posée au premier lancement "
+                          "d'un de ses jeux")
+    return lignes
+
+
 def format_report(report: Report) -> str:
     """Le texte que l'hôte relaie tel quel au propriétaire."""
     sections: list[str] = []
@@ -543,6 +608,10 @@ def format_report(report: Report) -> str:
         f"Rendu — mode « {report.render_mode} »" if report.render_mode
         else "Rendu",
         _lignes_rendu(report), "aucun système chargé")
+
+    if report.amorcages:
+        sections += _section(
+            "Amorçage", _lignes_amorcage(report), "aucun profil chargé")
 
     nb = len(report.problems)
     # 0 et 1 prennent le singulier en français : « Problème (1) », pas

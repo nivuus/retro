@@ -210,6 +210,30 @@ def ordonner_reamorcage(emulation_root_local, profile_id: str) -> pathlib.Path:
     return fichier
 
 
+TEMOIN_BOOTSTRAP = "bootstrap.txt"
+
+
+def lire_amorcages(emulation_root_local) -> dict[str, tuple[str, str]]:
+    """Ce que le lanceur a posé : profil → (date, cible).
+
+    Une TRACE, pas une source de vérité : c'est la cible sur le disque de la
+    console qui décide, et le lanceur ne consulte jamais ce fichier pour
+    savoir s'il doit écrire. Un témoin effacé fait donc dire au rapport « pas
+    encore amorcé » d'un émulateur qui l'est — sans que rien ne soit réécrit.
+    """
+    fichier = local_dir(emulation_root_local) / TEMOIN_BOOTSTRAP
+    try:
+        texte = fichier.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    amorces = {}
+    for ligne in texte.splitlines():
+        parts = ligne.split("\t")
+        if len(parts) == 3 and parts[0].strip():
+            amorces[parts[0].strip()] = (parts[1].strip(), parts[2].strip())
+    return amorces
+
+
 def local_dir(emulation_root_local) -> pathlib.Path:
     """Le dossier du lanceur, sur CE disque."""
     return pathlib.Path(emulation_root_local) / DIR

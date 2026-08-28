@@ -3,7 +3,7 @@ import pathlib
 
 import pytest
 
-from retro import bios, install, scan, status
+from retro import bios, install, profiles, scan, status
 
 
 def test_un_emulateur_installe_est_signale_avec_sa_version(tmp_path):
@@ -491,3 +491,78 @@ def test_sans_jeu_muet_aucun_probleme_de_steam_input():
         steam_input_muets=[],
     )
     assert [p for p in rapport.problems if "Steam Input" in p.what] == []
+
+
+# --- ce qui est amorcé, et ce qui ne l'est pas encore ----------------------
+
+PROFIL_STATUS_AMORCE = """
+schema = 1
+id = "duckstation"
+exe = 'duckstation-qt.exe'
+[bootstrap]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+[Main]
+SetupWizardIncomplete = false
+'''
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
+
+
+@pytest.fixture
+def profils_amorces_status(tmp_path):
+    p = tmp_path / "duckstation.toml"
+    p.write_text(PROFIL_STATUS_AMORCE, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(p)}
+
+
+@pytest.fixture
+def profils_sans_amorcage_status(tmp_path):
+    texte = (PROFIL_STATUS_AMORCE[:PROFIL_STATUS_AMORCE.index("[bootstrap]")]
+             + PROFIL_STATUS_AMORCE[PROFIL_STATUS_AMORCE.index("[[system]]"):])
+    p = tmp_path / "duckstation.toml"
+    p.write_text(texte, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(p)}
+
+
+def test_le_rapport_dit_ce_qui_est_amorce(profils_amorces_status):
+    """« amorcé le … » : le propriétaire doit pouvoir vérifier qu'une
+    configuration a bien été posée sans ouvrir l'émulateur."""
+    etats = status.etat_amorcage(
+        profils_amorces_status,
+        {"duckstation": ("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini")})
+    assert [(e.profile_id, e.declare, e.date) for e in etats] == [
+        ("duckstation", True, "2026-08-28 10:27:26")]
+
+
+def test_le_rapport_dit_ce_qui_n_est_pas_encore_amorce(profils_amorces_status):
+    """Aucun jeu de cet émulateur n'a encore été lancé. Ce n'est pas un
+    problème — c'est un état à dire, pas à taire."""
+    etats = status.etat_amorcage(profils_amorces_status, {})
+    assert etats[0].declare and etats[0].date == ""
+
+
+def test_un_profil_sans_bloc_est_nomme(profils_sans_amorcage_status):
+    """« cet émulateur se débrouille » et « le bloc a été oublié » ne se
+    distinguent que si le rapport nomme les profils sans amorçage."""
+    etats = status.etat_amorcage(profils_sans_amorcage_status, {})
+    assert etats[0].declare is False
+
+
+def test_la_section_amorcage_figure_dans_le_texte(profils_amorces_status):
+    """Un état que le rapport calcule sans l'imprimer ne sert à personne."""
+    rapport = status.build_report(
+        install_dirs={"duckstation": "DS"},
+        emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        profils=profils_amorces_status,
+        amorcages={"duckstation": ("2026-08-28 10:27:26",
+                                   "C:\\Users\\A\\settings.ini")},
+    )
+    texte = status.format_report(rapport)
+    assert "Amorçage" in texte and "2026-08-28 10:27:26" in texte

@@ -367,3 +367,22 @@ def test_reamorcer_un_profil_inconnu_est_refuse(tmp_path, profils_amorces):
     with pytest.raises(launcher.AmorcageError) as e:
         launcher.ordonner_reamorcage(tmp_path, "pcsx2")
     assert "duckstation" in str(e.value)
+
+
+# --- le témoin d'amorçage --------------------------------------------------
+
+def test_le_temoin_d_amorcage_est_relu(tmp_path):
+    """Le lanceur écrit ce qu'il a posé ; l'hôte, qui n'atteint pas C:\\Users,
+    n'a que ça pour le savoir."""
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.TEMOIN_BOOTSTRAP).write_text(
+        "duckstation\t2026-08-28 10:27:26\tC:\\Users\\A\\settings.ini\n",
+        encoding="utf-8")
+    assert launcher.lire_amorcages(tmp_path) == {
+        "duckstation": ("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini")}
+
+
+def test_un_temoin_absent_ne_fait_pas_echouer(tmp_path):
+    """Aucun jeu n'a encore été lancé : c'est un état normal, pas une panne."""
+    assert launcher.lire_amorcages(tmp_path) == {}
