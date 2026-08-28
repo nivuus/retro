@@ -253,3 +253,85 @@ def test_un_fichier_de_reglages_perime_est_retire(tmp_path, profils_config):
     launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_config,
                          {"retroarch": "RetroArch"})
     assert not (dossier / "vieux.sys.native.cfg").exists()
+
+
+# --- l'amorçage -----------------------------------------------------------
+
+# La chaîne Python est délimitée par des guillemets doubles triples, et le
+# `content` du TOML par des guillemets SIMPLES triples : la chaîne littérale
+# de TOML, qui n'interprète aucun échappement. C'est ce qu'il faut pour un
+# fichier de configuration Windows, plein d'antislashs.
+PROFIL_AMORCE = PROFIL + """
+[bootstrap]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+[Main]
+SetupWizardIncomplete = false
+'''
+"""
+
+
+@pytest.fixture
+def profils_amorces(tmp_path):
+    p = tmp_path / "duckstation-amorce.toml"
+    p.write_text(PROFIL_AMORCE, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(p)}
+
+
+def test_le_plan_porte_les_trois_lignes_d_amorcage(profils_amorces):
+    """Le lanceur ne reconstruit ni le chemin de la source ni la stratégie :
+    les deux sont décidées ici."""
+    systeme = profils_amorces["duckstation"].systems[0]
+    texte = launcher.plan_systeme(
+        "duckstation", systeme, "D:\\Emulation\\DS\\duckstation-qt.exe",
+        "D:\\Emulation\\DS", "D:\\Emulation\\_launcher\\systems",
+        bootstrap=profils_amorces["duckstation"].bootstrap)
+    l = lignes(texte)
+    assert l["bootstrap_target"] == (
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
+    assert l["bootstrap_source"] == (
+        "D:\\Emulation\\_launcher\\systems\\duckstation.bootstrap.ini")
+    assert l["bootstrap_when"] == launcher.SI_ABSENT
+
+
+def test_un_profil_sans_amorcage_porte_les_lignes_vides(profils):
+    """Vides, jamais absentes : le lanceur traite une clé manquante comme une
+    faute du plan, et c'est une propriété qu'on garde."""
+    l = lignes(plan(profils))
+    assert l["bootstrap_target"] == ""
+    assert l["bootstrap_source"] == ""
+    assert l["bootstrap_when"] == ""
+
+
+def test_le_nom_du_fichier_suit_l_extension_de_la_cible():
+    """Un émulateur dont la configuration est un .toml ne reçoit pas un .ini :
+    le nom du fichier déposé porte l'extension de sa cible."""
+    assert launcher.bootstrap_name(
+        "duckstation", "%USERPROFILE%\\Documents\\DuckStation\\settings.ini"
+    ) == "duckstation.bootstrap.ini"
+    assert launcher.bootstrap_name(
+        "xemu", "%APPDATA%\\xemu\\xemu.toml") == "xemu.bootstrap.toml"
+
+
+def test_le_fichier_d_amorcage_est_ecrit(tmp_path, profils_amorces):
+    """Le contenu du profil arrive tel quel à côté des plans, là où le lanceur
+    ira le chercher."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    depose = (tmp_path / launcher.DIR / launcher.PLAN
+              / "duckstation.bootstrap.ini")
+    assert "SetupWizardIncomplete = false" in depose.read_text(encoding="utf-8")
+
+
+def test_un_amorcage_perime_est_retire(tmp_path, profils_amorces):
+    """Un amorçage resté là après qu'un profil a disparu réécrirait la
+    configuration d'un émulateur que plus rien ne décrit."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    dossier = tmp_path / launcher.DIR / launcher.PLAN
+    (dossier / "ancien.bootstrap.toml").write_text("x", encoding="utf-8")
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    assert not (dossier / "ancien.bootstrap.toml").exists()
+    assert (dossier / "duckstation.bootstrap.ini").exists()

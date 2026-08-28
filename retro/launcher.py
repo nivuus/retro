@@ -74,8 +74,29 @@ def config_name(cle: str, mode: str) -> str:
     return f"{cle}.{mode}.cfg"
 
 
+BOOTSTRAP = "bootstrap"
+# La seule stratégie d'écriture pour l'instant, et le champ existe déjà pour
+# qu'il y en ait une seconde : les configurations d'entrée du sous-projet E
+# écrivent dans les MÊMES fichiers, réécrites à chaque lancement avec les
+# manettes mesurées. Deux mécanismes distincts pour « un fichier de
+# configuration que retro pose sur la machine » divergeraient au premier
+# changement.
+SI_ABSENT = "si-absent"
+
+
+def bootstrap_name(profile_id: str, target: str) -> str:
+    """Le nom du fichier d'amorçage déposé à côté des plans.
+
+    L'extension est celle de la CIBLE : un `.toml` déposé sous un nom en
+    `.ini` se lirait comme un fichier d'un autre format, et le premier
+    lecteur du dossier n'aurait aucun moyen de savoir ce qu'il regarde.
+    """
+    suffixe = pathlib.PureWindowsPath(target).suffix or ".txt"
+    return f"{profile_id}.{BOOTSTRAP}{suffixe}"
+
+
 def plan_systeme(profile_id: str, systeme, emulator_exe: str,
-                 workdir: str, plan_dir: str = "") -> str:
+                 workdir: str, plan_dir: str = "", bootstrap=None) -> str:
     """Tout ce que le lanceur doit savoir de CE système, table d'arbitrage
     comprise.
 
@@ -122,6 +143,18 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
         lignes.append(f"auto_{classe}={choix}")
     for nom, vram, coeurs in render_mod.SEUILS:
         lignes.append(f"threshold_{nom}={vram},{coeurs}")
+
+    # L'amorçage, s'il y en a un. Les trois lignes sont TOUJOURS écrites :
+    # `Valeur()` traite une clé absente comme une faute du plan, et c'est
+    # cette propriété qui a déjà attrapé des plans écrits par une version
+    # antérieure. Vides, elles disent « cet émulateur n'a rien à recevoir ».
+    source = (f"{plan_dir}\\{bootstrap_name(profile_id, bootstrap.target)}"
+              if bootstrap else "")
+    lignes += [
+        f"bootstrap_target={bootstrap.target if bootstrap else ''}",
+        f"bootstrap_source={source}",
+        f"bootstrap_when={SI_ABSENT if bootstrap else ''}",
+    ]
     return "\n".join(lignes) + "\n"
 
 
@@ -191,7 +224,8 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
         for systeme in profil.systems:
             cle = system_key(pid, systeme.id)
             (dossier / f"{cle}.ini").write_text(
-                plan_systeme(pid, systeme, exe, workdir, plan_dir),
+                plan_systeme(pid, systeme, exe, workdir, plan_dir,
+                             bootstrap=profil.bootstrap),
                 encoding="utf-8")
             fichiers.add(f"{cle}.ini")
             ecrits.append(cle)
@@ -206,9 +240,19 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
                         mode.config, encoding="utf-8")
                     fichiers.add(config_name(cle, nom))
 
-    # Un plan ou un réglage resté là après qu'un système a changé d'émulateur
-    # ferait lancer l'ANCIEN, avec l'ancienne configuration.
-    for perime in sorted([*dossier.glob("*.ini"), *dossier.glob("*.cfg")]):
+        # Un seul fichier par PROFIL : la configuration d'un émulateur ne
+        # change pas selon la console qu'il émule.
+        if profil.bootstrap:
+            nom = bootstrap_name(pid, profil.bootstrap.target)
+            (dossier / nom).write_text(profil.bootstrap.content,
+                                       encoding="utf-8")
+            fichiers.add(nom)
+
+    # Tout fichier que ce passage n'a pas écrit s'en va : ce dossier
+    # appartient entièrement à « retro scan », et un amorçage d'un format
+    # qu'on n'aurait pas pensé à énumérer réécrirait la configuration d'un
+    # émulateur à chaque lancement, avec le contenu d'un autre âge.
+    for perime in sorted(p for p in dossier.iterdir() if p.is_file()):
         if perime.name not in fichiers:
             perime.unlink()
     return ecrits
