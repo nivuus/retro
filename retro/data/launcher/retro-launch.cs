@@ -271,6 +271,40 @@ static class RetroLaunch
         psi.WorkingDirectory = Valeur(p, "workdir");
         psi.UseShellExecute = false;
         psi.CreateNoWindow = true;
+        // Steam pose SDL_GAMECONTROLLER_IGNORE_DEVICES dans l'environnement de
+        // ce qu'il lance : la liste des manettes qu'il prend en charge, et
+        // 0x045e/0x028e — la Xbox 360 — en fait partie. C'est precisement ce
+        // que la manette virtuelle d'Apollo se declare etre. SDL la masque
+        // donc a l'emulateur, et Steam ne fournit AUCUN peripherique virtuel
+        // en echange tant que Steam Input n'est pas actif sur le raccourci :
+        // l'emulateur ne voit plus aucune manette du tout.
+        //
+        // Mesure sur la machine le 2026-08-28 : le meme outil SDL, dans la
+        // meme session, voit UNE manette sans cette variable et ZERO avec.
+        // Ryujinx repondait « No matching controllers found » a chaque
+        // lancement, sans qu'aucun message ne nomme la cause.
+        //
+        // La retirer ICI, et pas dans les reglages de Steam : le masquage est
+        // repose par le client a chaque lancement, un reglage par raccourci
+        // serait a refaire a chaque synchronisation, et ce lanceur est deja le
+        // seul passage oblige entre Steam et les emulateurs. Le retrait vaut
+        // donc pour les neuf d'un coup.
+        psi.EnvironmentVariables.Remove("SDL_GAMECONTROLLER_IGNORE_DEVICES");
+        psi.EnvironmentVariables.Remove("SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT");
+        // Steam a un SECOND mecanisme, et celui-la ne se neutralise PAS d'ici.
+        // Il injecte gameoverlayrenderer64.dll dans tout ce qu'il lance, et
+        // cette DLL pose son propre hook sur XInput pour le compte de Steam
+        // Input, en dialoguant avec le client par IPC. Priver l'emulateur des
+        // variables Steam a bien ete essaye le 2026-08-28 — verifie sur le
+        // processus vivant : SteamAppId, SteamGameId et le reste absents,
+        // SteamNoOverlayUIDrawing pose — et la manette restait masquee. Le
+        // code a ete retire : il ne servait a rien, et il privait au passage
+        // le jeu de l'overlay Steam, que le bouton Xbox n'ouvrait plus.
+        //
+        // La seule parade est un REGLAGE STEAM, hors d'atteinte d'ici :
+        // « Desactiver Steam Input » sur le raccourci. Voir le plan du
+        // sous-projet E, section « Ce dont la console depend et que le code
+        // ne garantit pas ».
         using (var jeu = Process.Start(psi))
         {
             // Avant WaitForExit : entre le demarrage et l'affectation, un
