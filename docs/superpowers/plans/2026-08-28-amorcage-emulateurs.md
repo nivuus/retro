@@ -71,6 +71,10 @@ prise en C# : le lanceur exécute une consigne calculée en Python.
 
 Ajouter à la fin de `tests/test_profiles.py` :
 
+`tests/test_profiles.py` définit déjà `ecrire(tmp_path, nom, contenu)` — la
+réutiliser telle quelle, avec ses arguments dans CET ordre. En redéfinir une
+seconde version casserait la vingtaine de tests qui s'en servent déjà.
+
 ```python
 # --- le bloc [bootstrap] ------------------------------------------------
 
@@ -97,16 +101,10 @@ launch = '-batch "{rom}"'
 """
 
 
-def ecrire(tmp_path, texte, nom="duckstation.toml"):
-    p = tmp_path / nom
-    p.write_text(texte, encoding="utf-8")
-    return p
-
-
 def test_le_bloc_bootstrap_est_lu(tmp_path):
     """Le contenu vit dans le profil, jamais dans le code : c'est lui que le
     lanceur posera tel quel."""
-    profil = profiles.load_profile(ecrire(tmp_path, BOOTSTRAP_VALIDE))
+    profil = profiles.load_profile(ecrire(tmp_path, "duckstation.toml", BOOTSTRAP_VALIDE))
     assert profil.bootstrap is not None
     assert profil.bootstrap.target == (
         "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
@@ -118,7 +116,7 @@ def test_un_profil_sans_bootstrap_reste_valide(tmp_path):
     continuer de se charger."""
     sans = BOOTSTRAP_VALIDE[:BOOTSTRAP_VALIDE.index("[bootstrap]")] + \
         BOOTSTRAP_VALIDE[BOOTSTRAP_VALIDE.index("[[system]]"):]
-    assert profiles.load_profile(ecrire(tmp_path, sans)).bootstrap is None
+    assert profiles.load_profile(ecrire(tmp_path, "duckstation.toml", sans)).bootstrap is None
 
 
 def test_une_cible_sans_contenu_est_refusee(tmp_path):
@@ -128,7 +126,7 @@ def test_une_cible_sans_contenu_est_refusee(tmp_path):
         BOOTSTRAP_VALIDE[BOOTSTRAP_VALIDE.index("content ="):
                          BOOTSTRAP_VALIDE.index("[[system]]")], "")
     with pytest.raises(profiles.ProfileError) as e:
-        profiles.load_profile(ecrire(tmp_path, texte))
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
     assert "content" in str(e.value) and "duckstation.toml" in str(e.value)
 
 
@@ -137,7 +135,7 @@ def test_un_contenu_sans_cible_est_refuse(tmp_path):
     texte = BOOTSTRAP_VALIDE.replace(
         "target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'\n", "")
     with pytest.raises(profiles.ProfileError) as e:
-        profiles.load_profile(ecrire(tmp_path, texte))
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
     assert "target" in str(e.value)
 
 
@@ -149,7 +147,7 @@ def test_une_cible_relative_est_refusee(tmp_path):
         "%USERPROFILE%\\Documents\\DuckStation\\settings.ini",
         "settings.ini")
     with pytest.raises(profiles.ProfileError) as e:
-        profiles.load_profile(ecrire(tmp_path, texte))
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
     assert "absolu" in str(e.value)
 
 
@@ -160,7 +158,7 @@ def test_un_contenu_sans_marque_est_refuse(tmp_path):
         "; Écrit par « retro » au premier lancement, parce que ce fichier "
         "était absent.\n", "")
     with pytest.raises(profiles.ProfileError) as e:
-        profiles.load_profile(ecrire(tmp_path, texte))
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
     assert profiles.MARQUE_BOOTSTRAP in str(e.value)
 ```
 
@@ -1170,8 +1168,7 @@ qu'il persiste lui-même son fichier.
 - [ ] **Étape 2 : relever le fichier**
 
 ```bash
-cat "/media/win-d/../win-c/Users/Administrator/Documents/DuckStation/settings.ini" 2>/dev/null \
-  || winvm --ps 'Get-Content "$env:USERPROFILE\Documents\DuckStation\settings.ini"'
+winvm --ps 'Get-Content "$env:USERPROFILE\Documents\DuckStation\settings.ini"'
 ```
 Expected: le fichier complet. Noter les clés qui correspondent aux réglages
 faits — ce sont les seules qui entrent dans le gabarit, avec la valeur que

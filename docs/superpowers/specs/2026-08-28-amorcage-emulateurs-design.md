@@ -30,9 +30,9 @@ assistant depuis plusieurs heures a d'ailleurs été relevée vivante sur la
 machine, n'ayant créé aucun fichier de données.
 
 **La mesure qui tranche :** un `settings.ini` de deux lignes — `[Main]` /
-`SetupWizardIncomplete = false` — déposé dans
-`C:\Users\Administrator\Documents\DuckStation`, puis la commande exacte du
-journal rejouée. DuckStation a cette fois créé toute son arborescence de
+`SetupWizardIncomplete = false` — déposé dans le dossier de données de
+DuckStation (`%USERPROFILE%\Documents\DuckStation`), puis la commande exacte
+du journal rejouée. DuckStation a cette fois créé toute son arborescence de
 données, chargé sa base de jeux et écrit `playtime.dat` contenant
 `SCES-02105` — le serial PAL de Crash Team Racing. Il est allé jusqu'à
 démarrer le jeu.
@@ -226,7 +226,7 @@ que le lanceur a écrit là où l'hôte regarde.
 `_launcher\bootstrap.txt`, une ligne par profil amorcé :
 
 ```
-duckstation	2026-08-28 10:27:26	C:\Users\Administrator\Documents\DuckStation\settings.ini
+duckstation	2026-08-28 10:27:26	C:\Users\<compte>\Documents\DuckStation\settings.ini
 ```
 
 Le rapport en fait, par émulateur installé et porteur d'un bloc `[bootstrap]` :
@@ -295,9 +295,9 @@ départ pour la mesure, pas des faits établis — sauf DuckStation, relevé le
 | Flycast | `emu.cfg` | à établir | non |
 | Xemu | `xemu.toml` | à établir | non |
 
-Le profil du propriétaire — Ryujinx, déclaré dans `G:\retro\profiles` — suit la
-même règle : il n'est pas livré par le dépôt, mais il s'amorce par le même
-contrat, et sa mesure lui revient.
+Le profil de l'émulateur personnel — celui que le propriétaire déclare dans
+`G:\retro\profiles`, hors dépôt — suit la même règle : il n'est pas livré
+ici, mais il s'amorce par le même contrat, et sa mesure lui revient.
 
 RetroArch et Cemu posent une question de plus : leur configuration vit, selon
 la version, **sous le dossier d'installation** — que
