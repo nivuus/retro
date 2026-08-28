@@ -5,9 +5,9 @@
 // la machine offre — n'est connu qu'ICI, au lancement : un flux Apollo change
 // de résolution selon le client qui se connecte.
 //
-// Ce programme NE DÉCIDE RIEN. Tout l'arbitrage est calculé par `retro sync`,
-// en Python, où il est testé, et écrit dans le plan que ce fichier se contente
-// de lire. Le classement de la machine se fait ici parce que la machine est
+// Ce programme NE DÉCIDE RIEN. Tout l'arbitrage est calculé en Python, où il
+// est testé, et écrit par `retro scan` dans le plan que ce fichier se
+// contente de lire. Le classement de la machine se fait ici parce que la machine est
 // ici, mais avec les seuils que le plan porte.
 //
 // Compilé en /target:winexe — sans console. C'est aussi ce qui supprime la
@@ -159,6 +159,41 @@ static class RetroLaunch
         catch (Exception) { /* un journal illisible ne doit pas tuer le jeu */ }
     }
 
+    // Un avertissement A L'ECRAN qui ne retient PAS le lanceur.
+    //
+    // MessageBoxW est MODALE : appelee sur le fil principal, elle bloquerait
+    // le lancement jusqu'a ce que quelqu'un clique — et une console de salon
+    // pilotee a la seule manette n'a personne pour le faire. Le jeu ne
+    // demarrerait alors JAMAIS et Steam resterait « en jeu » indefiniment :
+    // exactement l'aller sans retour que l'en-tete de ce fichier decrit comme
+    // le pire etat possible. Sur un thread d'arriere-plan, l'appelant se
+    // poursuit tout de suite ; IsBackground fait mourir ce thread avec le
+    // processus, donc il ne peut jamais retenir le lanceur apres la fin du
+    // jeu, et STA est ce qu'exige une boite de dialogue Win32.
+    //
+    // Factorisee parce que DEUX chemins en ont besoin — un amorcage qui
+    // echoue, un ordre de reamorcage qui n'a pas pu etre consomme — et qu'un
+    // second exemplaire finirait par perdre l'un de ces trois reglages.
+    static void AvertirEnFond(string titre, string message)
+    {
+        try
+        {
+            var boite = new Thread(() => MessageBoxW(IntPtr.Zero, message,
+                                                     titre, 0x30));
+            boite.IsBackground = true;
+            boite.SetApartmentState(ApartmentState.STA);
+            boite.Start();
+        }
+        catch (Exception e)
+        {
+            // Un thread qui ne demarre pas ne doit pas, lui non plus,
+            // empecher le jeu de demarrer : l'appelant a deja ecrit la trace
+            // complete au journal AVANT d'appeler cette methode.
+            Noter("boite de dialogue non affichee (" + titre + ") : "
+                + e.Message);
+        }
+    }
+
     // L'amorçage : poser la configuration d'un émulateur qui n'en a jamais eu.
     //
     // Mesuré le 2026-08-28 : sans son settings.ini, DuckStation tient
@@ -172,7 +207,24 @@ static class RetroLaunch
     static void Amorcer(Dictionary<string, string> p, string profil)
     {
         string cible = Valeur(p, "bootstrap_target");
-        if (cible.Length == 0) return;   // cet emulateur n'a rien a recevoir
+        if (cible.Length == 0)
+        {
+            // Cet emulateur n'a rien a recevoir — mais un ordre de
+            // reamorcage a pu etre pose AVANT que le bloc [bootstrap]
+            // disparaisse du profil. Sortir sans le consommer le laisserait
+            // dans reamorcer.txt pour toujours : invisible tant que le bloc
+            // manque, et surprenant le jour ou il revient — ce jour-la, un
+            // ordre que personne ne se rappelle avoir donne ferait sauvegarder
+            // puis ecraser la configuration du proprietaire.
+            if (OrdreDeReamorcage(profil))
+            {
+                Noter("ordre de reamorcage sans objet pour " + profil
+                    + " : ce profil ne porte plus de configuration a poser ; "
+                    + "l'ordre est retire sans rien ecrire.");
+                ConsommerOrdre(profil);
+            }
+            return;
+        }
 
         string quand = Valeur(p, "bootstrap_when");
         if (quand != SI_ABSENT)
@@ -249,7 +301,34 @@ static class RetroLaunch
             Noter("amorcage : " + cible + " sauvegarde en " + sauvegarde);
         }
 
-        File.Copy(source, cible, true);
+        // ECRITURE ATOMIQUE, comme retro/steam/writer.py (os.replace) : c'est
+        // la politique du depot, et elle vaut ici plus qu'ailleurs. Un
+        // File.Copy interrompu — disque plein, machine eteinte, antivirus —
+        // laisserait une cible qui EXISTE, a moitie ecrite : la strategie
+        // « si-absent » ne la reparerait plus JAMAIS, et l'emulateur
+        // rouvrirait son assistant pour de bon. On ecrit donc a cote, puis on
+        // bascule d'un coup : a tout instant, la cible est soit l'ancienne,
+        // soit la nouvelle, jamais une moitie des deux.
+        //
+        // Deux appels et non un : File.Move refuse d'ecraser (l'option
+        // « overwrite » n'existe pas sur le .NET Framework) et File.Replace
+        // exige au contraire une cible existante.
+        string temporaire = cible + ".retro-tmp";
+        try
+        {
+            File.Copy(source, temporaire, true);
+            if (File.Exists(cible)) File.Replace(temporaire, cible, null);
+            else File.Move(temporaire, cible);
+        }
+        catch (Exception)
+        {
+            // Ne rien laisser derriere : ce dossier appartient au
+            // proprietaire, et un « .retro-tmp » a moitie ecrit y serait un
+            // debris que personne ne saurait relier a quoi que ce soit.
+            try { if (File.Exists(temporaire)) File.Delete(temporaire); }
+            catch (Exception) { }
+            throw;
+        }
         Noter("amorcage : " + profil + " -> " + cible
               + (force ? " (ordre de reamorcage)" : ""));
         InscrireTemoin(profil, cible);
@@ -297,12 +376,23 @@ static class RetroLaunch
             // l'echec : sans cela rien ne dit que sa configuration sera
             // reposee au prochain lancement, ni ce qu'il faut faire pour
             // l'empecher.
+            //
+            // ET A L'ECRAN, pas seulement au journal : c'est le seul chemin
+            // de l'amorcage qui abime les donnees du proprietaire de facon
+            // REPETEE — l'ordre restant en place, chaque lancement suivant
+            // sauvegarde puis ecrase, indefiniment. Un journal ne se lit pas
+            // depuis un canape.
+            string consequence =
+                "La configuration a bien ete posee, mais elle sera reposee "
+                + "(avec une sauvegarde de plus) a CHAQUE lancement tant que "
+                + "« " + profil + " » restera dans " + fichier
+                + " -- retirer cette ligne, ou supprimer ce fichier, pour "
+                + "l'empecher.";
             Noter("ordre de reamorcage non consomme pour " + profil + " : "
-                + e.Message + ". La configuration a bien ete posee, mais "
-                + "sera reposee (avec une nouvelle sauvegarde) au prochain "
-                + "lancement tant que « " + profil + " » restera dans "
-                + fichier + " -- retirer cette ligne, ou supprimer ce "
-                + "fichier, pour l'empecher.");
+                + e.Message + ". " + consequence);
+            AvertirEnFond("Console retro — ordre de reamorcage non consomme",
+                "L'ordre de reamorcage de « " + profil + " » n'a pas pu etre "
+                + "retire :\n\n" + e.Message + "\n\n" + consequence);
         }
     }
 
@@ -372,12 +462,23 @@ static class RetroLaunch
         string cle = reste.Substring(0, espace);
         string rom = reste.Substring(espace + 1).Trim().Trim('"');
 
+        // « cle » est « <profil>.<systeme> » (system_key, cote Python). La
+        // coupe se fait au PREMIER point : c'est l'identifiant de PROFIL qui
+        // est garanti sans point — profiles.py refuse a la lecture du profil
+        // tout identifiant hors [a-z0-9_-], parce que cet identifiant nomme
+        // un fichier et se decoupe a trois endroits. Rien de tel n'est exige
+        // d'un identifiant de SYSTEME : couper au dernier point ferait, sur
+        // un systeme nomme « ps.x », chercher un profil qui n'existe pas, et
+        // l'ordre de reamorcage du proprietaire ne serait jamais vu.
+        int premierPoint = cle.IndexOf('.');
+        string profilCle = premierPoint < 0 ? cle : cle.Substring(0, premierPoint);
+
         string plan = Path.Combine(Path.Combine(dossier, "systems"), cle + ".ini");
         if (!File.Exists(plan))
             throw new Exception(
                 "Aucun plan de lancement pour « " + cle + " ».\n\n"
                 + "Attendu ici : " + plan + "\n\n"
-                + "Relancer « retro sync » depuis l'hôte : c'est lui qui écrit "
+                + "Relancer « retro scan » depuis l'hôte : c'est lui qui écrit "
                 + "les plans.");
 
         var p = LirePlan(plan);
@@ -441,10 +542,30 @@ static class RetroLaunch
             rapport.AppendLine("commande=" + commande);
             string cibleAmorcage = Valeur(p, "bootstrap_target");
             rapport.AppendLine("amorcage_cible=" + cibleAmorcage);
-            rapport.AppendLine("amorcage_a_poser="
-                + (cibleAmorcage.Length == 0 ? "rien"
-                   : (File.Exists(Environment.ExpandEnvironmentVariables(
-                          cibleAmorcage)) ? "non (la cible existe)" : "oui")));
+            // Un ordre en attente CHANGE la reponse, et le taire faisait
+            // mentir le seul controle verifiable a distance : --explain
+            // rendait « non (la cible existe) » alors que le lancement
+            // suivant allait justement sauvegarder cette cible et la
+            // reecrire. Lire reamorcer.txt ne modifie rien — --explain doit
+            // rester sans effet de bord.
+            bool ordre = OrdreDeReamorcage(profilCle);
+            rapport.AppendLine("amorcage_ordre="
+                + (ordre ? "en attente" : "aucun"));
+            string aPoser;
+            if (cibleAmorcage.Length == 0)
+                aPoser = ordre
+                    ? "rien (ordre sans objet : il sera retire au prochain "
+                      + "lancement)"
+                    : "rien";
+            else if (ordre)
+                aPoser = "oui (ordre de reamorcage : la cible sera sauvegardee "
+                    + "puis reecrite)";
+            else if (File.Exists(Environment.ExpandEnvironmentVariables(
+                         cibleAmorcage)))
+                aPoser = "non (la cible existe)";
+            else
+                aPoser = "oui";
+            rapport.AppendLine("amorcage_a_poser=" + aPoser);
             Console.Out.Write(rapport.ToString());
             Console.Out.Flush();
             File.WriteAllText(Path.Combine(dossier, "explain.txt"),
@@ -459,51 +580,17 @@ static class RetroLaunch
         // qu'on vient de quitter.
         try
         {
-            // cle est « <profil>.<systeme> » (system_key, cote Python). Le
-            // dual exact coupe au DERNIER point, pas au premier : c'est le
-            // systeme, ajoute en dernier par system_key, dont l'identifiant
-            // est garanti sans point — pas le profil, qui peut porter le
-            // sien puisque rien ne l'interdit cote Python et que les profils
-            // du proprietaire sont fusionnes avec ceux du depot.
-            int dernierPoint = cle.LastIndexOf('.');
-            string profilCle = dernierPoint < 0 ? cle : cle.Substring(0, dernierPoint);
             Amorcer(p, profilCle);
         }
         catch (Exception e)
         {
-            // Le journal garde la trace complete, synchrone, avant tout le
-            // reste : meme si la boite ci-dessous ne s'affiche jamais, rien
-            // n'est perdu.
+            // Le journal garde la trace complete, synchrone, AVANT tout le
+            // reste : meme si la boite ne s'affiche jamais, rien n'est perdu.
             Noter("ECHEC de l'amorcage : " + e.Message);
-            // MessageBoxW est MODALE : appelee ici, elle bloquerait Lancer()
-            // jusqu'a ce que quelqu'un clique — et une console de salon
-            // pilotee a la seule manette n'a personne pour le faire. Le jeu
-            // ne demarrerait alors JAMAIS, et Steam resterait « en jeu »
-            // indefiniment : exactement l'aller sans retour que l'en-tete de
-            // ce fichier decrit comme le pire etat possible. L'afficher sur
-            // un thread d'arriere-plan laisse Lancer() se poursuivre tout de
-            // suite ; IsBackground fait mourir ce thread avec le processus,
-            // donc il ne peut jamais retenir le lanceur apres la fin du jeu,
-            // et STA est ce qu'exige une boite de dialogue Win32.
-            string messageBoite = e.Message + "\n\nLe jeu va tout de meme "
-                + "demarrer : l'emulateur ouvrira peut-etre son assistant de "
-                + "configuration.";
-            try
-            {
-                var boite = new Thread(() => MessageBoxW(IntPtr.Zero,
-                    messageBoite, "Console retro — configuration non posee",
-                    0x30));
-                boite.IsBackground = true;
-                boite.SetApartmentState(ApartmentState.STA);
-                boite.Start();
-            }
-            catch (Exception e2)
-            {
-                // Un thread qui ne demarre pas ne doit pas, lui non plus,
-                // empecher le jeu de demarrer : le journal a deja la trace
-                // complete ci-dessus.
-                Noter("boite de dialogue d'amorcage non affichee : " + e2.Message);
-            }
+            AvertirEnFond("Console retro — configuration non posee",
+                e.Message + "\n\nLe jeu va tout de meme demarrer : "
+                + "l'emulateur ouvrira peut-etre son assistant de "
+                + "configuration.");
         }
 
         IntPtr job = CreerJob();
@@ -595,7 +682,9 @@ static class RetroLaunch
         string v;
         if (!p.TryGetValue(cle, out v))
             throw new Exception("Le plan de lancement n'a pas de champ « "
-                + cle + " ». Relancer « retro sync ».");
+                + cle + " ». Relancer « retro scan », qui écrit les plans "
+                + "— ce message est celui d'un plan écrit par une version "
+                + "antérieure de retro.");
         return v;
     }
 
@@ -637,7 +726,7 @@ static class RetroLaunch
             if (natif <= 0 || maxi <= 0)
                 throw new Exception(
                     "Le plan emploie {scale} sans hauteur d'origine ni échelle "
-                    + "maximale. Relancer « retro sync ».");
+                    + "maximale. Relancer « retro scan ».");
             int e = hauteur / natif;
             if (e < 1) e = 1;
             if (e > maxi) e = maxi;
