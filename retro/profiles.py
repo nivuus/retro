@@ -44,6 +44,26 @@ class System:
     render: Render | None = None
 
 
+# La phrase qu'un fichier d'amorçage porte en tête, dans la syntaxe de
+# commentaire de son propre format. Elle est EXIGÉE : une configuration écrite
+# par un outil et qui ne le dit pas est un piège pour le prochain lecteur, qui
+# la prendrait pour la sienne et chercherait longtemps pourquoi ses réglages
+# « reviennent ». C'est la même exigence que l'en-tête des plans de lancement.
+MARQUE_BOOTSTRAP = "Écrit par « retro »"
+
+
+@dataclasses.dataclass(frozen=True)
+class Bootstrap:
+    """La configuration qu'un émulateur neuf reçoit, et où elle va.
+
+    `target` est un chemin WINDOWS, variables d'environnement comprises : la
+    configuration d'un émulateur vit dans le profil de l'utilisateur Windows,
+    que la machine qui pilote `retro` n'atteint pas. Le lanceur, lui, y est.
+    """
+    target: str
+    content: str
+
+
 def folder_key(nom: str) -> str:
     """La forme sous laquelle deux noms de dossier se comparent.
 
@@ -80,6 +100,10 @@ class Profile:
     exit_native: str
     exit_fallback: str
     steam_input: str
+    # Facultatif : un émulateur qui démarre nu n'a rien à recevoir. Le profil
+    # doit alors DIRE pourquoi il n'a pas de bloc — sans quoi rien ne
+    # distingue « cet émulateur se débrouille » d'un bloc oublié.
+    bootstrap: Bootstrap | None = None
 
 
 def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
@@ -292,6 +316,45 @@ def _lire_render(path, sid, brut, launch: str) -> Render:
                   max_scale=brut.get("max_scale", 0))
 
 
+def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
+    """Le bloc [bootstrap], validé, ou None s'il n'y en a pas.
+
+    Les trois refus ci-dessous portent chacun sur une faute MUETTE : un bloc
+    à moitié écrit, un chemin qui vise un dossier au hasard, un fichier qui
+    ne dit pas d'où il vient. Aucune ne fait échouer quoi que ce soit au
+    moment où elle est commise — elles se découvrent devant une télévision,
+    sur un jeu qui n'a pas démarré.
+    """
+    if not brut:
+        return None
+    target = brut.get("target", "")
+    content = brut.get("content", "")
+    for nom, valeur in (("target", target), ("content", content)):
+        if not isinstance(valeur, str) or not valeur.strip():
+            raise ProfileError(
+                f"{path} [bootstrap] : champ '{nom}' manquant ou vide. La "
+                "moitié d'un amorçage n'amorce rien, et se lit pourtant comme "
+                "un profil complet."
+            )
+    if not (target.startswith("%")
+            or pathlib.PureWindowsPath(target).is_absolute()):
+        raise ProfileError(
+            f"{path} [bootstrap] : 'target' doit être un chemin Windows "
+            f"absolu ou commencer par une variable d'environnement — reçu "
+            f"{target!r}. Un chemin relatif s'écrirait dans le dossier de "
+            "travail de l'émulateur, et le fichier posé ne serait lu par "
+            "personne."
+        )
+    if MARQUE_BOOTSTRAP not in content:
+        raise ProfileError(
+            f"{path} [bootstrap] : 'content' ne porte pas « "
+            f"{MARQUE_BOOTSTRAP} » en commentaire. Un fichier de "
+            "configuration écrit par un outil doit dire qui l'a écrit : sans "
+            "cela, le propriétaire le prend pour le sien."
+        )
+    return Bootstrap(target=target, content=content)
+
+
 def load_profile(path: pathlib.Path) -> Profile:
     try:
         with path.open("rb") as f:
@@ -472,6 +535,7 @@ def load_profile(path: pathlib.Path) -> Profile:
         exit_native=sortie.get("native", ""),
         exit_fallback=sortie.get("fallback", "alt+f4"),
         steam_input=entree.get("steam_input", "required"),
+        bootstrap=_lire_bootstrap(path, data.get("bootstrap")),
     )
 
 

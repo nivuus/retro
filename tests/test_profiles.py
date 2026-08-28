@@ -784,3 +784,89 @@ config = 'video_shader_enable = "true"'
 args = "-y"
 """)))
     assert 'video_shader_enable' in p.systems[0].render.native.config
+
+
+# --- le bloc [bootstrap] ------------------------------------------------
+
+# `content` est déclaré avec les guillemets simples triples de TOML : la
+# chaîne LITTÉRALE, qui n'interprète aucun échappement. C'est le format à
+# employer dans les profils livrés — un fichier de configuration Windows est
+# plein d'antislashs, et une chaîne TOML de base les mangerait.
+BOOTSTRAP_VALIDE = """
+schema = 1
+id = "duckstation"
+exe = 'duckstation-qt.exe'
+[bootstrap]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+[Main]
+SetupWizardIncomplete = false
+'''
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
+
+
+def test_le_bloc_bootstrap_est_lu(tmp_path):
+    """Le contenu vit dans le profil, jamais dans le code : c'est lui que le
+    lanceur posera tel quel."""
+    profil = profiles.load_profile(ecrire(tmp_path, "duckstation.toml", BOOTSTRAP_VALIDE))
+    assert profil.bootstrap is not None
+    assert profil.bootstrap.target == (
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
+    assert "SetupWizardIncomplete = false" in profil.bootstrap.content
+
+
+def test_un_profil_sans_bootstrap_reste_valide(tmp_path):
+    """Un émulateur qui démarre nu n'a pas de bloc, et son profil doit
+    continuer de se charger."""
+    sans = BOOTSTRAP_VALIDE[:BOOTSTRAP_VALIDE.index("[bootstrap]")] + \
+        BOOTSTRAP_VALIDE[BOOTSTRAP_VALIDE.index("[[system]]"):]
+    assert profiles.load_profile(ecrire(tmp_path, "duckstation.toml", sans)).bootstrap is None
+
+
+def test_une_cible_sans_contenu_est_refusee(tmp_path):
+    """La moitié d'un amorçage n'amorce rien, et se lirait pourtant comme un
+    profil complet."""
+    texte = BOOTSTRAP_VALIDE.replace(
+        BOOTSTRAP_VALIDE[BOOTSTRAP_VALIDE.index("content ="):
+                         BOOTSTRAP_VALIDE.index("[[system]]")], "")
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
+    assert "content" in str(e.value) and "duckstation.toml" in str(e.value)
+
+
+def test_un_contenu_sans_cible_est_refuse(tmp_path):
+    """Un contenu sans cible n'a nulle part où aller."""
+    texte = BOOTSTRAP_VALIDE.replace(
+        "target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'\n", "")
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
+    assert "target" in str(e.value)
+
+
+def test_une_cible_relative_est_refusee(tmp_path):
+    """Un chemin relatif s'écrirait dans le dossier de travail de l'émulateur,
+    qui n'est pas celui de sa configuration — et le fichier posé ne serait lu
+    par personne."""
+    texte = BOOTSTRAP_VALIDE.replace(
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini",
+        "settings.ini")
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
+    assert "absolu" in str(e.value)
+
+
+def test_un_contenu_sans_marque_est_refuse(tmp_path):
+    """Une configuration écrite par un outil et qui ne le dit pas est un piège
+    pour le prochain lecteur — et pour le propriétaire qui la modifierait."""
+    texte = BOOTSTRAP_VALIDE.replace(
+        "; Écrit par « retro » au premier lancement, parce que ce fichier "
+        "était absent.\n", "")
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
+    assert profiles.MARQUE_BOOTSTRAP in str(e.value)
