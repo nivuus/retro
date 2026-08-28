@@ -328,7 +328,9 @@ dossier.
 - **Ça ne fournit aucun BIOS.** L'amorçage dit à l'émulateur où les chercher ;
   les y déposer reste au propriétaire, et `retro status --bios` dit lesquels
   manquent. Sur la machine de mesure, ce dossier est vide : Crash Team Racing
-  démarrera sur OpenBIOS tant qu'un `scph5502.bin` n'y sera pas.
+  ne démarrera pas du tout tant qu'un `scph5502.bin` n'y sera pas —
+  mesuré le 2026-08-28 : l'émulateur reconnaît le jeu, cherche un BIOS PAL,
+  n'en trouve aucun et quitte.
 - **Ça ne configure pas les manettes.** C'est le sous-projet E, qui écrira dans
   les mêmes fichiers avec une autre stratégie, par le même contrat.
 - **Ça ne rend pas le mode portable disponible.** Voir la décision plus haut :

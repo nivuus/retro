@@ -124,10 +124,14 @@ folders    = ["Playstation", "PS1", "PSX", "Playstation 1"]
 # jeu. Même raison que dans le profil RetroArch d'origine.
 extensions = [".cue", ".chd", ".pbp", ".m3u", ".ccd", ".ecm", ".mds", ".iso"]
 launch     = '-batch -nogui -fullscreen {render} "{rom}"'
-# DuckStation n'a pas de BIOS de remplacement utilisable : sans l'un de ces
-# trois fichiers il retombe sur OpenBIOS, dont la compatibilité est partielle
-# et échoue jeu par jeu — le genre de panne qu'on ne diagnostique pas depuis un
-# canapé. Un des trois suffit, celui de la région des jeux.
+# Sans l'un de ces trois fichiers, cette révision ne joue RIEN. Elle ne
+# retombe pas sur OpenBIOS — ce profil l'a affirmé et c'était faux, mesuré le
+# 2026-08-28 sur la machine, journal de l'émulateur à l'appui : il charge le
+# jeu, reconnaît « CTR - Crash Team Racing | SCES-02105 », détecte la région
+# PAL, écrit « Searching for a PAL BIOS in ... », puis éteint son thread vidéo
+# et quitte. Avec `-batch`, cela rend la main à Steam en trois secondes : vu du
+# canapé, le jeu « ne se lance pas », sans un mot. Un des trois BIOS suffit,
+# celui de la région des jeux.
 #
 # C'est ce que dit `group` : les trois portent le même, donc le rapport les
 # traite comme UN besoin — « aucun des trois n'est présent, un seul suffit »
