@@ -888,6 +888,11 @@ def test_un_identifiant_de_profil_avec_un_espace_est_refuse(tmp_path):
         profiles.load_profile(ecrire(tmp_path, "x.toml", _avec_id("duck station")))
     assert "duckstation.toml" not in str(e.value)
     assert "x.toml" in str(e.value) and "espace" in str(e.value)
+    # Et ce que la correction COÛTE : renommer un profil déjà synchronisé
+    # change la clé de système, donc les options du raccourci, donc
+    # l'identifiant Steam de chaque jeu. Obéir sans le savoir, c'est perdre
+    # ses entrées et tout son artwork.
+    assert "artwork" in str(e.value) and "Steam fermé" in str(e.value)
 
 
 def test_un_identifiant_de_profil_avec_un_point_est_refuse(tmp_path):

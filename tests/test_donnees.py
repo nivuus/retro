@@ -488,6 +488,27 @@ def test_la_source_du_lanceur_est_en_utf8_avec_bom():
     octets.decode("utf-8-sig")
 
 
+def test_le_lanceur_n_envoie_jamais_vers_retro_sync():
+    """C'est `retro scan` qui écrit les plans de lancement — `cli._cmd_scan`
+    est le seul appelant de `launcher.ecrire_plan`. Trois diagnostics du
+    lanceur disaient pourtant « relancer retro sync », dont celui qu'un
+    lanceur neuf produit sur un plan écrit par une version antérieure : le
+    propriétaire lançait `retro sync`, rien ne changeait, et le message
+    revenait à l'identique au lancement suivant.
+
+    Le contrôle porte sur TOUT le fichier, commentaires compris : la
+    correction ne tient que si personne ne réintroduit la formule.
+    """
+    from retro import launcher
+    texte = (launcher.SOURCES / launcher.SOURCE).read_text(encoding="utf-8-sig")
+    fautives = [f"ligne {n + 1} : {l.strip()}"
+                for n, l in enumerate(texte.splitlines()) if "retro sync" in l]
+    assert fautives == [], (
+        "retro-launch.cs envoie vers « retro sync » alors que c'est "
+        "« retro scan » qui écrit les plans : " + " | ".join(fautives)
+    )
+
+
 def test_chaque_profil_livre_dit_ou_en_est_son_amorcage():
     """« Un bloc absent sans explication ne se distingue pas d'un bloc
     oublié » (la conception de l'amorçage), et `retro status` renvoie

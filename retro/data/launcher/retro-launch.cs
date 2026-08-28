@@ -229,8 +229,8 @@ static class RetroLaunch
         string quand = Valeur(p, "bootstrap_when");
         if (quand != SI_ABSENT)
             throw new Exception(
-                "Le plan demande une strategie d'amorcage inconnue : « " + quand
-                + " ». Ce lanceur ne connait que « " + SI_ABSENT + " ».\n\n"
+                "Le plan demande une stratégie d'amorçage inconnue : « " + quand
+                + " ». Ce lanceur ne connaît que « " + SI_ABSENT + " ».\n\n"
                 + "Recompiler le lanceur (compiler.cmd), ou relancer "
                 + "« retro scan ».");
 
@@ -241,8 +241,8 @@ static class RetroLaunch
         string source = Valeur(p, "bootstrap_source");
         if (!File.Exists(source))
             throw new Exception(
-                "Le fichier de configuration a poser est introuvable :\n\n"
-                + source + "\n\nRelancer « retro scan » depuis l'hote.");
+                "Le fichier de configuration à poser est introuvable :\n\n"
+                + source + "\n\nRelancer « retro scan » depuis l'hôte.");
 
         // GetDirectoryName rend null pour une racine ("C:\") : tester
         // parent.Length sans ce garde leverait une NullReferenceException,
@@ -253,7 +253,7 @@ static class RetroLaunch
         string parent = Path.GetDirectoryName(cible);
         if (parent == null)
             throw new Exception(
-                "La cible d'amorcage n'a pas de dossier parent valide :\n\n"
+                "La cible d'amorçage n'a pas de dossier parent valide :\n\n"
                 + cible + "\n\nRelancer « retro scan ».");
         if (parent.Length > 0 && !Directory.Exists(parent))
             Directory.CreateDirectory(parent);
@@ -297,7 +297,7 @@ static class RetroLaunch
             if (!copiee)
                 throw new Exception(
                     "Impossible de sauvegarder " + cible + " : 1000 noms de "
-                    + "sauvegarde sont deja pris.");
+                    + "sauvegarde sont déjà pris.");
             Noter("amorcage : " + cible + " sauvegarde en " + sauvegarde);
         }
 
@@ -389,21 +389,21 @@ static class RetroLaunch
             // sauvegarde puis ecrase, indefiniment. Un journal ne se lit pas
             // depuis un canape.
             string consequence = configurationPosee
-                ? "La configuration a bien ete posee, mais elle sera reposee "
-                  + "(avec une sauvegarde de plus) a CHAQUE lancement tant que "
+                ? "La configuration a bien été posée, mais elle sera reposée "
+                  + "(avec une sauvegarde de plus) à CHAQUE lancement tant que "
                   + "« " + profil + " » restera dans " + fichier
-                  + " -- retirer cette ligne, ou supprimer ce fichier, pour "
-                  + "l'empecher."
-                : "Rien n'a ete ecrit : ce profil ne porte plus de "
-                  + "configuration a poser. L'ordre, lui, reste dans "
-                  + fichier + ", et il s'appliquera le jour ou ce profil en "
-                  + "portera une de nouveau -- retirer cette ligne, ou "
+                  + " — retirer cette ligne, ou supprimer ce fichier, pour "
+                  + "l'empêcher."
+                : "Rien n'a été écrit : ce profil ne porte plus de "
+                  + "configuration à poser. L'ordre, lui, reste dans "
+                  + fichier + ", et il s'appliquera le jour où ce profil en "
+                  + "portera une de nouveau — retirer cette ligne, ou "
                   + "supprimer ce fichier.";
             Noter("ordre de reamorcage non consomme pour " + profil + " : "
                 + e.Message + ". " + consequence);
-            AvertirEnFond("Console retro — ordre de reamorcage non consomme",
-                "L'ordre de reamorcage de « " + profil + " » n'a pas pu etre "
-                + "retire :\n\n" + e.Message + "\n\n" + consequence);
+            AvertirEnFond("Console rétro — ordre de ré-amorçage non consommé",
+                "L'ordre de ré-amorçage de « " + profil + " » n'a pas pu être "
+                + "retiré :\n\n" + e.Message + "\n\n" + consequence);
         }
     }
 
@@ -559,15 +559,50 @@ static class RetroLaunch
             // suivant allait justement sauvegarder cette cible et la
             // reecrire. Lire reamorcer.txt ne modifie rien — --explain doit
             // rester sans effet de bord.
-            bool ordre = OrdreDeReamorcage(profilCle);
-            rapport.AppendLine("amorcage_ordre="
-                + (ordre ? "en attente" : "aucun"));
+            //
+            // La lecture est RATTRAPEE ICI, et nulle part ailleurs. Ce
+            // fichier est ecrit par l'hote a travers un partage reseau : il
+            // peut etre verrouille ou illisible au moment ou on le lit. Une
+            // exception remonterait a Main(), qui appelle Echouer(), qui
+            // affiche une MessageBoxW SYNCHRONE sur le fil principal — or
+            // --explain est appele par WinRM, en session 0, ou personne ne
+            // peut cliquer : l'appel pendrait jusqu'a son delai
+            // d'expiration, et c'est justement le canal par lequel ce
+            // lanceur se verifie a distance. Sur le chemin de LANCEMENT, au
+            // contraire, la meme exception doit rester bruyante : le jeu
+            // demarre quand meme et la boite s'affiche en arriere-plan,
+            // devant quelqu'un qui peut la lire.
+            //
+            // Et on le DIT : repondre « aucun » sans avoir pu lire mentirait
+            // par omission sur le point meme qu'on vient d'ajouter. Le
+            // message de l'exception est mis a plat, une ligne du rapport
+            // etant un « cle=valeur » que l'hote decoupe ligne a ligne.
+            bool ordre = false;
+            string ordreIllisible = "";
+            try
+            {
+                ordre = OrdreDeReamorcage(profilCle);
+            }
+            catch (Exception e)
+            {
+                ordreIllisible = e.Message.Replace("\r", " ").Replace("\n", " ");
+            }
+            if (ordreIllisible.Length > 0)
+                rapport.AppendLine("amorcage_ordre=illisible : " + ordreIllisible);
+            else
+                rapport.AppendLine("amorcage_ordre="
+                    + (ordre ? "en attente" : "aucun"));
             string aPoser;
             if (cibleAmorcage.Length == 0)
                 aPoser = ordre
                     ? "rien (ordre sans objet : il sera retire au prochain "
                       + "lancement)"
                     : "rien";
+            else if (ordreIllisible.Length > 0)
+                // Ni « oui » ni « non » : avec un ordre qu'on n'a pas pu
+                // lire, on ne sait pas si la cible sera reecrite. Trancher
+                // ici rendrait faux le seul controle a distance.
+                aPoser = "inconnu (l'ordre de reamorcage n'a pas pu etre lu)";
             else if (ordre)
                 aPoser = "oui (ordre de reamorcage : la cible sera sauvegardee "
                     + "puis reecrite)";
@@ -598,9 +633,9 @@ static class RetroLaunch
             // Le journal garde la trace complete, synchrone, AVANT tout le
             // reste : meme si la boite ne s'affiche jamais, rien n'est perdu.
             Noter("ECHEC de l'amorcage : " + e.Message);
-            AvertirEnFond("Console retro — configuration non posee",
-                e.Message + "\n\nLe jeu va tout de meme demarrer : "
-                + "l'emulateur ouvrira peut-etre son assistant de "
+            AvertirEnFond("Console rétro — configuration non posée",
+                e.Message + "\n\nLe jeu va tout de même démarrer : "
+                + "l'émulateur ouvrira peut-être son assistant de "
                 + "configuration.");
         }
 

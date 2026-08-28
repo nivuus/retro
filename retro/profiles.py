@@ -392,7 +392,13 @@ def _valider_id(path: pathlib.Path, pid) -> None:
         "« <profil>.<système> » au premier point. Un espace y ferait deux "
         "ordres qui ne désignent rien, un point désignerait un autre profil, "
         "et « .bootstrap » rendrait le profil non ré-amorçable — trois pannes "
-        "qui ne se voient que devant la télévision."
+        "qui ne se voient que devant la télévision.\n"
+        "Renommer un profil DÉJÀ synchronisé n'est pas gratuit : l'identifiant "
+        "entre dans la clé de système que porte le raccourci Steam, donc dans "
+        "ses options de lancement, dont dérive l'identifiant de l'entrée. Les "
+        "jeux de cet émulateur seront recréés sous une nouvelle identité et "
+        "leur artwork retéléchargé — le faire Steam fermé, puis relancer "
+        "« retro scan » et « retro sync »."
     )
 
 
