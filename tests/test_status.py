@@ -468,3 +468,26 @@ def test_le_resume_de_l_auto_groupe_par_mode():
 def test_le_resume_d_un_auto_uniforme_est_court():
     assert status._resume_auto((("modeste", "full"), ("moyenne", "full"),
                                 ("solide", "full"))) == "full sur toute machine"
+
+
+def test_les_jeux_dont_steam_input_reste_actif_sont_un_probleme():
+    """Steam Input masque la manette à l'émulateur : ces jeux sont muets, et
+    rien d'autre ne le dit — ni l'émulateur, ni Steam, ni aucun journal."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/bios"),
+        steam_input_muets=["Un jeu", "Un autre"],
+    )
+    probleme = [p for p in rapport.problems if "Steam Input" in p.what]
+    assert len(probleme) == 1
+    assert probleme[0].details == ("Un jeu", "Un autre")
+    assert "retro sync" in probleme[0].action
+
+
+def test_sans_jeu_muet_aucun_probleme_de_steam_input():
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/bios"),
+        steam_input_muets=[],
+    )
+    assert [p for p in rapport.problems if "Steam Input" in p.what] == []

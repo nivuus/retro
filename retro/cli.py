@@ -11,7 +11,7 @@ from retro import launcher as launcher_mod
 from retro import render as render_mod
 from retro import bios, install as install_mod
 from retro import manifest, profiles, scan, status
-from retro.steam import accounts, artwork, entry, sync, writer
+from retro.steam import accounts, artwork, entry, steam_input, sync, vdf_io, writer
 
 DEFAULT_STEAM_ROOT = "D:\\Steam"
 DEFAULT_EMULATION_ROOT = "D:\\Emulation"
@@ -434,6 +434,30 @@ def _cmd_status(args) -> int:
             pathlib.Path(args.emulation_root),
         )
         etat_bios = bios.check_bios(profils, pathlib.Path(args.bios))
+
+        # Steam Input, et seulement si la racine Steam est donnée. Un rapport
+        # qui l'exigerait ne se rendrait plus du tout sur une machine où l'on
+        # veut juste voir ce qui manque comme BIOS — or c'est justement là
+        # qu'on le consulte, loin de la console.
+        #
+        # La source est shortcuts.vdf, pas l'inventaire : ce qui compte est ce
+        # que Steam a RÉELLEMENT dans sa bibliothèque, et le réglage porte sur
+        # l'appid d'un raccourci existant. Un jeu scanné mais jamais
+        # synchronisé n'a pas encore de manette à régler.
+        muets, echec_steam_input = [], ""
+        if getattr(args, "steam_root", None):
+            try:
+                for compte in accounts.discover_accounts(
+                        pathlib.Path(args.steam_root)):
+                    notres = [r for r in vdf_io.load_shortcuts(compte.shortcuts_path)
+                              if entry.is_owned(r, args.emulation_root)]
+                    muets += steam_input.jeux_actifs(compte.localconfig_path, notres)
+            except (accounts.NoSteamAccountError, steam_input.LocalConfigError,
+                    vdf_io.ShortcutsError) as exc:
+                # Signalé, jamais fatal : `status` est une consultation, et
+                # tout le reste du rapport garde sa valeur.
+                echec_steam_input = str(exc)
+
         rapport = status.build_report(
             install_dirs=install_dirs,
             emulation_root=pathlib.Path(args.emulation_root),
@@ -453,6 +477,8 @@ def _cmd_status(args) -> int:
             profils=profils,
             render_mode=launcher_mod.lire_mode(
                 pathlib.Path(args.emulation_root)),
+            steam_input_muets=muets,
+            steam_input_echec=echec_steam_input,
         )
         texte = status.format_report(rapport)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
@@ -620,6 +646,11 @@ def _build_parser() -> argparse.ArgumentParser:
     st.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     st.add_argument("--user-manifest", default=None)
     st.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
+    st.add_argument("--steam-root", default=None,
+                   help="racine Steam, pour dire quels jeux ont encore Steam "
+                        "Input actif — leur manette reste muette dans "
+                        "l'émulateur. Facultatif : sans elle, le rapport se "
+                        "rend comme avant, sans cette section.")
     st.add_argument("--bios", required=True,
                     help="dossier où le propriétaire dépose ses BIOS")
     st.set_defaults(func=_cmd_status)

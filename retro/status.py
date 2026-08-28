@@ -333,6 +333,40 @@ def _probleme_sans_modes(etats: list[SystemRender]) -> list[Problem]:
     )]
 
 
+def _probleme_steam_input(muets: Sequence[str], echec: str = "") -> list[Problem]:
+    """Un seul problème groupé, comme pour les modes de rendu.
+
+    Steam Input masque la manette au jeu qu'il lance — mesuré sur la console
+    le 2026-08-28 — et il se désactive jeu par jeu. Un jeu oublié est un jeu
+    dont la manette ne répond pas, sans qu'aucun journal, ni celui de Steam ni
+    celui de l'émulateur, n'en dise un mot. C'est la panne la plus coûteuse de
+    cette console : elle se constate le pad en main, devant la télévision.
+    """
+    if echec:
+        # Ne pas pouvoir vérifier n'est pas « tout va bien ». Se taire ici
+        # laisserait croire que les manettes sont réglées alors que rien n'a
+        # été lu — le rapport mentirait par omission sur le seul point qui se
+        # constate le pad en main.
+        return [Problem(
+            what="Steam Input n'a pas pu être vérifié : des manettes peuvent "
+                 "rester muettes sans que rien ne le signale",
+            where="userdata/<compte>/config/localconfig.vdf",
+            action="vérifier le chemin donné à --steam-root, puis lancer "
+                   "`retro sync` Steam fermé",
+            details=(echec,),
+        )]
+    if not muets:
+        return []
+    return [Problem(
+        what=f"{len(muets)} jeu(x) ont encore Steam Input actif : leur manette "
+             "restera muette dans l'émulateur",
+        where="userdata/<compte>/config/localconfig.vdf",
+        action="lancer `retro sync` Steam fermé — il éteint Steam Input sur "
+               "les jeux qu'il écrit",
+        details=tuple(muets),
+    )]
+
+
 def build_report(
     install_dirs: dict[str, str],
     emulation_root: pathlib.Path,
@@ -343,6 +377,8 @@ def build_report(
     emulator_exes: dict[str, str] | None = None,
     profils: dict | None = None,
     render_mode: str = "",
+    steam_input_muets: Sequence[str] = (),
+    steam_input_echec: str = "",
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -358,6 +394,11 @@ def build_report(
     `scan` le lit, plutôt que de le déduire — les deux commandes se
     contredisaient sur les émulateurs dont le propriétaire n'a aucun jeu.
 
+    `steam_input_muets` porte les titres dont Steam Input est resté actif.
+    Facultatif : il faut la racine Steam pour le savoir, et `retro status` ne
+    l'exige pas — un rapport qui deviendrait impossible sans Steam ne se
+    rendrait plus du tout sur une machine où l'on veut juste voir les BIOS.
+
     `bios_root` n'est pas décoratif : c'est le dossier que le propriétaire a
     donné à `--bios`, et le seul endroit où il puisse déposer ce qui manque.
     Sans lui, le rapport nommait un fichier sans jamais dire où le mettre.
@@ -371,7 +412,8 @@ def build_report(
         bios=list(bios_status),
         problems=[*problemes_emulateurs,
                   *_problemes_bios(bios_status, bios_root),
-                  *_probleme_sans_modes(rendu)],
+                  *_probleme_sans_modes(rendu),
+                  *_probleme_steam_input(steam_input_muets, steam_input_echec)],
         bios_root=bios_root,
         render_mode=render_mode,
         render=rendu,

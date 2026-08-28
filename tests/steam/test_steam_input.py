@@ -102,3 +102,28 @@ def test_une_racine_inattendue_est_une_erreur_nommee(tmp_path):
     autre.write_text('"AutreChose"\n{\n\t"apps"\n\t{\n\t}\n}\n', encoding="utf-8")
     with pytest.raises(steam_input.LocalConfigError, match="UserLocalConfigStore"):
         steam_input.etats(autre)
+
+
+# --- Ce que `retro status` a besoin de savoir --------------------------------
+
+def _raccourci(appid, titre):
+    return {"appid": appid, "appname": titre}
+
+
+def test_nomme_les_jeux_dont_steam_input_reste_actif(local):
+    """Un appid ne se lit pas depuis un canapé : le rapport doit dire des noms."""
+    assert steam_input.jeux_actifs(local, [
+        _raccourci(DEJA_DESACTIVE, "Réglé"),
+        _raccourci(ACTIF, "Muet"),
+        _raccourci(ABSENT_DU_FICHIER, "Jamais vu"),
+    ]) == ["Muet", "Jamais vu"]
+
+
+def test_aucun_jeu_actif_rend_une_liste_vide(local):
+    assert steam_input.jeux_actifs(local, [_raccourci(DEJA_DESACTIVE, "Réglé")]) == []
+
+
+def test_conserve_l_ordre_des_raccourcis(local):
+    """L'ordre du rapport est celui de la bibliothèque, pas celui d'un set."""
+    donnes = [_raccourci(-10, "C"), _raccourci(-11, "A"), _raccourci(-12, "B")]
+    assert steam_input.jeux_actifs(local, donnes) == ["C", "A", "B"]

@@ -527,3 +527,76 @@ def test_scan_partiel_ne_tait_pas_les_dossiers_ignores(tmp_path, capsys):
 def test_scan_racine_sans_aucun_dossier_le_dit(tmp_path, capsys):
     assert _scan_sur(tmp_path, []) == 0
     assert "vide" in capsys.readouterr().out
+
+
+# --- Steam Input dans le rapport --------------------------------------------
+
+def _compte_steam(tmp_path, raccourcis, localconfig=None):
+    """Un compte Steam local, avec ses raccourcis et ses réglages."""
+    config = tmp_path / "steam" / "userdata" / "123" / "config"
+    config.mkdir(parents=True)
+    (config / "shortcuts.vdf").write_bytes(vdf_io.dumps_shortcuts(raccourcis))
+    if localconfig is not None:
+        (config / "localconfig.vdf").write_text(localconfig, encoding="utf-8")
+    return tmp_path / "steam"
+
+
+def _entree_retro(appid, titre):
+    return {
+        "appid": appid, "appname": titre,
+        "exe": '"D:\\Emulation\\_launcher\\retro-launch.exe"',
+        "StartDir": '"D:\\Emulation\\_launcher"', "icon": "",
+        "ShortcutPath": "", "LaunchOptions": "r.snes \"G:\\x.sfc\"",
+        "IsHidden": 0, "AllowDesktopConfig": 1, "AllowOverlay": 1, "OpenVR": 0,
+        "Devkit": 0, "DevkitGameID": "", "DevkitOverrideAppID": 0,
+        "LastPlayTime": 0, "tags": {"0": "Rétro"},
+    }
+
+
+LOCALCONFIG_TOUT_ACTIF = '"UserLocalConfigStore"\n{\n\t"apps"\n\t{\n\t}\n}\n'
+
+
+def _status(tmp_path, steam_root=None):
+    roms = tmp_path / "ROMs"
+    roms.mkdir(exist_ok=True)
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir(exist_ok=True)
+    argv = ["status", "--roms", str(roms), "--profiles", str(_profil_minimal(tmp_path)),
+            "--emulation-root", "D:\\Emulation", "--bios", str(bios_dir)]
+    if steam_root is not None:
+        argv += ["--steam-root", str(steam_root)]
+    return cli.main(argv)
+
+
+def test_status_signale_les_jeux_dont_steam_input_est_actif(tmp_path, capsys):
+    """Sans cela, une manette muette ne se découvre que le pad en main."""
+    racine = _compte_steam(tmp_path, [_entree_retro(-77, "Muet")],
+                           LOCALCONFIG_TOUT_ACTIF)
+    assert _status(tmp_path, racine) == 0
+    sortie = capsys.readouterr().out
+    assert "Steam Input" in sortie and "Muet" in sortie
+
+
+def test_status_ignore_les_jeux_qui_ne_sont_pas_de_retro(tmp_path, capsys):
+    """localconfig.vdf porte les réglages du propriétaire : ses jeux à lui
+    n'ont pas à être reprochés par un rapport qui parle d'émulation."""
+    etranger = dict(_entree_retro(-88, "Jeu perso"),
+                    exe='"C:\\Jeux\\perso.exe"', tags={"0": "Favoris"})
+    racine = _compte_steam(tmp_path, [etranger], LOCALCONFIG_TOUT_ACTIF)
+    assert _status(tmp_path, racine) == 0
+    assert "Jeu perso" not in capsys.readouterr().out
+
+
+def test_status_sans_steam_root_ne_parle_pas_de_steam_input(tmp_path, capsys):
+    """L'option est facultative : un rapport doit rester rendable sans Steam."""
+    assert _status(tmp_path) == 0
+    assert "Steam Input" not in capsys.readouterr().out
+
+
+def test_status_dit_ce_qui_l_empeche_de_verifier_steam_input(tmp_path, capsys):
+    """localconfig.vdf absent : le rapport le dit plutôt que de se taire, et
+    il rend quand même tout le reste — c'est une consultation."""
+    racine = _compte_steam(tmp_path, [_entree_retro(-77, "Muet")])  # sans localconfig
+    assert _status(tmp_path, racine) == 0
+    sortie = capsys.readouterr().out
+    assert "localconfig.vdf" in sortie

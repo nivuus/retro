@@ -139,3 +139,18 @@ def desactiver(path: pathlib.Path, appids: Iterable[int]) -> pathlib.Path | None
     temporaire.write_text(rendu, encoding="utf-8")
     os.replace(temporaire, path)  # atomique sur Windows comme sur POSIX
     return sauvegarde
+
+
+def jeux_actifs(path: pathlib.Path, raccourcis: Iterable[dict]) -> list[str]:
+    """Les TITRES, parmi ces raccourcis, dont Steam Input est encore actif.
+
+    Le rapport se lit depuis un canapé : un appid signé n'y apprend rien à
+    personne, un nom de jeu si. L'ordre reçu est conservé — c'est celui de la
+    bibliothèque, et un rapport qui réordonne fait chercher deux fois.
+
+    Le filtrage des entrées qui appartiennent à `retro` reste à l'appelant :
+    ce module ne connaît pas la racine d'émulation, et n'a pas à la connaître.
+    """
+    par_appid = {r["appid"]: r["appname"] for r in raccourcis}
+    muets = set(actifs(path, par_appid))
+    return [titre for appid, titre in par_appid.items() if appid in muets]
