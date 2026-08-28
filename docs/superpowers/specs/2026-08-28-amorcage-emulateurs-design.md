@@ -112,7 +112,7 @@ tâche 3 du sous-projet E.
 # partout ailleurs dans ce dépôt.
 target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
 content = """
-; Écrit par « retro scan ». Ce fichier n'est posé que s'il est absent.
+; Écrit par « retro ». Ce fichier n'est posé que s'il est absent.
 [Main]
 SetupWizardIncomplete = false
 """

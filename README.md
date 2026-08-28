@@ -20,7 +20,13 @@ vous voulez :
   chaque jeu : il mesure la session au moment du clic, compose la ligne de
   commande de l'émulateur, et le lance **sans fenêtre de console**. Sa source
   est versionnée (`retro/data/launcher/`) et se compile avec le `csc.exe` que
-  tout Windows porte — aucun binaire n'est livré tout fait.
+  tout Windows porte — aucun binaire n'est livré tout fait. C'est lui, aussi,
+  qui pose la configuration d'un émulateur qui n'en a aucune : sans elle,
+  certains ouvrent leur assistant de première configuration au lieu du jeu.
+  `retro launcher --reamorcer <profil>` n'écrit rien lui-même — il ne le peut
+  pas, cette configuration vit dans le profil Windows de la console — mais
+  laisse un **ordre** que le lanceur exécutera **une fois**, au prochain jeu de
+  cet émulateur : sauvegarde de l'existant, puis réécriture.
 - **`retro scan`** parcourt votre disque de ROMs et écrit l'inventaire JSON,
   ainsi que le plan de lancement que lit le lanceur.
   Ce sont les profils (`retro/data/profiles/*.toml`) qui disent quel dossier
@@ -78,6 +84,10 @@ nom du système.
   vos ROMs et vos BIOS. `retro install` ne redistribue pas les émulateurs non
   plus : il télécharge chacun depuis le site de son propre projet, à l'URL et
   sous l'empreinte que porte le manifeste.
+- **Ça ne retouche jamais la configuration d'un émulateur.** Ni fusion, ni clé
+  ajoutée, ni valeur corrigée : le fichier n'est posé que s'il est **absent**.
+  Un émulateur que vous avez réglé vous appartient. Le seul chemin qui écrase
+  est `retro launcher --reamorcer`, et il sauvegarde d'abord.
 - **Ça n'arrête pas Steam.** `retro sync` refuse de s'exécuter tant que Steam
   tourne — il réécrirait le fichier à sa fermeture et le travail serait perdu,
   sans le moindre message. Fermez Steam d'abord.
@@ -321,6 +331,27 @@ bibliothèque Steam de quelqu'un. Quatre protections :
   l'inventaire**, parce qu'alors le paquet ne reconnaît plus ses propres
   entrées et recrée les mêmes raccourcis à chaque passage en rapportant des
   ajouts réussis.
+
+`shortcuts.vdf` n'est plus le seul fichier écrit hors de la racine
+d'émulation. Pour qu'un émulateur fraîchement installé lance un jeu plutôt que
+son assistant de première configuration, le **lanceur** pose sa configuration
+là où cet émulateur la lit — dans le profil Windows du propriétaire
+(`%USERPROFILE%\Documents\...`), le seul endroit qui survive à une mise à
+jour. Trois règles l'encadrent, et ce sont les mêmes que ci-dessus :
+
+- **seulement si le fichier est absent.** Une configuration existante n'est ni
+  lue, ni fusionnée, ni corrigée ;
+- **le seul chemin qui écrase est un ordre explicite** — `retro launcher
+  --reamorcer <profil>` — et il **sauvegarde** l'existant en
+  `<nom>.bak-<horodatage>` avant de réécrire, puis ne vaut qu'une fois ;
+- **écriture atomique**, comme celle de `shortcuts.vdf` : une écriture
+  interrompue ne laisse pas une configuration à moitié posée — qui, elle, ne
+  serait plus jamais réparée, puisqu'elle *existerait*.
+
+C'est le lanceur qui écrit, sur la console, parce que `retro` tourne depuis un
+hôte qui n'atteint ni `C:\Users` ni `%APPDATA%`. Ce qu'il pose vient du profil
+de l'émulateur, et `retro status` dit, par émulateur, ce qui a été posé, quand
+et où.
 
 ## Développement
 
