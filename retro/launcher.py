@@ -158,6 +158,58 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
     return "\n".join(lignes) + "\n"
 
 
+REAMORCER = "reamorcer.txt"
+
+
+class AmorcageError(RuntimeError):
+    """L'ordre n'a pas été écrit, et le propriétaire sait pourquoi."""
+
+
+def profils_amorcables(emulation_root_local) -> list[str]:
+    """Les profils dont un amorçage est DÉPOSÉ, lus sur le disque.
+
+    Lire le dossier plutôt que recharger les profils : c'est l'état réel de
+    la console qui décide, et un profil dont l'amorçage n'a pas encore été
+    déposé par « retro scan » ne peut pas être ré-amorcé — l'ordre serait
+    donné pour un fichier que le lanceur ne trouverait pas.
+    """
+    dossier = local_dir(emulation_root_local) / PLAN
+    try:
+        noms = [p.name for p in dossier.iterdir() if p.is_file()]
+    except OSError:
+        return []
+    marque = f".{BOOTSTRAP}"
+    return sorted({n[:n.index(marque)] for n in noms if marque in n})
+
+
+def ordonner_reamorcage(emulation_root_local, profile_id: str) -> pathlib.Path:
+    """Demande au lanceur de reposer l'amorçage de ce profil, une fois.
+
+    L'ordre, et pas l'écriture : la configuration d'un émulateur vit dans le
+    profil de l'utilisateur Windows, que la machine qui pilote n'atteint pas.
+    Le lanceur sauvegardera l'existant avant de le remplacer, puis consommera
+    la ligne — un ordre ne vaut qu'un passage.
+    """
+    connus = profils_amorcables(emulation_root_local)
+    if profile_id not in connus:
+        raise AmorcageError(
+            f"« {profile_id} » n'a pas d'amorçage déposé. "
+            + (f"Profils amorçables : {', '.join(connus)}." if connus else
+               "Aucun profil n'en a : lancer « retro scan » d'abord.")
+        )
+    dossier = local_dir(emulation_root_local)
+    dossier.mkdir(parents=True, exist_ok=True)
+    fichier = dossier / REAMORCER
+    try:
+        deja = fichier.read_text(encoding="utf-8").split()
+    except OSError:
+        deja = []
+    if profile_id not in deja:
+        deja.append(profile_id)
+    fichier.write_text("\n".join(deja) + "\n", encoding="utf-8")
+    return fichier
+
+
 def local_dir(emulation_root_local) -> pathlib.Path:
     """Le dossier du lanceur, sur CE disque."""
     return pathlib.Path(emulation_root_local) / DIR

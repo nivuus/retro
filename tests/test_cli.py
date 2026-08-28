@@ -7,6 +7,24 @@ import sys
 from retro import cli
 from retro.steam import appid, entry, vdf_io
 
+PROFIL_AMORCE_CLI = """
+schema = 1
+id = "duckstation"
+exe = 'duckstation-qt.exe'
+[bootstrap]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+[Main]
+SetupWizardIncomplete = false
+'''
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
+
 
 def test_sync_sans_inventaire_echoue_proprement(tmp_path, capsys):
     code = cli.main(["sync", "--steam-root", str(tmp_path),
@@ -600,3 +618,28 @@ def test_status_dit_ce_qui_l_empeche_de_verifier_steam_input(tmp_path, capsys):
     assert _status(tmp_path, racine) == 0
     sortie = capsys.readouterr().out
     assert "localconfig.vdf" in sortie
+
+
+# --- retro launcher --reamorcer ---------------------------------------------
+
+def test_launcher_reamorcer(tmp_path, capsys):
+    """Le geste est disponible depuis la ligne de commande, et il nomme le
+    fichier écrit — sans quoi rien ne dit que l'ordre est parti."""
+    from retro import launcher, profiles
+    profil = tmp_path / "duckstation.toml"
+    profil.write_text(PROFIL_AMORCE_CLI, encoding="utf-8")
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation",
+                         {"duckstation": profiles.load_profile(profil)},
+                         {"duckstation": "DS"})
+    code = cli.main(["launcher", "--emulation-root-local", str(tmp_path),
+                     "--reamorcer", "duckstation"])
+    assert code == 0
+    assert "duckstation" in capsys.readouterr().out
+
+
+def test_launcher_reamorcer_un_inconnu_echoue(tmp_path, capsys):
+    """Un profil mal orthographié doit s'entendre dire, pas se taire."""
+    code = cli.main(["launcher", "--emulation-root-local", str(tmp_path),
+                     "--reamorcer", "duckstaton"])
+    assert code == 2
+    assert "duckstaton" in capsys.readouterr().err

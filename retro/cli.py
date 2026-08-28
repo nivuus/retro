@@ -504,6 +504,18 @@ def _cmd_launcher(args) -> int:
     confiance à un exécutable qu'on ne peut pas relire.
     """
     racine = pathlib.Path(args.emulation_root_local)
+    # Le ré-amorçage est un geste à part : il ne redépose pas la source du
+    # lanceur, et il ne dépend pas de sa compilation.
+    if args.reamorcer:
+        try:
+            fichier = launcher_mod.ordonner_reamorcage(racine, args.reamorcer)
+        except (launcher_mod.AmorcageError, OSError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(f"ré-amorçage demandé pour « {args.reamorcer} » : {fichier}\n"
+              "Il sera posé au prochain lancement d'un jeu de cet émulateur, "
+              "après sauvegarde de sa configuration actuelle.")
+        return 0
     try:
         deposes = launcher_mod.deposer_source(racine)
     except OSError as exc:
@@ -623,6 +635,11 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="la racine telle que la CONSOLE la verra")
     lan.add_argument("--emulation-root-local", required=True,
                      help="le chemin par lequel CETTE machine y accède")
+    lan.add_argument("--reamorcer", metavar="PROFIL", default=None,
+                     help="reposer la configuration de cet émulateur au "
+                          "prochain lancement, en sauvegardant l'actuelle. "
+                          "Sans cette option, une configuration existante "
+                          "n'est jamais touchée.")
     lan.set_defaults(func=_cmd_launcher)
 
     ren = sous.add_parser(

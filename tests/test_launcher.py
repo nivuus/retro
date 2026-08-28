@@ -335,3 +335,35 @@ def test_un_amorcage_perime_est_retire(tmp_path, profils_amorces):
                          {"duckstation": "DS"})
     assert not (dossier / "ancien.bootstrap.toml").exists()
     assert (dossier / "duckstation.bootstrap.ini").exists()
+
+
+# --- l'ordre de ré-amorçage ----------------------------------------------
+
+def test_l_ordre_de_reamorcage_est_ecrit(tmp_path, profils_amorces):
+    """« retro » n'atteint pas C:\\Users : forcer n'est pas une écriture, c'est
+    un ordre que le lanceur exécutera là où il est."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    fichier = launcher.ordonner_reamorcage(tmp_path, "duckstation")
+    assert fichier.read_text(encoding="utf-8").split() == ["duckstation"]
+
+
+def test_un_ordre_ne_s_ecrit_pas_deux_fois(tmp_path, profils_amorces):
+    """Deux ordres pour le même profil feraient deux sauvegardes et une
+    réécriture de plus, sans rien apporter."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    launcher.ordonner_reamorcage(tmp_path, "duckstation")
+    fichier = launcher.ordonner_reamorcage(tmp_path, "duckstation")
+    assert fichier.read_text(encoding="utf-8").split() == ["duckstation"]
+
+
+def test_reamorcer_un_profil_inconnu_est_refuse(tmp_path, profils_amorces):
+    """Un ordre qui nomme un profil sans amorçage ne serait jamais consommé :
+    il resterait dans le fichier, et le propriétaire attendrait un effet qui
+    ne vient pas."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    with pytest.raises(launcher.AmorcageError) as e:
+        launcher.ordonner_reamorcage(tmp_path, "pcsx2")
+    assert "duckstation" in str(e.value)
