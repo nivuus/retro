@@ -38,6 +38,7 @@ import re
 from collections.abc import Sequence
 
 from retro import install as install_mod
+from retro import launcher as launcher_mod
 from retro import render as render_mod
 from retro.bios import BiosNeed, SystemBios
 from retro.scan import IgnoredSystem
@@ -368,6 +369,27 @@ def _probleme_sans_modes(etats: list[SystemRender]) -> list[Problem]:
     )]
 
 
+def _probleme_lanceur_perime(perime: bool) -> list[Problem]:
+    """Le binaire en place est plus vieux que la source déposée à côté.
+
+    Un lanceur compilé avant une évolution du plan ignore EN SILENCE les
+    lignes qu'il ne connaît pas : rien n'échoue, rien n'est posé, et ce
+    rapport annoncerait « pas encore amorcé » après cinquante lancements. La
+    section Amorçage, seule, enverrait alors chercher la panne du mauvais
+    côté — c'est ici, et pas dans le profil, qu'elle se corrige.
+    """
+    if not perime:
+        return []
+    return [Problem(
+        what="le lanceur en place est plus ancien que sa source : il ignore "
+             "en silence ce que les plans portent de nouveau (l'amorçage des "
+             "émulateurs, notamment) — aucune erreur ne le signale",
+        where=f"{launcher_mod.DIR}\\{launcher_mod.EXE}",
+        action=f"le recompiler depuis Windows : {launcher_mod.DIR}\\"
+               f"{launcher_mod.RECOMPILER}",
+    )]
+
+
 def _probleme_steam_input(muets: Sequence[str], echec: str = "") -> list[Problem]:
     """Un seul problème groupé, comme pour les modes de rendu.
 
@@ -415,6 +437,7 @@ def build_report(
     steam_input_muets: Sequence[str] = (),
     steam_input_echec: str = "",
     amorcages: dict[str, tuple[str, str]] | None = None,
+    lanceur_perime: bool = False,
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -439,6 +462,12 @@ def build_report(
     donné à `--bios`, et le seul endroit où il puisse déposer ce qui manque.
     Sans lui, le rapport nommait un fichier sans jamais dire où le mettre.
 
+    `lanceur_perime` dit que le binaire en place est plus ancien que la
+    source déposée à côté de lui. Un lanceur d'avant ignore en silence ce que
+    les plans portent de nouveau : le rapport le dit, sans quoi la section
+    Amorçage ci-dessous accuserait les profils d'une panne qui n'est pas la
+    leur.
+
     `amorcages` est le témoin que le lanceur écrit sur la machine — profil →
     (date, cible). `retro status` tourne sur l'hôte, qui n'atteint ni
     `C:\\Users` ni `%APPDATA%` de la console : c'est la seule trace dont il
@@ -454,7 +483,8 @@ def build_report(
         problems=[*problemes_emulateurs,
                   *_problemes_bios(bios_status, bios_root),
                   *_probleme_sans_modes(rendu),
-                  *_probleme_steam_input(steam_input_muets, steam_input_echec)],
+                  *_probleme_steam_input(steam_input_muets, steam_input_echec),
+                  *_probleme_lanceur_perime(lanceur_perime)],
         bios_root=bios_root,
         render_mode=render_mode,
         render=rendu,
@@ -609,9 +639,14 @@ def format_report(report: Report) -> str:
         else "Rendu",
         _lignes_rendu(report), "aucun système chargé")
 
-    if report.amorcages:
-        sections += _section(
-            "Amorçage", _lignes_amorcage(report), "aucun profil chargé")
+    # INCONDITIONNELLE, comme BIOS et Rendu : une section qui disparaît se lit
+    # comme une panne d'affichage, et le repli est la seule chose qui
+    # distingue « rien à dire » de « rien n'a été lu ». Il est atteignable —
+    # `build_report` rend une liste vide dès qu'on ne lui passe pas de
+    # profils, ce que fait tout appelant qui n'a pas pu les charger.
+    sections += _section(
+        "Amorçage", _lignes_amorcage(report),
+        "aucun profil chargé : l'amorçage se lit profil par profil")
 
     nb = len(report.problems)
     # 0 et 1 prennent le singulier en français : « Problème (1) », pas

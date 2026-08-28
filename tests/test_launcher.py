@@ -386,3 +386,62 @@ def test_le_temoin_d_amorcage_est_relu(tmp_path):
 def test_un_temoin_absent_ne_fait_pas_echouer(tmp_path):
     """Aucun jeu n'a encore été lancé : c'est un état normal, pas une panne."""
     assert launcher.lire_amorcages(tmp_path) == {}
+
+
+# --- un lanceur périmé rend toute la fonctionnalité inerte -----------------
+
+def test_un_lanceur_plus_vieux_que_sa_source_est_perime(tmp_path):
+    """Le binaire est LÀ, `est_installe` dit oui, et pourtant il ignore en
+    silence les lignes de plan qu'il ne connaît pas : ni erreur, ni amorçage.
+    C'est l'état du jour même de la livraison."""
+    import os
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    os.utime(dossier / launcher.EXE, (1_000_000, 1_000_000))
+    (dossier / launcher.SOURCE).write_text("// neuf", encoding="utf-8")
+    os.utime(dossier / launcher.SOURCE, (2_000_000, 2_000_000))
+    assert launcher.est_installe(tmp_path)
+    assert launcher.lanceur_perime(tmp_path)
+
+
+def test_un_lanceur_recompile_n_est_plus_perime(tmp_path):
+    """Le constat doit s'éteindre tout seul après `compiler.cmd`, sinon
+    personne ne le lira plus."""
+    import os
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.SOURCE).write_text("// neuf", encoding="utf-8")
+    os.utime(dossier / launcher.SOURCE, (1_000_000, 1_000_000))
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    os.utime(dossier / launcher.EXE, (2_000_000, 2_000_000))
+    assert not launcher.lanceur_perime(tmp_path)
+
+
+def test_redeposer_la_source_ne_perime_pas_un_lanceur_a_jour(tmp_path):
+    """`deposer_source` copie la source AVEC sa date : sans cela, chaque
+    dépôt réestampillait la source à l'instant présent et déclarait périmé un
+    lanceur qu'on venait de recompiler — un avertissement qui crie à tort est
+    un avertissement qu'on cesse de lire."""
+    import os
+    launcher.deposer_source(tmp_path)
+    dossier = tmp_path / launcher.DIR
+    # La source livrée avec le paquet, et un binaire compilé une seconde après
+    # elle : ce lanceur est à jour, définitivement.
+    livree = (launcher.SOURCES / launcher.SOURCE).stat().st_mtime
+    assert (dossier / launcher.SOURCE).stat().st_mtime == livree, (
+        "la source déposée doit garder la date de celle du paquet")
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    os.utime(dossier / launcher.EXE, (livree + 1, livree + 1))
+    launcher.deposer_source(tmp_path)   # un second passage, plus tard
+    assert not launcher.lanceur_perime(tmp_path)
+
+
+def test_un_lanceur_sans_source_deposee_n_est_pas_dit_perime(tmp_path):
+    """Sans source à côté, il n'y a rien à comparer : `est_installe` dit déjà
+    l'absence du binaire, et inventer une péremption ferait réclamer une
+    recompilation que rien ne motive."""
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    assert not launcher.lanceur_perime(tmp_path)

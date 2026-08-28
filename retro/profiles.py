@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+import re
 import tomllib
 
 from retro import render as render_mod
@@ -163,7 +164,6 @@ _CLES_MODE = ("args", "note", "crt", "crt_absent", "config")
 
 
 def _valider_variables(path, sid, quoi: str, gabarit: str) -> None:
-    import re
     inconnues = sorted({m for m in re.findall(r"\{(\w+)\}", gabarit)
                         if m not in _VARIABLES})
     if inconnues:
@@ -355,6 +355,47 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     return Bootstrap(target=target, content=content)
 
 
+# L'identifiant d'un profil n'est pas une étiquette : il NOMME un fichier et
+# il se DÉCOUPE, à trois endroits, dans trois langages différents.
+#
+# - `launcher.bootstrap_name` en fait « <id>.bootstrap.<ext> », déposé à côté
+#   des plans ; `launcher.profils_amorcables` retrouve ensuite l'identifiant en
+#   coupant sur « .bootstrap » — un identifiant qui porte cette chaîne se
+#   couperait au mauvais endroit, et le profil deviendrait non ré-amorçable ;
+# - `launcher.ordonner_reamorcage` écrit un identifiant par ligne dans
+#   reamorcer.txt et relit le fichier avec `split()`, qui découpe sur les
+#   BLANCS : un identifiant contenant un espace y devient deux ordres, dont
+#   aucun ne désigne un profil ;
+# - le lanceur retrouve le profil dans « <profil>.<système> » en coupant au
+#   premier point : un identifiant qui en porte un désignerait un autre profil.
+#
+# Aucune de ces trois fautes ne fait échouer quoi que ce soit au moment où elle
+# est commise : elles se découvrent devant une télévision, sur une
+# configuration qui n'a pas été posée. La règle les ferme toutes les trois.
+#
+# Le point d'ancrage est \Z et non $ : « duckstation\n » satisferait $, et TOML
+# accepte parfaitement un identifiant multiligne.
+_ID_PROFIL = re.compile(r"[a-z0-9][a-z0-9_-]*\Z")
+
+
+def _valider_id(path: pathlib.Path, pid) -> None:
+    """L'identifiant du profil, tel que le reste du projet peut le manipuler."""
+    if isinstance(pid, str) and _ID_PROFIL.match(pid):
+        return
+    raise ProfileError(
+        f"{path} : 'id' vaut {pid!r}. Un identifiant de profil s'écrit en "
+        "minuscules non accentuées, chiffres, tiret et souligné, et commence "
+        "par une lettre ou un chiffre — ni espace, ni point, ni majuscule. Ce "
+        "n'est pas une étiquette : il NOMME le fichier d'amorçage déposé pour "
+        "le lanceur, il s'écrit seul sur une ligne de reamorcer.txt (relue en "
+        "découpant sur les blancs), et le lanceur le retrouve en coupant "
+        "« <profil>.<système> » au premier point. Un espace y ferait deux "
+        "ordres qui ne désignent rien, un point désignerait un autre profil, "
+        "et « .bootstrap » rendrait le profil non ré-amorçable — trois pannes "
+        "qui ne se voient que devant la télévision."
+    )
+
+
 def load_profile(path: pathlib.Path) -> Profile:
     try:
         with path.open("rb") as f:
@@ -368,6 +409,7 @@ def load_profile(path: pathlib.Path) -> Profile:
     for champ in ("id", "exe"):
         if champ not in data:
             raise ProfileError(f"{path} : champ '{champ}' manquant")
+    _valider_id(path, data["id"])
 
     systemes = []
     vus = set()

@@ -643,3 +643,21 @@ def test_launcher_reamorcer_un_inconnu_echoue(tmp_path, capsys):
                      "--reamorcer", "duckstaton"])
     assert code == 2
     assert "duckstaton" in capsys.readouterr().err
+
+
+def test_launcher_dit_qu_un_binaire_perime_est_a_recompiler(tmp_path, capsys):
+    """« le lanceur est compilé et en place » était vrai et trompeur : un
+    binaire d'avant ignore en silence les nouvelles lignes du plan. Ne pas
+    rendre 0 — la panne apparaîtrait sinon devant la télévision."""
+    import os
+    from retro import launcher
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    os.utime(dossier / launcher.EXE, (1_000_000, 1_000_000))
+    code = cli.main(["launcher", "--emulation-root-local", str(tmp_path)])
+    sortie = capsys.readouterr()
+    assert code == 1
+    assert "plus ancien que sa source" in sortie.err
+    assert "compiler.cmd" in sortie.err
+    assert "compilé et en place" not in sortie.out

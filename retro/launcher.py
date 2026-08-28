@@ -250,6 +250,40 @@ def est_installe(emulation_root_local) -> bool:
     return (local_dir(emulation_root_local) / EXE).is_file()
 
 
+def lanceur_perime(emulation_root_local) -> bool:
+    """Le binaire en place est-il plus ancien que la source déposée à côté ?
+
+    Un `retro-launch.exe` compilé avant une évolution du plan ne DIT RIEN : il
+    lit les clés qu'il connaît et ignore les autres. Les trois lignes
+    `bootstrap_*` d'un plan tout neuf ne produisent alors aucun amorçage,
+    aucune erreur, et `retro status` annonce « pas encore amorcé » après
+    cinquante lancements — la fonctionnalité entière est inerte, sans un mot.
+    C'est l'état du jour même de la livraison : `deposer_source` pose une
+    source plus récente que le binaire, que personne n'a encore recompilé.
+
+    La comparaison porte sur les dates de modification parce que c'est la
+    seule preuve dont l'hôte dispose : il ne peut ni exécuter le binaire ni
+    l'inspecter. `deposer_source` copie donc la source AVEC sa date (copy2) —
+    autrement chaque dépôt rendrait périmé un lanceur qu'on vient de
+    recompiler.
+
+    L'absence de l'un ou de l'autre n'est pas une péremption : `est_installe`
+    dit déjà l'absence du binaire, et une source manquante se corrige par
+    `retro launcher`.
+    """
+    dossier = local_dir(emulation_root_local)
+    try:
+        return (dossier / SOURCE).stat().st_mtime > (dossier / EXE).stat().st_mtime
+    except OSError:
+        return False
+
+
+# Le geste, écrit une seule fois : `retro launcher` et `retro status` le
+# nomment tous les deux, et deux formulations du même geste feraient douter
+# qu'il s'agisse du même.
+RECOMPILER = "compiler.cmd"
+
+
 def lire_mode(emulation_root_local) -> str:
     """Le mode choisi par le propriétaire, ou `auto` à défaut.
 
@@ -362,6 +396,12 @@ def deposer_source(emulation_root_local) -> list[pathlib.Path]:
                 "peut pas être compilé sans sa source."
             )
         cible = dossier / nom
-        shutil.copyfile(origine, cible)
+        # copy2 et non copyfile : la date de modification est COPIÉE, parce
+        # que c'est elle que `lanceur_perime` compare au binaire. Avec
+        # copyfile, chaque dépôt réestampillait la source à l'instant présent
+        # et un lanceur fraîchement recompilé se serait annoncé périmé au
+        # premier `retro launcher` suivant — un avertissement qui crie à tort
+        # est un avertissement qu'on cesse de lire.
+        shutil.copy2(origine, cible)
         deposes.append(cible)
     return deposes

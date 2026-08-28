@@ -486,6 +486,13 @@ def _cmd_status(args) -> int:
             # confondent.
             amorcages=launcher_mod.lire_amorcages(
                 pathlib.Path(args.emulation_root)),
+            # Un lanceur compilé avant les plans qu'il lit n'échoue pas : il
+            # ignore les lignes qu'il ne connaît pas. Sans ce constat, la
+            # section Amorçage annoncerait « pas encore amorcé » aussi
+            # longtemps qu'il resterait en place, et rien ne dirait que le
+            # geste à faire est de le recompiler.
+            lanceur_perime=launcher_mod.lanceur_perime(
+                pathlib.Path(args.emulation_root)),
         )
         texte = status.format_report(rapport)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
@@ -532,6 +539,21 @@ def _cmd_launcher(args) -> int:
         print(f"déposé : {f}")
 
     if launcher_mod.est_installe(racine):
+        if launcher_mod.lanceur_perime(racine):
+            # Un binaire plus vieux que sa source ignore EN SILENCE les
+            # lignes de plan qu'il ne connaît pas : pas d'erreur, pas
+            # d'amorçage, et `retro status` annoncerait « pas encore amorcé »
+            # indéfiniment. Ne pas rendre 0 : c'est l'état du jour même de la
+            # livraison, et « en place » l'a déjà fait croire une fois.
+            print(
+                "le lanceur en place est plus ancien que sa source : il "
+                "ignorerait en silence ce que les plans portent de nouveau "
+                "(l'amorçage des émulateurs, notamment). Le recompiler depuis "
+                f"Windows :\n    {launcher_mod.launcher_dir(args.emulation_root)}"
+                f"\\{launcher_mod.RECOMPILER}",
+                file=sys.stderr,
+            )
+            return 1
         print("le lanceur est compilé et en place")
         return 0
     # Ne PAS rendre 0 : sans binaire, le lanceur n'est pas installé, et
@@ -539,7 +561,8 @@ def _cmd_launcher(args) -> int:
     # étape terminée, et la panne apparaîtrait deux commandes plus loin.
     print(
         "le lanceur n'est pas encore compilé. Depuis Windows, exécuter :\n"
-        f"    {launcher_mod.launcher_dir(args.emulation_root)}\\compiler.cmd\n"
+        f"    {launcher_mod.launcher_dir(args.emulation_root)}\\"
+        f"{launcher_mod.RECOMPILER}\n"
         "csc.exe du .NET Framework suffit : il est présent sur toute "
         "installation de Windows, rien à télécharger.",
         file=sys.stderr,

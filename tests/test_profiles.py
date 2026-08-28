@@ -870,3 +870,70 @@ def test_un_contenu_sans_marque_est_refuse(tmp_path):
     with pytest.raises(profiles.ProfileError) as e:
         profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
     assert profiles.MARQUE_BOOTSTRAP in str(e.value)
+
+
+# --- l'identifiant d'un profil se découpe et nomme un fichier --------------
+
+def _avec_id(identifiant: str) -> str:
+    return BOOTSTRAP_VALIDE.replace('id = "duckstation"',
+                                    f'id = "{identifiant}"', 1)
+
+
+def test_un_identifiant_de_profil_avec_un_espace_est_refuse(tmp_path):
+    """`ordonner_reamorcage` relit reamorcer.txt avec `split()`, qui découpe
+    sur les BLANCS : « duck station » y devient deux ordres, dont aucun ne
+    désigne un profil. L'ordre serait écrit, rapporté comme posé, et le
+    lanceur ne le verrait jamais."""
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "x.toml", _avec_id("duck station")))
+    assert "duckstation.toml" not in str(e.value)
+    assert "x.toml" in str(e.value) and "espace" in str(e.value)
+
+
+def test_un_identifiant_de_profil_avec_un_point_est_refuse(tmp_path):
+    """Le lanceur retrouve le profil dans « <profil>.<système> » en coupant au
+    premier point : un identifiant qui en porte un désignerait un autre
+    profil, et l'amorçage viserait la configuration d'un autre émulateur."""
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "x.toml", _avec_id("duck.station")))
+    assert "point" in str(e.value)
+
+
+def test_un_identifiant_qui_porte_bootstrap_est_refuse(tmp_path):
+    """`profils_amorcables` retrouve l'identifiant en coupant le nom de
+    fichier sur « .bootstrap » : un identifiant qui porte cette chaîne se
+    couperait au mauvais endroit, et « retro launcher --reamorcer » refuserait
+    un profil pourtant amorçable."""
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(
+            ecrire(tmp_path, "x.toml", _avec_id("duck.bootstrap")))
+
+
+def test_un_identifiant_ordinaire_reste_accepte(tmp_path):
+    """La règle ne doit pas fermer la porte aux identifiants normaux — tiret
+    et souligné compris, que les profils du propriétaire emploient."""
+    profil = profiles.load_profile(
+        ecrire(tmp_path, "x.toml", _avec_id("duck-station_2")))
+    assert profil.id == "duck-station_2"
+
+
+def test_l_exemple_de_bootstrap_de_la_specification_se_charge(tmp_path):
+    """La spec est le point de départ de la tâche qui mesurera les huit autres
+    émulateurs : un exemple que le validateur refuse ferait démarrer cette
+    tâche sur un ProfileError, et son auteur corrigerait le validateur.
+
+    L'exemple est extrait du document, pas recopié ici : recopié, il aurait
+    cessé de dire quoi que ce soit du document le jour où celui-ci change.
+    """
+    import tomllib
+    spec = (pathlib.Path(__file__).parent.parent / "docs" / "superpowers"
+            / "specs" / "2026-08-28-amorcage-emulateurs-design.md")
+    # [1:] : le premier morceau est la PROSE qui précède la première clôture,
+    # et elle nomme le bloc sans le montrer.
+    blocs = [b.split("```")[0] for b in
+             spec.read_text(encoding="utf-8").split("```toml\n")[1:]]
+    exemple = [b for b in blocs if "[bootstrap]" in b]
+    assert exemple, "la spec ne montre plus d'exemple de bloc [bootstrap]"
+    for bloc in exemple:
+        assert profiles._lire_bootstrap(
+            spec, tomllib.loads(bloc)["bootstrap"]) is not None

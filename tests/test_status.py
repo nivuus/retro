@@ -566,3 +566,40 @@ def test_la_section_amorcage_figure_dans_le_texte(profils_amorces_status):
     )
     texte = status.format_report(rapport)
     assert "Amorçage" in texte and "2026-08-28 10:27:26" in texte
+
+
+def test_la_section_amorcage_s_affiche_meme_sans_profil():
+    """Les sections BIOS et Rendu s'affichent toujours, avec un texte de
+    repli ; l'Amorçage disparaissait quand la liste était vide. Une section
+    qui disparaît se lit comme une panne d'affichage, et son repli — jamais
+    atteignable tant qu'elle était conditionnelle — est la seule chose qui
+    distingue « rien à dire » de « rien n'a été lu »."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"))
+    assert rapport.amorcages == []
+    texte = status.format_report(rapport)
+    assert "Amorçage" in texte and "aucun profil chargé" in texte
+
+
+def test_un_lanceur_perime_est_un_probleme():
+    """Un binaire compilé avant les plans qu'il lit n'échoue pas : il ignore
+    les lignes qu'il ne connaît pas. Sans ce problème, la section Amorçage
+    dirait « pas encore amorcé » indéfiniment et enverrait chercher la panne
+    dans les profils."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        lanceur_perime=True)
+    perimes = [p for p in rapport.problems if "plus ancien que sa source" in p.what]
+    assert len(perimes) == 1
+    # Le geste, pas seulement le constat : c'est la règle du module.
+    assert "compiler.cmd" in perimes[0].action
+
+
+def test_un_lanceur_a_jour_ne_produit_aucun_probleme():
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        lanceur_perime=False)
+    assert [p for p in rapport.problems if "plus ancien" in p.what] == []
