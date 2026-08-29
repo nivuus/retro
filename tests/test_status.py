@@ -969,3 +969,38 @@ def test_un_arbre_source_n_est_pas_un_probleme():
         bios_status=[], bios_root=pathlib.Path("/BIOS"),
         paquet="0.1.0+source")
     assert not any("paquet" in p.what.lower() for p in r.problems)
+
+
+PROFIL_STATUS_YAML = """
+schema = 1
+id = "vita3k"
+exe = 'Vita3K.exe'
+[[bootstrap]]
+target = '{install_dir}\\config.yml'
+content = '''
+# Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+# à chaque lancement, ce qu'il a posé UNE FOIS et ne retouche plus, et tout le
+# reste, qui vous appartient.
+'''
+enforced = '''
+warn-missing-firmware: false
+'''
+[[system]]
+id = "vita"
+name = "PS Vita"
+extensions = [".vpk"]
+launch = '--fullscreen "{rom}"'
+"""
+
+
+def test_le_rapport_compte_les_cles_imposees_d_une_cible_yaml(tmp_path):
+    """Le rapport annonce au propriétaire combien de réglages la console lui
+    reprend. Compté avec l'analyseur INI seul, un YAML rendait ZÉRO — le
+    rapport aurait dit « aucun réglage imposé » sur le seul profil qui en
+    impose un hors INI, et le propriétaire aurait cherché ailleurs la raison
+    pour laquelle son réglage revient.
+    """
+    p = tmp_path / "vita3k.toml"
+    p.write_text(PROFIL_STATUS_YAML, encoding="utf-8")
+    etats = status.etat_amorcage({"vita3k": profiles.load_profile(p)}, {})
+    assert [e.imposees for e in etats] == [1]

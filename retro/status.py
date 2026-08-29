@@ -136,7 +136,12 @@ def etat_amorcage(profils: dict,
             date, cible = poses[rang] if rang < len(poses) else ("", "")
             etats.append(Amorcage(
                 profile_id=pid, declare=True, date=date, target=cible,
-                imposees=len(profiles_mod.cles_ini(amorcage.enforced))))
+                # `cles_de` et non `cles_ini` : le dialecte suit l'extension de
+                # la cible. Compté à l'INI seul, un config.yml rendait ZÉRO, et
+                # le rapport annonçait « aucun réglage imposé » là où la console
+                # en reprend un.
+                imposees=len(profiles_mod.cles_de(amorcage.target,
+                                                  amorcage.enforced))))
     return etats
 
 
