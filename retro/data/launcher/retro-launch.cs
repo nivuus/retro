@@ -120,6 +120,16 @@ static class RetroLaunch
     static string dossier;
     static string journal;
     const string SI_ABSENT = "si-absent";
+    // La seconde strategie d'ecriture. « si-absent » pose un fichier absent
+    // et n'y revient jamais ; « fusion » rouvre un fichier QUI EXISTE pour y
+    // porter les seules cles que retro apporte. Le proprietaire l'a
+    // explicitement autorisee — a MODIFIER, jamais a ECRASER.
+    const string FUSION = "fusion";
+    // La ligne qui distingue, DANS LE FICHIER, ce que retro a pose de ce que
+    // le proprietaire a pose. Sans elle, quelqu'un qui rouvre son settings.ini
+    // six mois plus tard ne peut pas savoir quelle valeur il a choisie
+    // lui-meme et laquelle lui a ete posee — et corrigerait la mauvaise.
+    const string MARQUE_FUSION = "; posé par « retro » — cette ligne est réécrite à chaque lancement";
 
     static int Main()
     {
@@ -227,16 +237,20 @@ static class RetroLaunch
         }
 
         string quand = Valeur(p, "bootstrap_when");
-        if (quand != SI_ABSENT)
+        if (quand != SI_ABSENT && quand != FUSION)
             throw new Exception(
                 "Le plan demande une stratégie d'amorçage inconnue : « " + quand
-                + " ». Ce lanceur ne connaît que « " + SI_ABSENT + " ».\n\n"
+                + " ». Ce lanceur ne connaît que « " + SI_ABSENT + " » et « "
+                + FUSION + " ».\n\n"
                 + "Recompiler le lanceur (compiler.cmd), ou relancer "
                 + "« retro scan ».");
 
         cible = Environment.ExpandEnvironmentVariables(cible);
         bool force = OrdreDeReamorcage(profil);
-        if (File.Exists(cible) && !force) return;
+        // En « si-absent », une cible qui existe clot l'affaire. En fusion,
+        // c'est precisement le cas interessant : on y va, mais Fusionner()
+        // ne reecrira rien si le fichier est deja conforme.
+        if (quand == SI_ABSENT && File.Exists(cible) && !force) return;
 
         string source = Valeur(p, "bootstrap_source");
         if (!File.Exists(source))
@@ -257,6 +271,32 @@ static class RetroLaunch
                 + cible + "\n\nRelancer « retro scan ».");
         if (parent.Length > 0 && !Directory.Exists(parent))
             Directory.CreateDirectory(parent);
+
+        // CE QU'ON VA ECRIRE, decide AVANT toute sauvegarde. L'ordre compte :
+        // en fusion, un fichier deja conforme ne doit etre ni sauvegarde ni
+        // reecrit — sinon chaque lancement deposerait une sauvegarde de plus
+        // et retoucherait un fichier qui n'avait rien a changer, ce qui est
+        // exactement le contraire de ce que le proprietaire a autorise.
+        bool bom;
+        string contenu = LireTexte(source, out bom);
+        int posees = 0;
+        if (quand == FUSION && File.Exists(cible))
+        {
+            bool bomCible;
+            string existant = LireTexte(cible, out bomCible);
+            contenu = Fusionner(existant, contenu, out posees);
+            // Le fichier appartient au proprietaire : on lui rend sa propre
+            // marque d'octets, pas celle du fichier qu'on apporte.
+            bom = bomCible;
+            if (contenu == existant)
+            {
+                Noter("amorcage : " + cible + " deja conforme — aucune "
+                      + "sauvegarde, aucune reecriture (" + FUSION + ")");
+                InscrireTemoin(profil, cible);
+                if (force) ConsommerOrdre(profil, true);
+                return;
+            }
+        }
 
         // Rien n'ecrase une configuration sans sauvegarde : la convention est
         // celle de shortcuts.vdf.bak-*, deja en usage cote synchronisation.
@@ -316,7 +356,10 @@ static class RetroLaunch
         string temporaire = cible + ".retro-tmp";
         try
         {
-            File.Copy(source, temporaire, true);
+            // WriteAllText et non File.Copy : en fusion, ce qui part sur le
+            // disque n'est plus le fichier source mais le resultat du
+            // melange. En « si-absent », c'est le source mot pour mot.
+            File.WriteAllText(temporaire, contenu, new UTF8Encoding(bom));
             if (File.Exists(cible)) File.Replace(temporaire, cible, null);
             else File.Move(temporaire, cible);
         }
@@ -330,9 +373,224 @@ static class RetroLaunch
             throw;
         }
         Noter("amorcage : " + profil + " -> " + cible
-              + (force ? " (ordre de reamorcage)" : ""));
+              + " (" + quand
+              + (quand == FUSION ? ", " + posees + " cle(s) posee(s)" : "")
+              + ")" + (force ? " (ordre de reamorcage)" : ""));
         InscrireTemoin(profil, cible);
         if (force) ConsommerOrdre(profil, true);
+    }
+
+
+    // Ce qu'une fusion FERAIT, sans rien ecrire. C'est la seule facon de
+    // verifier a distance qu'elle ne va pas abimer le fichier du
+    // proprietaire : on lit, on melange en memoire, on compare, on rend le
+    // compte — et on ne touche a rien.
+    //
+    // Toute exception est RATTRAPEE et rendue en clair : --explain est appele
+    // par WinRM en session 0, ou une boite de dialogue pendrait jusqu'a
+    // l'expiration du delai. Meme raison que pour la lecture de reamorcer.txt.
+    static string FusionAPoser(string cible, string source)
+    {
+        try
+        {
+            cible = Environment.ExpandEnvironmentVariables(cible);
+            if (!File.Exists(source))
+                return "inconnu (le fichier a poser est introuvable : "
+                       + source + ")";
+            bool bomCible, bomSource;
+            string existant = LireTexte(cible, out bomCible);
+            int posees;
+            string fusionne = Fusionner(
+                existant, LireTexte(source, out bomSource), out posees);
+            if (fusionne == existant)
+                return "non (" + FUSION + " : la cible est deja conforme, "
+                       + "rien ne sera reecrit)";
+            return "oui (" + FUSION + " : " + posees + " cle(s) posee(s) ; la "
+                   + "cible sera sauvegardee, le reste de son contenu est "
+                   + "preserve)";
+        }
+        catch (Exception e)
+        {
+            return "inconnu (fusion illisible : "
+                   + e.Message.Replace("\r", " ").Replace("\n", " ") + ")";
+        }
+    }
+
+    // --- la fusion d'un fichier INI -------------------------------------
+    //
+    // Le proprietaire a autorise retro a MODIFIER un settings.ini qui existe.
+    // Modifier, jamais ecraser : tout ce que cette methode ne connait pas est
+    // recopie tel quel — cles inconnues, commentaires, lignes vides, ordre.
+    // Le [BIOS] SearchDirectory que le proprietaire a ajoute a la main
+    // survit ; c'est le cas d'usage qui a fait ecrire cette methode ainsi.
+    //
+    // Ce qu'elle apporte, et rien d'autre : les cles du fichier source. Pour
+    // chacune, dans sa section :
+    //   - la cle existe deja  -> sa VALEUR est remplacee, a sa place ;
+    //   - la section existe   -> la cle est ajoutee a la fin de la section ;
+    //   - rien n'existe       -> la section est creee a la fin du fichier.
+    //
+    // IDEMPOTENTE : les marques de retro presentes sont retirees a la lecture
+    // et reposees a l'ecriture, donc fusionner deux fois rend exactement le
+    // meme texte. C'est ce qui permet a l'appelant de comparer et de NE RIEN
+    // ECRIRE quand le fichier est deja conforme — pas de sauvegarde inutile,
+    // pas de section empilee, pas de fichier retouche pour rien.
+    //
+    // LIMITE ASSUMEE : les COMMENTAIRES du fichier source ne sont pas
+    // reportes, seules ses cles le sont. Les reporter demanderait de savoir
+    // les reconnaitre pour ne pas les empiler a chaque passage, et un
+    // commentaire duplique a chaque lancement serait exactement la panne que
+    // l'idempotence existe pour fermer. Les explications vivent dans le
+    // profil et dans le fichier source depose a cote des plans ; ici, la
+    // marque dit qui a pose la ligne, ce qui est ce dont on a besoin devant
+    // un fichier qu'on relit six mois plus tard.
+    static string SectionDe(string ligne)
+    {
+        string s = ligne.Trim();
+        if (s.Length >= 2 && s[0] == '[' && s[s.Length - 1] == ']')
+            return s.Substring(1, s.Length - 2).Trim();
+        return null;
+    }
+
+    // Le nom de cle d'une ligne « cle = valeur », ou null. Les commentaires
+    // n'en sont pas : une ligne « ; Scaling = ... » ne doit pas passer pour
+    // le reglage qu'elle explique, sans quoi la fusion irait ecrire dans un
+    // commentaire et la vraie cle resterait a sa valeur d'avant.
+    static string CleDe(string ligne)
+    {
+        string s = ligne.Trim();
+        if (s.Length == 0 || s[0] == ';' || s[0] == '#' || s[0] == '[')
+            return null;
+        int eq = s.IndexOf('=');
+        if (eq <= 0) return null;
+        string cle = s.Substring(0, eq).Trim();
+        return cle.Length > 0 ? cle : null;
+    }
+
+    static string Cle(string section, string cle)
+    {
+        // Les sections et les cles d'un INI ne sont pas sensibles a la casse
+        // chez la plupart des lecteurs. Comparer telles quelles ferait poser
+        // une SECONDE cle « scaling » a cote de « Scaling », dont l'emulateur
+        // ne lirait qu'une — et pas forcement la notre.
+        return section.ToLowerInvariant() + " " + cle.ToLowerInvariant();
+    }
+
+    static string Fusionner(string existant, string apporte, out int posees)
+    {
+        // Ce que la source apporte, dans l'ordre : (section, cle) -> ligne.
+        var ordre = new List<string>();
+        var lignesApportees = new Dictionary<string, string>();
+        var sectionDe = new Dictionary<string, string>();
+        string courante = "";
+        foreach (string ligne in apporte.Replace("\r\n", "\n").Split('\n'))
+        {
+            string sec = SectionDe(ligne);
+            if (sec != null) { courante = sec; continue; }
+            string cle = CleDe(ligne);
+            if (cle == null) continue;
+            string id = Cle(courante, cle);
+            if (!lignesApportees.ContainsKey(id)) ordre.Add(id);
+            lignesApportees[id] = ligne.Trim();
+            sectionDe[id] = courante;
+        }
+
+        var reste = new List<string>(ordre);
+        var sortie = new List<string>();
+        courante = "";
+        posees = 0;
+
+        var lignes = new List<string>(existant.Replace("\r\n", "\n").Split('\n'));
+        for (int i = 0; i < lignes.Count; i++)
+        {
+            string ligne = lignes[i];
+            // Les marques d'un passage anterieur sont retirees ici et
+            // reposees plus bas : c'est ce qui rend la fusion idempotente.
+            if (ligne.Trim() == MARQUE_FUSION) continue;
+
+            string sec = SectionDe(ligne);
+            if (sec != null)
+            {
+                Completer(sortie, reste, lignesApportees, sectionDe, courante,
+                          ref posees);
+                courante = sec;
+                sortie.Add(ligne);
+                continue;
+            }
+            string cle = CleDe(ligne);
+            string id = cle == null ? null : Cle(courante, cle);
+            if (id != null && lignesApportees.ContainsKey(id)
+                && reste.Contains(id))
+            {
+                sortie.Add(MARQUE_FUSION);
+                sortie.Add(lignesApportees[id]);
+                reste.Remove(id);
+                posees++;
+                continue;
+            }
+            sortie.Add(ligne);
+        }
+        Completer(sortie, reste, lignesApportees, sectionDe, courante,
+                  ref posees);
+
+        // Ce qui reste appartient a des sections que le fichier n'a pas.
+        while (reste.Count > 0)
+        {
+            string section = sectionDe[reste[0]];
+            if (sortie.Count > 0 && sortie[sortie.Count - 1].Trim().Length > 0)
+                sortie.Add("");
+            sortie.Add("[" + section + "]");
+            for (int i = 0; i < reste.Count; i++)
+            {
+                if (sectionDe[reste[i]] != section) continue;
+                sortie.Add(MARQUE_FUSION);
+                sortie.Add(lignesApportees[reste[i]]);
+                posees++;
+                reste.RemoveAt(i);
+                i--;
+            }
+        }
+        return string.Join("\r\n", sortie.ToArray());
+    }
+
+    // Les cles de CETTE section que le fichier ne portait pas, ajoutees a sa
+    // fin. Rien si la section n'est pas concernee.
+    static void Completer(List<string> sortie, List<string> reste,
+                          Dictionary<string, string> lignesApportees,
+                          Dictionary<string, string> sectionDe,
+                          string section, ref int posees)
+    {
+        if (section == null) return;
+        // Reculer avant les lignes vides de fin de section : la cle se pose
+        // apres le dernier reglage, pas apres le blanc qui suit — sans quoi
+        // elle glisserait d'une section a l'autre au passage suivant, et
+        // l'idempotence tomberait.
+        int fin = sortie.Count;
+        while (fin > 0 && sortie[fin - 1].Trim().Length == 0) fin--;
+        var ajouts = new List<string>();
+        for (int i = 0; i < reste.Count; i++)
+        {
+            if (!string.Equals(sectionDe[reste[i]], section,
+                               StringComparison.OrdinalIgnoreCase)) continue;
+            ajouts.Add(MARQUE_FUSION);
+            ajouts.Add(lignesApportees[reste[i]]);
+            posees++;
+            reste.RemoveAt(i);
+            i--;
+        }
+        if (ajouts.Count > 0) sortie.InsertRange(fin, ajouts);
+    }
+
+    // Le texte d'un fichier, et si on lui a trouve une marque d'octets. Le
+    // BOM se PRESERVE : le fichier appartient au proprietaire, et le lui
+    // retirer au passage serait une modification qu'il n'a pas autorisee.
+    static string LireTexte(string chemin, out bool bom)
+    {
+        byte[] octets = File.ReadAllBytes(chemin);
+        bom = octets.Length >= 3 && octets[0] == 0xEF && octets[1] == 0xBB
+              && octets[2] == 0xBF;
+        return new UTF8Encoding(false).GetString(
+            octets, bom ? 3 : 0, octets.Length - (bom ? 3 : 0));
     }
 
     // Le propriétaire a-t-il demande de reposer la configuration de ce profil ?
@@ -608,7 +866,13 @@ static class RetroLaunch
                     + "puis reecrite)";
             else if (File.Exists(Environment.ExpandEnvironmentVariables(
                          cibleAmorcage)))
-                aPoser = "non (la cible existe)";
+                // « si-absent » s'arrete la ; la fusion, elle, ROUVRE ce
+                // fichier. Repondre « non (la cible existe) » pour une fusion
+                // mentirait sur le seul controle verifiable a distance — et
+                // c'est precisement le fichier du proprietaire qui est en jeu.
+                aPoser = Valeur(p, "bootstrap_when") == FUSION
+                    ? FusionAPoser(cibleAmorcage, Valeur(p, "bootstrap_source"))
+                    : "non (la cible existe)";
             else
                 aPoser = "oui";
             rapport.AppendLine("amorcage_a_poser=" + aPoser);

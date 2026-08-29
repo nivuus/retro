@@ -596,3 +596,40 @@ def test_chaque_mode_livre_tranche_sur_le_remplissage():
         f"{muets}. Déclarer 'fill' — les arguments qui le règlent existent — "
         "ou 'fill_absent', qui dit que cet émulateur n'en expose aucun."
     )
+
+
+def test_le_lanceur_connait_toutes_les_strategies_d_amorcage():
+    """Couplage a travers deux langages : `retro scan` écrit
+    « bootstrap_when=<stratégie> » dans le plan, et retro-launch.cs REFUSE
+    une stratégie qu'il ne connaît pas — sur la console, devant une
+    télévision, après que le raccourci Steam a déjà été cliqué.
+
+    Ajouter une stratégie côté Python sans l'implémenter côté C# est donc une
+    panne muette jusqu'au salon. Ce test est le seul endroit où les deux
+    listes se rencontrent.
+    """
+    from retro import launcher
+    source = (DONNEES / "launcher" / launcher.SOURCE).read_text(
+        encoding="utf-8-sig")
+    absentes = [s for s in launcher.STRATEGIES if f'"{s}"' not in source]
+    assert absentes == [], (
+        f"stratégies que retro-launch.cs ne connaît pas : {absentes}. "
+        "Le plan les écrirait, et l'amorçage échouerait sur la console."
+    )
+
+
+def test_tout_amorcage_livre_qui_fusionne_dit_qu_il_modifie():
+    """« si-absent » pouvait promettre « vos réglages ne sont jamais
+    retouchés » ; la fusion ne le peut pas. Un en-tête qui ment sur ce qu'on
+    fait au fichier est pire qu'une absence d'en-tête, parce qu'il est CRU."""
+    from retro import launcher
+    fautifs = []
+    for pid, p in sorted(profiles.load_profiles(PROFILS).items()):
+        b = getattr(p, "bootstrap", None)
+        if b is not None and b.strategy == launcher.FUSION \
+                and "modifi" not in b.content.lower():
+            fautifs.append(pid)
+    assert fautifs == [], (
+        f"amorçages en fusion dont l'en-tête ne dit pas qu'il modifie : "
+        f"{fautifs}"
+    )
