@@ -274,62 +274,54 @@ _MOTIF_PAR_MODE = {
           "grand agrandissement qui conserve le ratio",
 }
 
-# ARBITRAGE EN ATTENTE — DuckStation, le cas dur de la dette D2.
+# DUCKSTATION, le cas dur de la dette D2 — CE QU'IL EN RESTE au 2026-08-29.
 #
-# ÉTABLI, et cette fois SUR LE BINAIRE ÉPINGLÉ, pas sur une note du dépôt :
-# la révision v0.1-11609 n'accepte aucun réglage de rendu en ligne de
-# commande. Les chaînes de duckstation-qt-x64-ReleaseLTCG.exe ont été lues sur
-# la console le 2026-08-29 (invité en provision_version=B1). On y trouve
-# « Usage: %s [parameters] [--] [boot filename] », les quinze options de son
-# bloc d'aide — -help, -version, -nogui, -statefile, -bios, -fullscreen,
-# -earlyconsole, -slowboot, -fastboot, -nofullscreen, -state, -resume, -exe,
-# -bigpicture, -batch — plus -setupwizard, -updatecleanup et « -- ». Aucune
-# n'est un réglage de rendu. C'est exactement ce que disait duckstation.toml,
-# désormais vérifié plutôt que recopié.
+# ARBITRÉ, et la réponse est OUI : le propriétaire a autorisé « retro » à
+# modifier un settings.ini qui existe déjà. La stratégie d'écriture `fusion`
+# en est née (retro/launcher.py, retro/data/launcher/retro-launch.cs) — elle
+# modifie sans écraser, et le champ `enforced` du profil repose ses clés à
+# CHAQUE lancement. Il y a donc désormais DEUX régimes d'amorçage, et le
+# « seulement si le fichier est absent » n'est plus la seule voie.
 #
-# ÉTABLI AUSSI, et c'est ce qui rend la question réelle plutôt que théorique :
-# DuckStation SAIT remplir en entier. Le même binaire porte le type
-# DisplayScalingMode et les valeurs « NearestInteger » et « BilinearInteger »,
-# étiquetées « Nearest-Neighbor (Integer) » et « Bilinear (Integer) » dans son
-# interface. Il y a donc quelque chose à régler, et c'est le seul émulateur
-# livré dans ce cas.
+# ÉTABLI, sur le binaire épinglé et non sur une note du dépôt : la révision
+# v0.1-11609 n'accepte AUCUN réglage de rendu en ligne de commande. Ses
+# dix-sept arguments sont énumérés un par un dans
+# ParseCommandLineParametersAndInitializeConfig (src/duckstation-qt/qthost.cpp)
+# et aucun n'en est un. Le remplissage de DuckStation passera donc par son
+# settings.ini, c'est-à-dire par `enforced` — jamais par `args`. C'est ce que
+# ses deux modes déclarés vides disent déjà, avec leur note.
 #
-# PAS ÉTABLI : le NOM DE LA CLÉ dans son settings.ini. Le binaire porte le nom
-# du widget (« displayScaling ») mais pas le couple section/clé sous une forme
-# lisible. Or une clé qui ne correspond à rien y est ignorée EN SILENCE —
-# mesuré le 2026-08-28 sur cet émulateur, une clé inventée survit à un
-# aller-retour sans rien faire. Aucune valeur n'entre donc ici avant d'avoir
-# été relevée dans un settings.ini que DuckStation a lui-même écrit.
+# ÉTABLI AUSSI : le couple section/clé. `[Display] Scaling` a été posé le
+# 2026-08-29 avec la valeur `BilinearSmooth`, et il a été RECONNU. Le nom
+# n'est plus l'inconnue.
 #
-# Et ce fichier-là est difficile à obtenir : relevé le 2026-08-29 par un autre
-# agent, DuckStation lancé « -batch -nogui » — le seul mode que la console
-# emploie — NE RÉÉCRIT JAMAIS son settings.ini. Deux conséquences opposées,
-# qui pèsent toutes deux sur la réponse :
-#   - le relevé exige de l'ouvrir une fois HORS du chemin de la console ;
-#   - mais ce que « retro » y écrirait serait durable : l'émulateur ne le
-#     réécrira pas par-dessus au premier jeu.
+# CE QUI N'EST PAS MESURÉ, et c'est tout ce qui reste : personne n'a vu
+# `NearestInteger` ni `BilinearInteger` AGIR sur la machine. Ce qu'on sait de
+# `Scaling` est un fait négatif — `BilinearSmooth` n'a RIEN changé à la
+# géométrie de l'image, donc `Scaling` est un FILTRE — et ce fait ne dit rien
+# de ses deux valeurs entières, qui portent un autre nom pour une raison.
 #
-# Reste ce qui n'est pas une question technique. Le remplissage se poserait
-# dans %USERPROFILE%\Documents\DuckStation\settings.ini, donc par le mécanisme
-# d'amorçage — lequel ne pose son fichier QUE S'IL EST ABSENT
-# (launcher.SI_ABSENT). Sur toute console déjà jouée, le poser là n'aurait
-# aucun effet ; l'y forcer reviendrait à réécrire un fichier que le
-# propriétaire a peut-être réglé lui-même, ce que cet outil ne fait pas
-# (README, « Ça ne retouche jamais la configuration d'un émulateur »). La
-# question appartient donc au propriétaire, et elle n'est pas tranchée ici :
+# Deux faux oracles, payés ici même, qui interdisent d'écrire une valeur avant
+# de l'avoir vue agir :
+#   - les CHAÎNES d'un binaire donnent les LIBELLÉS de l'interface, pas les
+#     valeurs du fichier de configuration. Les valeurs sont dans la SOURCE
+#     (src/core/settings.cpp). Deux tentatives ont échoué ainsi sur CropMode ;
+#   - « la clé a survécu » ne prouve PAS « la clé est reconnue » :
+#     `DisplayCropMode`, une clé INVENTÉE, a survécu à une réécriture complète
+#     du fichier par DuckStation, qui conserve ce qu'il ne comprend pas.
+# Une valeur fausse se comporte exactement comme l'absence de valeur : aucun
+# message, aucune ligne de journal, aucun symptôme distinct.
 #
-#   « Autorisez-vous « retro » à modifier un settings.ini DuckStation qui
-#     existe déjà, pour y poser le remplissage — oui ou non ? »
+# Tant que la mesure n'a pas eu lieu, DuckStation ne déclare aucun
+# remplissage, et `retro status` le dit plutôt que de le laisser deviner.
 #
-#   Si OUI : relever d'abord le nom de la clé sur la machine, puis une
-#     seconde stratégie d'écriture à côté de SI_ABSENT — fusion clé à clé avec
-#     sauvegarde — qui vaudra aussi pour la manette (dette D3), laquelle bute
-#     exactement sur le même mur.
-#   Si NON : DuckStation reste au cadrage qu'il choisit seul, et `retro
-#     status` continue de le DIRE plutôt que de le laisser deviner.
-#
-# Tant que la réponse n'est pas donnée, DuckStation rend NON_REGLABLE, ses
-# deux modes étant déclarés vides avec leur note, et `retro status` le dit.
+# LE CHAÎNON QUI MANQUAIT AU MODÈLE, et qui est maintenant là : un remplissage
+# posé par `enforced` était INDÉCLARABLE — `resoudre_remplissage` rendait
+# NON_REGLABLE dès qu'un mode ne passe rien, et `_lire_remplissage` refuse un
+# `fill` sur un tel mode. Ce sont `fill_enforced` / `fill_enforced_where`, sur
+# le Render — donc pour LES DEUX MODES — qui le décrivent désormais : voir
+# leur commentaire sur `Render`, et le cas correspondant dans
+# `resoudre_remplissage`.
 
 
 def remplissage_attendu(mode: str) -> str:

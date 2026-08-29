@@ -438,9 +438,14 @@ bios       = [
 # la note, de sorte que le propriétaire qui choisit « full » et ne voit rien
 # changer sur ses jeux PlayStation puisse lire pourquoi.
 #
-# La résolution interne et le ratio de DuckStation se règlent dans son
-# settings.ini. Les y écrire écraserait les réglages du propriétaire, ce que
-# cet outil ne fait pas.
+# La résolution interne, le ratio et le remplissage de DuckStation se règlent
+# dans son settings.ini. Depuis l'arbitrage du 2026-08-29, les y écrire est
+# AUTORISÉ et il existe pour cela un mécanisme : le champ `enforced` du bloc
+# [[bootstrap]] ci-dessus, reposé à chaque lancement par la fusion, qui ne
+# touche qu'aux clés qu'elle apporte. C'est par là que le cadrage
+# ([Display] CropMode) est passé, et c'est par là que le remplissage passera
+# le jour où il aura été MESURÉ — voir le relevé de source au-dessus de
+# `enforced`. Rien n'est écrit ici tant que la mesure n'a pas eu lieu.
 cost       = "light"
 [system.render.native]
 args = ""
