@@ -969,3 +969,50 @@ def test_un_arbre_source_n_est_pas_un_probleme():
         bios_status=[], bios_root=pathlib.Path("/BIOS"),
         paquet="0.1.0+source")
     assert not any("paquet" in p.what.lower() for p in r.problems)
+
+
+# --- Le dossier de mise à jour, qui doublerait un jeu ----------------------
+
+def test_un_dossier_de_mise_a_jour_est_un_probleme():
+    """Deux dossiers portant le marqueur donnent deux entrées Steam pour le
+    même jeu, et la seconde lance le correctif seul — soit rien de jouable.
+    Le scan a fait son travail : personne d'autre que ce rapport ne peut le
+    dire."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        dossiers_de_mise_a_jour=["Sony\\PS4\\CUSA07410-UPDATE"])
+    doublons = [p for p in rapport.problems if "mise à jour" in p.what]
+    assert len(doublons) == 1
+    # Nommément : le propriétaire doit savoir QUEL dossier sortir.
+    assert doublons[0].details == ("Sony\\PS4\\CUSA07410-UPDATE",)
+    assert doublons[0].action
+    texte = status.format_report(rapport)
+    assert "CUSA07410-UPDATE" in texte
+
+
+def test_sans_dossier_suspect_aucun_probleme():
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"))
+    assert [p for p in rapport.problems if "mise à jour" in p.what] == []
+
+
+def test_un_seul_dossier_de_mise_a_jour_se_dit_au_singulier():
+    """« 1 dossier(s) ... portent » : le rapport est le seul écran de ce
+    paquet fait pour être lu, et `_cout` accorde déjà ses comptes."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        dossiers_de_mise_a_jour=["vita\\CUSA07410-UPDATE"])
+    what = [p.what for p in rapport.problems if "mise à jour" in p.what][0]
+    assert what.startswith("1 dossier de jeu porte un nom de mise à jour")
+
+
+def test_deux_dossiers_de_mise_a_jour_se_disent_au_pluriel():
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        dossiers_de_mise_a_jour=["vita\\A-UPDATE", "vita\\B-PATCH"])
+    what = [p.what for p in rapport.problems if "mise à jour" in p.what][0]
+    assert what.startswith("2 dossiers de jeu portent un nom de mise à jour")

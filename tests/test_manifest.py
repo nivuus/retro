@@ -179,3 +179,28 @@ def test_install_dir_relatif_simple_accepte(tmp_path):
                                 f'install_dir = "{bon}"')
         m = manifest.load_manifest(ecrire(tmp_path, "c.toml", contenu))
         assert m["retroarch"].install_dir == bon
+
+
+def test_deux_entrees_pour_le_meme_profil_sont_refusees(tmp_path):
+    """`cli._install_dirs_pour` indexe les émulateurs PAR PROFIL. Deux entrées
+    qui déclarent le même `profile` s'y écrasent l'une l'autre, en silence et
+    selon l'ordre d'itération : les jeux du profil pointeraient vers le dossier
+    d'installation de l'autre entrée. Steam créerait les raccourcis, le rapport
+    annoncerait « + <titre> », et rien ne se lancerait."""
+    sien = """
+schema = 1
+[emulator.extracteur]
+name = "Extracteur"
+version = "1.0"
+url = "https://exemple.invalid/e.zip"
+sha256 = "bb"
+archive = "zip"
+install_dir = "Extracteur"
+profile = "retroarch"
+"""
+    with pytest.raises(manifest.ManifestError) as exc:
+        manifest.load_manifest(ecrire(tmp_path, "core.toml", NOYAU),
+                               ecrire(tmp_path, "sien.toml", sien))
+    message = str(exc.value)
+    assert "retroarch" in message      # la clé en conflit
+    assert "extracteur" in message     # les deux entrées, nommées

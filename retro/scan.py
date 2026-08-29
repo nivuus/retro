@@ -23,6 +23,11 @@ _PARENTHESES = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]")
 # donneraient sinon le même titre, donc le même identifiant Steam, et une
 # seule entrée survivrait aux deux.
 _DISQUE = re.compile(r"\((Disc|Disk|CD)\s*[^\)]*\)", re.IGNORECASE)
+# Les mots qui trahissent un dossier de mise à jour ou de contenu additionnel.
+# Une DEVINETTE, assumée comme telle : elle ne retire jamais rien de
+# l'inventaire, elle ne fait qu'ajouter une ligne au rapport. Voir
+# `suspected_update_dirs` pour l'arbitrage.
+_MISE_A_JOUR = re.compile(r"\b(update|patch|dlc|maj)\b", re.IGNORECASE)
 
 
 class ScanError(RuntimeError):
@@ -362,6 +367,49 @@ def _retenus(dossier: pathlib.Path, systeme) -> list[tuple[pathlib.Path, bool]]:
                     if d.is_dir()
                     and _est_application(d, systeme.app_dir_marker)]
     return retenus
+
+
+def suspected_update_dirs(roms_root: pathlib.Path,
+                          profils: dict) -> list[str]:
+    """Les dossiers d'application qui ressemblent à une MISE À JOUR.
+
+    `app_dir_marker` retient tout sous-dossier portant le fichier déclaré. Une
+    mise à jour extraite en porte un aussi : posée à côté de sa base, elle
+    donne une SECONDE entrée Steam pour le même jeu, d'apparence normale, qui
+    lance le correctif seul — soit rien de jouable. Personne ne le
+    signalerait : le scan aurait fait exactement son travail.
+
+    SIGNALÉ, et non écarté. C'est l'arbitrage, et voici sa raison : le scan ne
+    sait pas distinguer une base d'une mise à jour. Il faudrait pour cela
+    OUVRIR le dossier — lire son `param.sfo` — et un dossier d'application
+    n'est jamais ouvert, par construction (voir `_retenus`) ; le nom, lui, ne
+    prouve rien, c'est le propriétaire qui l'a choisi. Les deux erreurs
+    possibles n'ont donc pas le même prix : écarter à tort coûte un JEU, retiré
+    de la bibliothèque sans un mot — exactement la panne que tout ce module
+    refuse ; signaler à tort coûte une ligne de rapport, que le propriétaire
+    lit et écarte. L'asymétrie tranche.
+
+    La reconnaissance porte sur des MOTS du nom de dossier, jamais sur des
+    sous-chaînes : « Dispatch » contient « patch », et accuser un vrai jeu
+    apprendrait au lecteur à ignorer la section « Problèmes ».
+
+    Rend des chemins RELATIFS à la racine, en séparateurs Windows — c'est ce
+    que le propriétaire doit renommer ou sortir de l'arborescence scannée, et
+    le nom seul serait ambigu entre deux systèmes.
+
+    Sans `app_dir_marker` — les profils livrés — la liste est toujours vide :
+    aucun dossier n'est jamais retenu, donc aucun ne peut doubler un jeu.
+    """
+    _verifier_racine(roms_root)
+    suspects = []
+    for dossier, chemin, _pid, systeme in _dossiers_couverts(
+            roms_root, profils):
+        if not systeme.app_dir_marker:
+            continue
+        for retenu, est_dossier in _retenus(dossier, systeme):
+            if est_dossier and _MISE_A_JOUR.search(retenu.name):
+                suspects.append(f"{chemin}\\{retenu.name}")
+    return sorted(suspects)
 
 
 def ignored_systems(roms_root: pathlib.Path, profils: dict,

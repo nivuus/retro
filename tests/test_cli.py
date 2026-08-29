@@ -683,3 +683,39 @@ def test_identite_rend_une_seule_ligne(capsys):
     assert cli.main(["identite"]) == 0
     lignes = capsys.readouterr().out.splitlines()
     assert lignes == [identite_mod.VERSION]
+
+
+def test_status_nomme_un_dossier_de_mise_a_jour(tmp_path, capsys):
+    """Deux dossiers portant `app_dir_marker` donnent deux entrées Steam pour
+    le même jeu. Le scan a fait exactement son travail ; sans cette ligne,
+    personne ne le dirait."""
+    profils = tmp_path / "profiles"
+    profils.mkdir()
+    (profils / "p.toml").write_text("""
+schema = 1
+id = "r"
+exe = 'R-x64\\r.exe'
+[[system]]
+id = "vita"
+name = "PS Vita"
+extensions = [".vpk"]
+app_dir_marker = "eboot.bin"
+launch = '-f "{rom}"'
+bios = []
+""", encoding="utf-8")
+    for nom in ("God of War", "CUSA07410-UPDATE"):
+        d = tmp_path / "ROMs" / "vita" / nom
+        d.mkdir(parents=True)
+        (d / "eboot.bin").write_bytes(b"x")
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+    emulation = tmp_path / "Emulation"
+    emulation.mkdir()
+    code = cli.main(["status", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--emulation-root", str(emulation),
+                     "--bios", str(bios_dir)])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "vita\\CUSA07410-UPDATE" in out
+    assert "God of War" not in out

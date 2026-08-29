@@ -812,3 +812,54 @@ def test_une_application_compte_dans_les_systemes_ignores(tmp_path,
     ignores = scan.ignored_systems(tmp_path / "ROMs", profils_apps,
                                    {"vita3k": "Vita3K"}, emulation)
     assert [i.roms for i in ignores] == [2]
+
+
+# --- Le dossier de mise à jour, qui porte le MÊME marqueur ------------------
+#
+# `app_dir_marker` retient tout sous-dossier portant le fichier déclaré. Une
+# mise à jour extraite en porte un aussi : posée à côté de sa base, elle donne
+# une SECONDE entrée Steam pour le même jeu, d'apparence normale, qui lance le
+# correctif seul — soit rien de jouable. Mesuré le 2026-08-29 sur un profil
+# `app_dir_marker = "eboot.bin"` : deux dossiers, deux entrées, pas un mot.
+#
+# Le scan la garde et la SIGNALE, il ne l'écarte pas : voir la docstring de
+# `suspected_update_dirs`.
+
+
+def test_un_dossier_de_mise_a_jour_est_signale(tmp_path, profils_apps):
+    faire_app(tmp_path, "vita/God of War")
+    faire_app(tmp_path, "vita/CUSA07410-UPDATE")
+    assert scan.suspected_update_dirs(tmp_path / "ROMs", profils_apps) == [
+        "vita\\CUSA07410-UPDATE"]
+
+
+def test_le_dossier_de_mise_a_jour_reste_dans_l_inventaire(tmp_path,
+                                                           profils_apps):
+    """SIGNALÉ, jamais écarté : le scan ne sait pas ouvrir un dossier
+    d'application, donc il ne peut pas PROUVER qu'il tient une mise à jour. Un
+    dossier retiré sur une devinette est un jeu perdu sans un mot."""
+    faire_app(tmp_path, "vita/God of War")
+    faire_app(tmp_path, "vita/CUSA07410-UPDATE")
+    titres = [e.title for e in _scan_apps(tmp_path, profils_apps)]
+    assert sorted(titres) == ["CUSA07410-UPDATE", "God of War"]
+
+
+def test_un_titre_qui_contient_le_mot_par_hasard_n_est_pas_signale(
+        tmp_path, profils_apps):
+    """« Dispatch » contient « patch ». La reconnaissance porte sur des MOTS,
+    pas sur des sous-chaînes — sans quoi le rapport accuserait un jeu."""
+    faire_app(tmp_path, "vita/Dispatch")
+    assert scan.suspected_update_dirs(tmp_path / "ROMs", profils_apps) == []
+
+
+def test_un_dossier_sans_marqueur_n_est_jamais_signale(tmp_path, profils_apps):
+    """Ce qui n'entre pas dans l'inventaire ne peut pas le doubler."""
+    (tmp_path / "ROMs" / "vita" / "update").mkdir(parents=True)
+    assert scan.suspected_update_dirs(tmp_path / "ROMs", profils_apps) == []
+
+
+def test_sans_marqueur_declare_rien_n_est_signale(tmp_path, profils):
+    """Les neuf profils livrés n'en déclarent aucun : rien ne change pour eux."""
+    faire_roms(tmp_path, ["snes/Zelda.sfc"])
+    (tmp_path / "ROMs" / "snes" / "Zelda patch").mkdir(parents=True)
+    assert scan.suspected_update_dirs(tmp_path / "ROMs", profils) == []

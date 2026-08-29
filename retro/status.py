@@ -562,6 +562,36 @@ def _probleme_steam_input(muets: Sequence[str], echec: str = "") -> list[Problem
     )]
 
 
+def _probleme_dossiers_de_mise_a_jour(dossiers: Sequence[str]) -> list[Problem]:
+    """Un dossier d'application qui ressemble à une mise à jour.
+
+    `app_dir_marker` retient tout sous-dossier portant le fichier déclaré, et
+    une mise à jour extraite en porte un aussi. Posée à côté de sa base, elle
+    donne une SECONDE entrée Steam pour le même jeu — d'apparence normale, et
+    qui lance le correctif seul, soit rien de jouable.
+
+    Le scan la garde : il ne peut pas PROUVER qu'il tient une mise à jour sans
+    ouvrir le dossier, ce qu'il ne fait jamais, et un jeu retiré sur une
+    devinette disparaîtrait sans un mot. C'est donc ici que ça se dit — le
+    rapport est le seul endroit du paquet qui s'adresse à une personne.
+    """
+    if not dossiers:
+        return []
+    seul = len(dossiers) == 1
+    pluriel, porte = ("", "porte") if seul else ("s", "portent")
+    return [Problem(
+        what=f"{len(dossiers)} dossier{pluriel} de jeu {porte} un nom de mise à "
+             "jour : chacun donne une entrée Steam de plus pour un jeu déjà "
+             "présent, qui lancerait le correctif seul",
+        where="sous la racine des ROMs, celle donnée à --roms",
+        action="les sortir de l'arborescence scannée, et les désigner à "
+               "l'émulateur autrement — ou, si ce sont de vrais jeux, ignorer "
+               "cette ligne : le scan devine sur le NOM, il ne les a pas "
+               "ouverts",
+        details=tuple(dossiers),
+    )]
+
+
 def build_report(
     install_dirs: dict[str, str],
     emulation_root: pathlib.Path,
@@ -577,6 +607,7 @@ def build_report(
     amorcages: dict[str, list[tuple[str, str]]] | None = None,
     lanceur_perime: bool = False,
     paquet: str = "",
+    dossiers_de_mise_a_jour: Sequence[str] = (),
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -607,6 +638,11 @@ def build_report(
     Amorçage ci-dessous accuserait les profils d'une panne qui n'est pas la
     leur.
 
+    `dossiers_de_mise_a_jour` porte les dossiers d'application dont le NOM
+    évoque une mise à jour — `scan.suspected_update_dirs`. Ils restent dans
+    l'inventaire, parce que le scan ne peut pas prouver qu'ils n'en sont pas ;
+    ce rapport est le seul endroit où le doublon puisse se dire.
+
     `paquet` est la construction du paquet qui produit ce rapport. Il est
     CONSTATÉ, jamais reproché : lancer `retro` depuis son arbre source est le
     cas normal de l'hôte, et en faire un problème apprendrait au lecteur à
@@ -633,7 +669,9 @@ def build_report(
                   *_probleme_remplissage_non_mesure(rendu),
                   *_probleme_steam_input(steam_input_muets, steam_input_echec),
                   *_probleme_lanceur_perime(lanceur_perime, emulation_root),
-                  *_probleme_manettes(manettes)],
+                  *_probleme_manettes(manettes),
+                  *_probleme_dossiers_de_mise_a_jour(
+                      dossiers_de_mise_a_jour)],
         bios_root=bios_root,
         render_mode=render_mode,
         paquet=paquet,

@@ -121,6 +121,41 @@ def _lire_parts(cle: str, champs: dict) -> tuple[Part, ...]:
     return tuple(parts)
 
 
+def _refuser_profils_partages(emulateurs: dict) -> None:
+    """Deux entrées ne peuvent pas viser le même profil.
+
+    `cli._install_dirs_pour` indexe les émulateurs PAR PROFIL —
+    `{emu.profile: emu.install_dir}`. Deux entrées qui déclarent le même
+    `profile` s'y écrasent donc l'une l'autre, en silence et selon l'ordre
+    d'itération : les jeux de ce profil se voient attribuer le dossier
+    d'installation de l'autre entrée. Steam crée les raccourcis, le rapport
+    annonce « + <titre> », et rien ne démarre — ni Steam ni ce paquet ne le
+    signalent.
+
+    Le refus vaut au CHARGEMENT, parce que c'est le seul endroit où les deux
+    entrées sont encore visibles ensemble : plus bas, l'une a déjà disparu.
+
+    Remplacer une entrée livrée se fait en REPRENANT SA CLÉ — le manifeste
+    utilisateur surcharge par clé — et non en ajoutant une seconde entrée qui
+    viserait le même profil. Le message le dit, sans quoi le refus n'indique
+    aucune sortie.
+    """
+    par_profil: dict[str, list[str]] = {}
+    for cle in sorted(emulateurs):
+        par_profil.setdefault(emulateurs[cle].profile, []).append(cle)
+    for profil, cles in sorted(par_profil.items()):
+        if len(cles) > 1:
+            raise ManifestError(
+                f"profile = {profil!r} est déclaré par {len(cles)} entrées : "
+                f"{', '.join(f'[emulator.{c}]' for c in cles)}. Un profil ne "
+                "peut avoir qu'un dossier d'installation ; deux entrées le "
+                "revendiquent et la dernière lue gagnerait sans un mot. Pour "
+                "remplacer une entrée, reprendre SA CLÉ dans le manifeste "
+                "utilisateur ; pour en ajouter une autre, lui donner un "
+                "profile distinct."
+            )
+
+
 def load_manifest(core: pathlib.Path,
                   user: pathlib.Path | None = None) -> dict[str, Emulator]:
     """Le noyau, surchargé par le manifeste utilisateur s'il existe.
@@ -147,4 +182,5 @@ def load_manifest(core: pathlib.Path,
         _valider_install_dir(cle, champs["install_dir"])
         emulateurs[cle] = Emulator(key=cle, parts=_lire_parts(cle, champs),
                                    **{c: champs[c] for c in _CHAMPS})
+    _refuser_profils_partages(emulateurs)
     return emulateurs
