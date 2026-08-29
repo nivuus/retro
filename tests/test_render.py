@@ -200,3 +200,68 @@ def test_un_remplissage_jamais_mesure_n_est_pas_un_emulateur_sans_reglage():
 def test_le_remplissage_explique_toujours_sa_valeur(mode_declare):
     choix = render.resoudre_remplissage(render.NATIVE, mode_declare)
     assert choix.motif.strip()
+
+
+# --- le remplissage IMPOSÉ PAR L'AMORÇAGE -------------------------------
+#
+# Le chaînon qui manquait au modèle : un émulateur dont les deux modes ne
+# passent rien — DuckStation — rendait NON_REGLABLE, et le rapport disait
+# « rien à régler » sur un émulateur dont la console règle pourtant le
+# cadrage. Le réglage n'est pas dans `args` : il est dans le fragment
+# `enforced`, posé avant que le mode ne soit résolu.
+
+def test_un_remplissage_impose_par_l_amorcage_se_declare_sur_un_mode_vide():
+    """Le cas que le modèle ne savait pas décrire. Un mode qui ne passe rien
+    a QUAND MÊME un remplissage si l'amorçage le pose dans le fichier de
+    réglages de l'émulateur."""
+    choix = render.resoudre_remplissage(
+        render.FULL,
+        render.RenderMode(args="", note="rien en ligne de commande"),
+        fill_enforced=render.ENTIER,
+        fill_enforced_where="[Display] Scaling = X — relevé le 2026-01-01",
+    )
+    assert choix.remplissage == render.ENTIER
+
+
+def test_le_motif_d_un_remplissage_impose_dit_ou_il_est_pose():
+    """Trois choses que le propriétaire ne peut pas deviner : que le réglage
+    vient de l'amorçage, OÙ il est posé, et qu'il vaut la même chose dans les
+    deux modes parce que cet émulateur ne règle rien en ligne de commande."""
+    choix = render.resoudre_remplissage(
+        render.NATIVE,
+        render.RenderMode(args="", note="rien en ligne de commande"),
+        fill_enforced=render.ENTIER,
+        fill_enforced_where="[Display] Scaling = X — relevé le 2026-01-01",
+    )
+    assert "[Display] Scaling" in choix.motif
+    assert "amorçage" in choix.motif
+    assert "deux modes" in choix.motif.lower()
+
+
+def test_un_remplissage_impose_vaut_la_meme_chose_dans_les_deux_modes():
+    """`enforced` est un fragment PAR PROFIL, posé une fois par lancement,
+    avant que le mode ne soit résolu. La politique — `entier` en natif,
+    `ajuste` en full — est donc hors de portée ici, et le rapport ne doit pas
+    faire croire qu'elle s'applique."""
+    vide = render.RenderMode(args="", note="rien en ligne de commande")
+    ou = "[Display] Scaling = X — relevé le 2026-01-01"
+    deux = {render.resoudre_remplissage(m, vide, fill_enforced=render.ENTIER,
+                                        fill_enforced_where=ou).remplissage
+            for m in render.MODES_DECLARES}
+    assert deux == {render.ENTIER}
+
+
+def test_une_mesure_d_absence_l_emporte_sur_un_remplissage_impose():
+    """L'ordre des cas. `fill_absent` est une MESURE — « il n'y a rien à
+    régler sur cet axe » — et elle l'emporte sur une déclaration. L'inverse
+    ferait annoncer un remplissage sur un émulateur dont on a constaté qu'il
+    n'en a pas."""
+    choix = render.resoudre_remplissage(
+        render.FULL,
+        render.RenderMode(args="", note="rien en ligne de commande",
+                          fill_absent="aucune clé de cet axe"),
+        fill_enforced=render.ENTIER,
+        fill_enforced_where="[Display] Scaling = X — relevé le 2026-01-01",
+    )
+    assert choix.remplissage == render.NON_REGLABLE
+    assert "aucune clé de cet axe" in choix.motif

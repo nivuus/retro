@@ -261,7 +261,12 @@ def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
 # qui seul connaît la session. {render_config} l'est à l'écriture du plan : le
 # chemin d'un fichier ne dépend pas de la résolution.
 _VARIABLES = ("width", "height", "scale", "render_config")
-_CLES_RENDER = ("native", "full", "native_height", "max_scale")
+_CLES_RENDER = ("native", "full", "native_height", "max_scale",
+                "fill_enforced", "fill_enforced_where")
+# Le préfixe qu'un `fill_enforced_where` doit porter : « [Section] Clé ».
+# Ce n'est pas une convention de rédaction — c'est ce que la garde de
+# cohérence analyse pour aller chercher la clé dans le fragment imposé.
+_PREFIXE_OU = re.compile(r"^\[([^\[\]]+)\]\s+(\S+)")
 _CLES_MODE = ("args", "note", "crt", "crt_absent", "config",
               "fill", "fill_absent")
 
@@ -472,9 +477,85 @@ def _lire_render(path, sid, brut, launch: str) -> Render:
                 "la console, bornée par l'échelle maximale : sans ces deux "
                 "nombres, elle n'est pas calculable."
             )
+    impose, impose_ou = _lire_remplissage_impose(path, sid, brut, modes)
     return Render(native=modes[render_mod.NATIVE], full=modes[render_mod.FULL],
                   native_height=brut.get("native_height", 0),
-                  max_scale=brut.get("max_scale", 0))
+                  max_scale=brut.get("max_scale", 0),
+                  fill_enforced=impose, fill_enforced_where=impose_ou)
+
+
+def _lire_remplissage_impose(path, sid, brut,
+                             modes: dict) -> tuple[str, str]:
+    """Le remplissage que l'AMORÇAGE impose, et où il est posé.
+
+    Sur le bloc [system.render] et non sur un mode : le fragment `enforced`
+    est posé une fois par lancement, AVANT que le mode ne soit résolu. Le
+    réglage vaut donc la même chose en natif et en full, et le déclarer par
+    mode ferait croire à deux valeurs là où le fichier n'en porte qu'une.
+
+    Quatre refus. Chacun laisserait un profil se charger, `retro status`
+    annoncer un remplissage, et RIEN n'être posé sur la machine — la faute
+    exacte que la dette D2 combat, et qui ne produit aucun message.
+
+    Le cinquième refus n'est pas ici : la clé nommée existe-t-elle vraiment
+    dans le fragment imposé ? Cela demande le profil entier, donc ses
+    [[bootstrap]] — voir `_refuser_remplissage_impose_sans_cle`.
+    """
+    impose = brut.get("fill_enforced", "")
+    impose_ou = brut.get("fill_enforced_where", "")
+    for champ, valeur in (("fill_enforced", impose),
+                          ("fill_enforced_where", impose_ou)):
+        if not isinstance(valeur, str):
+            raise ProfileError(
+                f"{path} [{sid}] : 'render.{champ}' doit être du texte."
+            )
+    impose, impose_ou = impose.strip(), impose_ou.strip()
+    if bool(impose) != bool(impose_ou):
+        raise ProfileError(
+            f"{path} [{sid}] : 'render' déclare "
+            + ("'fill_enforced' sans 'fill_enforced_where'"
+               if impose else
+               "'fill_enforced_where' sans 'fill_enforced'")
+            + ". Les deux vont ensemble : le premier est le remplissage que "
+            "la console impose, le second dit OÙ il est posé — et son couple "
+            "« [Section] Clé » est ce qui permet de vérifier que quelque "
+            "chose le pose réellement. Un remplissage sans son adresse ne "
+            "serait vérifiable par personne ; une adresse sans remplissage "
+            "décrirait un réglage que rien ne déclare."
+        )
+    if not impose:
+        return "", ""
+    if impose not in render_mod.REMPLISSAGES:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.fill_enforced' vaut {impose!r} — "
+            f"remplissage inconnu. Les remplissages sont "
+            f"{', '.join(render_mod.REMPLISSAGES)} : ce sont les deux seules "
+            "façons d'agrandir une image SANS la déformer. Une valeur "
+            "inconnue serait imprimée telle quelle par le rapport, comme si "
+            "elle voulait dire quelque chose."
+        )
+    if not _PREFIXE_OU.match(impose_ou):
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.fill_enforced_where' doit COMMENCER "
+            "par le couple « [Section] Clé » qui porte le réglage, puis dire "
+            f"sa valeur et d'où elle vient — reçu {impose_ou!r}. Le préfixe "
+            "n'est pas décoratif : c'est lui qu'une garde analyse pour "
+            "vérifier que cette clé figure bien dans le fragment que la "
+            "console impose. Sans lui, le profil pourrait annoncer un "
+            "remplissage que rien ne pose, et rien ne le dirait."
+        )
+    deja = [nom for nom, m in modes.items() if m.fill or m.fill_absent]
+    if deja:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.fill_enforced' coexiste avec le "
+            f"remplissage déclaré par le mode {', '.join(sorted(deja))}. Le "
+            "même axe serait décidé à deux endroits, et rien dans le profil "
+            "ne dirait lequel gagne. Choisir : réglé par les arguments du "
+            "mode ('fill'), constaté absent ('fill_absent'), ou imposé par "
+            "l'amorçage dans le fichier de réglages de l'émulateur "
+            "('fill_enforced')."
+        )
+    return impose, impose_ou
 
 
 def _lire_bootstraps(path: pathlib.Path, brut) -> tuple[Bootstrap, ...]:
@@ -963,7 +1044,7 @@ def load_profile(path: pathlib.Path) -> Profile:
     sortie = data.get("exit", {})
     entree = data.get("input", {})
     mapping, mapping_ou = _lire_mapping(path, entree)
-    return Profile(
+    profil = Profile(
         id=data["id"], exe=data["exe"], systems=tuple(systemes),
         exit_native=sortie.get("native", ""),
         exit_fallback=sortie.get("fallback", "alt+f4"),
@@ -972,6 +1053,50 @@ def load_profile(path: pathlib.Path) -> Profile:
         input_mapping_where=mapping_ou,
         bootstraps=_lire_bootstraps(path, data.get("bootstrap")),
     )
+    # APRÈS CONSTRUCTION, parce que la vérification croise deux morceaux du
+    # profil que rien ne lit ensemble avant : le bloc de rendu d'un système,
+    # et les fragments imposés de ses [[bootstrap]].
+    _refuser_remplissage_impose_sans_cle(path, profil)
+    return profil
+
+
+def _refuser_remplissage_impose_sans_cle(path: pathlib.Path,
+                                         profil: Profile) -> None:
+    """La clé nommée par `fill_enforced_where` est-elle RÉELLEMENT imposée ?
+
+    Un profil peut annoncer « la console impose le remplissage, dans
+    [Display] Scaling » et n'avoir cette clé dans AUCUN de ses fragments
+    `enforced`. Rien ne le dirait : le profil se charge, `retro status`
+    imprime le remplissage, et la machine ne reçoit jamais la clé. C'est
+    exactement la faute de la dette D2 — un réglage qui a l'air posé et qui
+    ne fait rien.
+
+    TOUS les [[bootstrap]] comptent, pas seulement le premier : RPCS3 en a
+    deux, et exiger que la clé soit dans l'un plutôt que l'autre serait
+    arbitraire. C'est la présence qui est vérifiée, jamais la VALEUR : ce que
+    la clé vaut est une mesure, pas une déclaration, et la comparer ici
+    ferait croire cette garde plus forte qu'elle n'est.
+    """
+    imposees = {couple for b in profil.bootstraps
+                for couple in cles_ini(b.enforced)}
+    for systeme in profil.systems:
+        rendu = systeme.render
+        if rendu is None or not rendu.fill_enforced_where:
+            continue
+        trouve = _PREFIXE_OU.match(rendu.fill_enforced_where)
+        section, cle = trouve.group(1).strip(), trouve.group(2)
+        if (section, cle) in imposees:
+            continue
+        raise ProfileError(
+            f"{path} [{systeme.id}] : 'render.fill_enforced_where' annonce le "
+            f"remplissage posé en [{section}] {cle}, mais aucun [[bootstrap]] "
+            "de ce profil n'impose cette clé. Le profil se chargerait, "
+            "`retro status` imprimerait un remplissage, et la clé n'arriverait "
+            "JAMAIS sur la machine — un réglage qui a l'air posé et qui ne "
+            "fait rien. Ajouter la clé au fragment 'enforced' du bloc "
+            "[[bootstrap]] qui vise le fichier de réglages de cet émulateur, "
+            "ou retirer 'fill_enforced'."
+        )
 
 
 def _charger_source(directory: pathlib.Path,

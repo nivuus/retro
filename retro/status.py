@@ -89,6 +89,12 @@ class SystemRender:
     # rendu, soit un remplissage entier, soit un cadrage que personne n'a
     # réglé — et vues du canapé, les trois se ressemblent exactement.
     remplissage: tuple[tuple[str, str, str], ...] = ()
+    # Vrai quand ce remplissage vient du fragment que l'amorçage IMPOSE, et
+    # non des arguments du mode. La légende de la section ne peut alors rien
+    # en dire — elle cite la politique PAR MODE, et un fragment imposé est
+    # posé avant que le mode ne soit résolu. Le motif reste donc sur la ligne
+    # du système, là où la légende le remplace d'ordinaire.
+    remplissage_impose: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -452,9 +458,13 @@ def etat_rendu(profils: dict) -> list[SystemRender]:
                 remplissage=tuple(
                     (nom, choix.remplissage, choix.motif)
                     for nom, choix in (
-                        (n, render_mod.resoudre_remplissage(n, m))
+                        (n, render_mod.resoudre_remplissage(
+                            n, m,
+                            fill_enforced=rendu.fill_enforced,
+                            fill_enforced_where=rendu.fill_enforced_where))
                         for n, m in ((render_mod.NATIVE, rendu.native),
                                      (render_mod.FULL, rendu.full)))),
+                remplissage_impose=bool(rendu.fill_enforced),
             ))
     return sorted(etats, key=lambda e: e.system_name)
 
@@ -726,6 +736,14 @@ def _lignes_rendu(report: Report) -> list[str]:
         if not e.pilote:
             lignes.append(f"  {nom}  cet émulateur ne pilote pas son rendu en "
                           "ligne de commande")
+            # LE REMPLISSAGE SE DIT ICI AUSSI, et avant les notes. Sortir sans
+            # l'imprimer taisait le troisième axe sur le seul émulateur dont
+            # la console règle le cadrage par son fichier de réglages
+            # (DuckStation) : le rapport laissait croire « rien à régler » sur
+            # celui où il y avait justement quelque chose.
+            lignes += [f"  {' ' * largeur}    {l}"
+                       for l in _lignes_remplissage(e.remplissage,
+                                                    e.remplissage_impose)]
             for note in e.notes:
                 lignes.append(f"  {' ' * largeur}    {note}")
             continue
@@ -734,7 +752,8 @@ def _lignes_rendu(report: Report) -> list[str]:
         if not e.crt:
             lignes.append(f"  {' ' * largeur}    ({e.crt_absent})")
         lignes += [f"  {' ' * largeur}    {l}"
-                   for l in _lignes_remplissage(e.remplissage)]
+                   for l in _lignes_remplissage(e.remplissage,
+                                                e.remplissage_impose)]
         for note in e.notes:
             lignes.append(f"  {' ' * largeur}    {note}")
     return lignes
@@ -755,21 +774,31 @@ def legende_remplissage() -> list[str]:
             for mode in render_mod.MODES_DECLARES]
 
 
-def _lignes_remplissage(remplissage: tuple[tuple[str, str, str], ...]) -> list[str]:
+def _lignes_remplissage(remplissage: tuple[tuple[str, str, str], ...],
+                        impose: bool = False) -> list[str]:
     """Le troisième axe d'UN système, mode par mode.
 
     Le motif n'accompagne que ce que la légende n'explique pas : un émulateur
-    qui n'expose aucun réglage, ou un remplissage que personne n'a mesuré.
+    qui n'expose aucun réglage, un remplissage que personne n'a mesuré — et
+    un remplissage IMPOSÉ par l'amorçage.
+
+    Ce dernier porte pourtant une valeur de l'axe, `entier` ou `ajuste` : sans
+    `impose`, il passerait pour un remplissage que la légende explique. Elle
+    ne l'explique pas — elle cite la politique PAR MODE, et un fragment imposé
+    est posé avant que le mode ne soit résolu, donc la même valeur sort des
+    deux modes. Taire le motif ferait lire une contradiction avec la légende
+    là où il n'y en a pas, et cacherait OÙ la clé est posée.
     """
     if not remplissage:
         return []
     valeurs = ", ".join(f"{mode} {valeur}" for mode, valeur, _ in remplissage)
     lignes = [f"remplissage : {valeurs}"]
     # Dédoublonné : les deux modes d'un émulateur qui n'expose rien portent la
-    # même phrase, et l'imprimer deux fois la fait lire zéro.
+    # même phrase, et l'imprimer deux fois la fait lire zéro. C'est aussi le
+    # cas d'un remplissage imposé, qui vaut la même chose des deux côtés.
     vus: list[str] = []
     for _, valeur, motif in remplissage:
-        if valeur not in render_mod.REMPLISSAGES and motif not in vus:
+        if (impose or valeur not in render_mod.REMPLISSAGES) and motif not in vus:
             vus.append(motif)
     return lignes + [f"  ({m})" for m in vus]
 

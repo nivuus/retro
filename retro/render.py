@@ -109,6 +109,30 @@ class Render:
     # alors : sans elles, {scale} ne serait pas calculable.
     native_height: int = 0
     max_scale: int = 0
+    # Le REMPLISSAGE QUE L'AMORÇAGE IMPOSE, quand l'émulateur n'en expose
+    # aucun en ligne de commande et que la console le pose dans son fichier
+    # de réglages — le fragment `enforced` du bloc [[bootstrap]].
+    #
+    # ICI, sur le Render, et non sur un mode : `enforced` est un fragment PAR
+    # PROFIL, posé une fois par lancement, AVANT que le mode ne soit résolu.
+    # Le réglage vaut donc la même chose en natif et en full. Le déclarer par
+    # mode ferait croire à deux valeurs là où le fichier n'en porte qu'une,
+    # et la seconde ne serait jamais posée — muettement.
+    #
+    # CE QUE CELA FAIT À LA POLITIQUE : elle est hors de portée, pas
+    # contredite. `_REMPLISSAGE_PAR_MODE` dit ce qu'un mode DEVRAIT produire
+    # avec ses arguments ; un émulateur qui n'en a pas ne passe par aucun de
+    # ces chemins. `resoudre_remplissage` le dit dans son motif, et
+    # `profiles` ne confronte donc pas cette valeur-ci à la politique.
+    #
+    # `fill_enforced_where` n'est pas un commentaire libre : il COMMENCE par
+    # le couple « [Section] Clé » qui porte le réglage, et une garde vérifie
+    # après construction que ce couple figure réellement dans le fragment
+    # `enforced` du profil. Sans elle, un profil annoncerait un remplissage
+    # que rien ne pose — et une valeur fausse se comporte exactement comme
+    # l'absence de valeur.
+    fill_enforced: str = ""
+    fill_enforced_where: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -356,12 +380,21 @@ class ChoixRemplissage:
     motif: str
 
 
-def resoudre_remplissage(mode_nom: str, mode: RenderMode) -> ChoixRemplissage:
+def resoudre_remplissage(mode_nom: str, mode: RenderMode,
+                         fill_enforced: str = "",
+                         fill_enforced_where: str = "") -> ChoixRemplissage:
     """Ce que ce mode fait RÉELLEMENT du troisième axe, et ce qu'on en dit.
 
-    Quatre états, dans cet ordre, parce qu'ils se recouvrent :
+    Cinq états, dans cet ordre, parce qu'ils se recouvrent :
 
-    - `fill_absent` : mesuré, cet émulateur n'expose aucun réglage de cet axe ;
+    - `fill_absent` : mesuré, cet émulateur n'expose aucun réglage de cet axe.
+      C'est une MESURE, et elle l'emporte sur toute déclaration : l'inverse
+      annoncerait un remplissage sur un émulateur dont on a constaté qu'il
+      n'en a pas ;
+    - IMPOSÉ PAR L'AMORÇAGE : la console pose le réglage dans le fichier de
+      l'émulateur, pas sur sa ligne de commande. Ce cas passe AVANT celui du
+      mode vide — sinon DuckStation, dont les deux modes ne passent rien,
+      resterait « rien à régler » alors que la console règle son cadrage ;
     - un mode qui ne passe RIEN — ni argument ni fichier de réglages — n'a
       aucun axe à régler, celui-ci compris. Sa `note` dit déjà pourquoi, et
       c'est le cas de DuckStation : le déduire ici évite de redemander à son
@@ -371,10 +404,24 @@ def resoudre_remplissage(mode_nom: str, mode: RenderMode) -> ChoixRemplissage:
     - sinon : personne n'a mesuré. Ce n'est PAS « cet émulateur n'en a pas » —
       les confondre ferait rouvrir l'enquête à chaque passage, ou pire,
       attendre un effet qui ne viendra jamais.
+
+    `fill_enforced` et `fill_enforced_where` viennent du `Render`, donc des
+    DEUX modes à la fois — voir leur commentaire là-bas. Le motif le dit,
+    parce que le propriétaire ne peut pas le deviner : il lirait deux fois la
+    même valeur et croirait la politique appliquée.
     """
     if mode.fill_absent:
         return ChoixRemplissage(
             NON_REGLABLE, f"aucun réglage de remplissage — {mode.fill_absent}")
+    if fill_enforced:
+        return ChoixRemplissage(
+            fill_enforced,
+            f"{fill_enforced} : imposé par l'amorçage, dans le fichier de "
+            f"réglages de l'émulateur — {fill_enforced_where}. La même valeur "
+            "dans les DEUX modes : cet émulateur ne règle rien en ligne de "
+            "commande, et le fragment imposé est posé avant que le mode ne "
+            "soit résolu. La politique par mode est donc hors de portée ici, "
+            "et non contredite.")
     if not mode.args.strip() and not mode.config.strip():
         return ChoixRemplissage(
             NON_REGLABLE,
