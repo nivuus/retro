@@ -120,22 +120,30 @@ exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 # le réglage : les chaînes du binaire donnent les LIBELLÉS de l'interface, pas
 # les valeurs du fichier ; les valeurs sont dans la source.
 #
-# REMPLISSAGE (dette D2) — TOUJOURS PAS POSÉ, et l'état a changé sans être
-# clos. Le couple section/clé n'est plus l'inconnue : `[Display] Scaling` a été
-# posé le 2026-08-29 avec la valeur `BilinearSmooth`, et il a été RECONNU.
-# Ce qu'on en sait de plus, et c'est un fait négatif utile : `Scaling` est un
-# FILTRE, pas un cadrage — il n'a RIEN changé à la géométrie de l'image.
+# REMPLISSAGE (dette D2) — TOUJOURS PAS POSÉ. Le couple section/clé n'est plus
+# l'inconnue — `[Display] Scaling` — et la SOURCE a été relue au tag le
+# 2026-08-29 : le tableau des valeurs, et l'endroit où elles sont consommées.
+# Le relevé complet est écrit juste au-dessus du champ `enforced`.
 #
-# CE QUI N'EST PAS MESURÉ, et interdit d'écrire une valeur ici : le binaire
-# épinglé porte bien de quoi remplir en entier — le type DisplayScalingMode,
-# les valeurs NearestInteger et BilinearInteger, étiquetées « Nearest-Neighbor
-# (Integer) » et « Bilinear (Integer) » — mais PERSONNE N'A VU l'une de ces
-# deux valeurs agir sur la machine. Or une valeur fausse se comporte exactement
-# comme l'absence de valeur : mesuré deux fois sur cet émulateur même — une clé
-# inventée survit à un aller-retour sans rien faire (2026-08-28), et deux
-# valeurs de CropMode recopiées des libellés de l'interface n'ont rien fait non
-# plus (2026-08-29). En écrire une plausible produirait exactement ce que la
-# dette D2 combat : un réglage qui a l'air posé et qui ne fait rien.
+# Ce qu'il donne, et qui va à l'envers de ce que ce fichier a cru un moment :
+# `Scaling` TOUCHE à la géométrie. Les deux variantes *Integer arrondissent le
+# facteur d'échelle au plancher dans GPU::CalculateDrawRect. L'essai du
+# 2026-08-29 — `BilinearSmooth` posé, « rien n'a changé » — ne le contredit
+# pas : `BilinearSmooth` est la valeur PAR DÉFAUT de cette révision, donc
+# l'essai n'a rien posé du tout, et il n'a rien prouvé — ni sur l'effet de
+# `Scaling`, ni même sur le fait que la clé soit reconnue, une valeur inconnue
+# retombant silencieusement sur ce même défaut.
+#
+# CE QUI N'EST PAS MESURÉ, et interdit d'écrire une valeur ici : PERSONNE N'A
+# VU `NearestInteger` ni `BilinearInteger` agir sur la machine. Une lecture de
+# source établit un nom, des valeurs et un chemin de code ; elle n'établit pas
+# que le binaire livré se comporte comme sa source. Or une valeur fausse se
+# comporte exactement comme l'absence de valeur : mesuré deux fois sur cet
+# émulateur même — une clé inventée survit à un aller-retour sans rien faire
+# (2026-08-28), et deux valeurs de CropMode recopiées des libellés de
+# l'interface n'ont rien fait non plus (2026-08-29). En écrire une plausible
+# produirait exactement ce que la dette D2 combat : un réglage qui a l'air posé
+# et qui ne fait rien.
 #
 # CE QUI SE PASSE ALORS, et qu'il ne faut pas prendre pour un sabotage : ce
 # relevé — comme celui de la manette (D3), qui a exigé de repasser
@@ -246,10 +254,63 @@ target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
 # Ce que ces deux échecs confirment, et c'est la règle de ce fichier :
 # UNE VALEUR FAUSSE SE COMPORTE EXACTEMENT COMME L'ABSENCE DE VALEUR.
 #
-# `Scaling` N'EST PAS UN CADRAGE, c'est un FILTRE. Mesuré le 2026-08-29 :
-# `Scaling = BilinearSmooth` a été posé, il a été reconnu, et il n'a RIEN
-# changé à la géométrie de l'image. Il n'entre pas ici et ne fait pas partie
-# du correctif — l'y ranger ferait croire le cadrage réglé par lui.
+# [Display] Scaling — LE REMPLISSAGE. RELEVÉ DANS LA SOURCE le 2026-08-29,
+# PAS ENCORE MESURÉ sur la machine, et donc PAS ENCORE POSÉ ICI.
+#
+# Le relevé, au tag v0.1-11609 — celui dont le manifeste porte l'empreinte :
+#
+#   - src/core/settings.cpp, ligne 2218, tableau `s_display_scaling_names` :
+#     Nearest, NearestInteger, BilinearSmooth, BilinearHybrid, BilinearSharp,
+#     BilinearInteger, Lanczos. Ce sont les valeurs DU FICHIER.
+#     Trois lignes plus bas, `s_display_scaling_display_names` porte
+#     « Nearest-Neighbor (Integer) », « Bilinear (Smooth) »… : ce sont les
+#     LIBELLÉS, ceux que `strings` remonte, et aucun n'est jamais écrit dans
+#     le .ini. Les deux tableaux sont voisins — c'est le couple exact qui a
+#     coûté deux tentatives sur CropMode.
+#   - la clé est lue en Settings::Load, settings.cpp lignes 387-392 :
+#     si.GetStringViewValue("Display", "Scaling", ...). Section et nom
+#     confirmés. Un jumeau `Scaling24Bit` existe pour le 24 bits.
+#   - src/core/settings.h ligne 217, IsUsingIntegerDisplayScaling, puis
+#     src/core/video_presenter.cpp ligne 610, puis src/core/gpu.cpp ligne 2250,
+#     GPU::CalculateDrawRect : les deux variantes *Integer y font
+#     `std::floor(scale)` et centrent le résidu (lignes 2336 et 2367).
+#     `Scaling` TOUCHE DONC À LA GÉOMÉTRIE, et pas seulement à
+#     l'échantillonnage — les variantes *Integer n'ont d'ailleurs aucun shader
+#     propre, elles partagent celui de leur variante de base.
+#     (Le fichier src/core/gpu_presenter.cpp n'existe pas à cette révision.)
+#   - aucune autre clé de [Display] ne porte cet axe : `IntegerScaling` et
+#     `LinearFiltering` n'existent plus — fondues dans `Scaling` — et `Stretch`
+#     est sous #ifdef __ANDROID__. `AspectRatio` est le deuxième axe,
+#     `CropMode` le cadrage, déjà posé ci-dessous.
+#
+# 🔴 CE QUE CE RELEVÉ DÉFAIT, et c'est le plus important : la note qui tenait
+# ici disait « Scaling est un FILTRE, mesuré : BilinearSmooth a été posé, il a
+# été reconnu, il n'a rien changé ». Les deux moitiés tombent, pour une seule
+# raison lue dans settings.h ligne 242 :
+#
+#   DEFAULT_DISPLAY_SCALING = DisplayScalingMode::BilinearSmooth
+#
+#   1. `BilinearSmooth` EST LE DÉFAUT. Le poser ne pouvait rien changer :
+#      c'était déjà la valeur en vigueur. « Il n'a rien changé » n'est pas une
+#      mesure de Scaling, c'est la mesure d'un non-geste ;
+#   2. ParseDisplayScaling fait `.value_or(DEFAULT_DISPLAY_SCALING)` : une
+#      valeur INCONNUE retombe silencieusement sur BilinearSmooth. Donc « il a
+#      été reconnu » n'était pas établi non plus — reconnue ou inconnue, la
+#      valeur donnait ici le même résultat observable.
+#
+# TROISIÈME FAUX ORACLE DE CE FICHIER, à ranger avec les deux autres :
+# POSER LA VALEUR PAR DÉFAUT NE MESURE RIEN.
+#
+# CE QUI RESTE À MESURER, et qui seul autorisera d'écrire une valeur ici :
+# voir `NearestInteger` ou `BilinearInteger` AGIR sur la machine — trois
+# captures, Scaling absent puis chacune des deux valeurs, et le compte des
+# lignes noires. La lecture ci-dessus PRÉDIT un effet géométrique ; elle ne le
+# prouve pas, et le binaire livré n'est pas sa source. La procédure est écrite
+# dans docs/superpowers/plans/2026-08-29-d2-remplissage-image.md, tâche 3.
+#
+# Tant que cette mesure n'a pas eu lieu, `Scaling` n'entre pas dans `enforced`
+# et le bloc [system.render] ne déclare aucun `fill_enforced` : une valeur
+# fausse se comporte exactement comme l'absence de valeur.
 enforced = '''
 [Main]
 SetupWizardIncomplete = false
@@ -438,9 +499,14 @@ bios       = [
 # la note, de sorte que le propriétaire qui choisit « full » et ne voit rien
 # changer sur ses jeux PlayStation puisse lire pourquoi.
 #
-# La résolution interne et le ratio de DuckStation se règlent dans son
-# settings.ini. Les y écrire écraserait les réglages du propriétaire, ce que
-# cet outil ne fait pas.
+# La résolution interne, le ratio et le remplissage de DuckStation se règlent
+# dans son settings.ini. Depuis l'arbitrage du 2026-08-29, les y écrire est
+# AUTORISÉ et il existe pour cela un mécanisme : le champ `enforced` du bloc
+# [[bootstrap]] ci-dessus, reposé à chaque lancement par la fusion, qui ne
+# touche qu'aux clés qu'elle apporte. C'est par là que le cadrage
+# ([Display] CropMode) est passé, et c'est par là que le remplissage passera
+# le jour où il aura été MESURÉ — voir le relevé de source au-dessus de
+# `enforced`. Rien n'est écrit ici tant que la mesure n'a pas eu lieu.
 cost       = "light"
 [system.render.native]
 args = ""
