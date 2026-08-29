@@ -794,7 +794,59 @@ en aura une.
 
 ---
 
-## D6 — La console tourne sur un paquet périmé, et absolument rien ne le dit
+## D6 — La console tourne sur un paquet périmé, et absolument rien ne le dit — RÉGLÉE le 2026-08-29
+
+> **CLOSE, et la preuve qui manquait a été faite sur la machine.** Les six
+> mesures de la tâche 6 du plan sont consignées ci-dessous. La ligne qui clôt
+> la dette est la troisième — c'était son assertion centrale, et la seule qui
+> ne pouvait se mesurer nulle part ailleurs.
+>
+> | Mesure | Résultat |
+> |---|---|
+> | État de départ | `retro.exe identite` → `invalid choice: 'identite'` ; le témoin `D:\state\retro.status` **n'existait pas du tout** ; dix profils installés |
+> | Le refus | **code 8**, message nommant la version de l'hôte et le remède, et **aucun effet de bord** — pas d'inventaire créé, Steam intact |
+> | **Le remède** | `Found existing installation: retro 0.1.0` → `Successfully uninstalled retro-0.1.0` → **`Successfully installed retro-0.1.0+20260829174234.380c62ac.g4bf8334`** |
+> | Le témoin | `package=0.1.0+20260829174234.380c62ac.g4bf8334`, identique à `identite_roue` sur l'hôte, entre `emulation_root=` et `report:` |
+> | Le rapport | `retro scan` cite `paquet : 0.1.0+…` en tête |
+> | Second passage | **aucun écart, aucun refus** — l'identité survit à sa propre écriture, ce que le plan désignait comme le défaut le plus probable du mécanisme |
+>
+> **Ce que la mesure a trouvé, et que rien dans les dépôts ne pouvait voir.**
+> Trois défauts, dont aucun n'était visible depuis une suite de tests verte :
+>
+> 1. **Le paquet ne se construisait pas.** Les trois hooks
+>    `get_requires_for_build_*` étaient réexportés tels quels ; or pip appelle
+>    `get_requires_for_build_wheel` en PREMIER et setuptools y lit déjà la
+>    version dynamique. Sous `--no-build-isolation` — le seul chemin que les
+>    tests empruntaient — cela passait ; sous isolation, c'est-à-dire sur le
+>    chemin de production, la construction mourait en
+>    `ModuleNotFoundError: retro._identite`. **Le correctif de D6 ne se
+>    construisait que dans le harnais qui l'avait écrit**, et se serait
+>    effondré à la première vraie construction. D6 s'est attrapée elle-même.
+> 2. **`ROMS_ROOT` désignait `G:\ROMs`, qui n'existe pas** (la bibliothèque
+>    est dans `G:\Games`). `retro scan` échouait donc à chaque passage aux
+>    valeurs par défaut, depuis que la constante existe.
+> 3. **Le scan ne recevait pas les profils du propriétaire**, seulement son
+>    manifeste. Le profil de l'un de ses émulateurs — celui que ce dépôt ne
+>    peut pas nommer, et qui vit pour cette raison sur son partage — dit quels
+>    dossiers lui appartiennent. Sans lui, le système que cet émulateur sert
+>    devient **inconnu**, et la synchronisation **retire de Steam les six jeux
+>    concernés**, en purgeant leur artwork, sans un mot.
+>
+> **Le troisième était masqué par le second**, et c'est la leçon à retenir :
+> tant que le scan échouait en amont, la synchronisation n'arrivait jamais
+> jusqu'au point où l'absence de profils aurait fait des dégâts. **Réparer un
+> défaut en a armé un autre**, et cela s'est produit pour de vrai sur la
+> console avant d'être corrigé. La bibliothèque a été restaurée au passage
+> suivant — les six jeux sont revenus, dix ROMs répertoriées contre quatre.
+>
+> Les trois sont corrigés, chacun avec une garde vue rouge avant d'être verte.
+>
+> **Ce que cette clôture ne dit pas :** la mesure a été faite une fois, sur une
+> console. Elle prouve que le mécanisme fonctionne, pas qu'il résistera à une
+> reconstruction complète de la machine virtuelle — le provisionnement écrit
+> le témoin par un autre chemin (`32-retro.ps1`), qui n'a été relu qu'en
+> syntaxe. Et **D11 reste entière** : ce qui est vrai du paquet ne l'est pas
+> encore du fragment de clés imposées.
 
 > **EXÉCUTÉE DES DEUX CÔTÉS le 2026-08-29 — et TOUJOURS OUVERTE, faute de
 > mesure.** Le paquet porte une identité qui bouge
