@@ -476,6 +476,8 @@ def _cmd_status(args) -> int:
                 # tout le reste du rapport garde sa valeur.
                 echec_steam_input = str(exc)
 
+        pads_date, pads = launcher_mod.lire_pads(
+            pathlib.Path(args.emulation_root))
         rapport = status.build_report(
             install_dirs=install_dirs,
             emulation_root=pathlib.Path(args.emulation_root),
@@ -511,6 +513,14 @@ def _cmd_status(args) -> int:
             # geste à faire est de le recompiler.
             lanceur_perime=launcher_mod.lanceur_perime(
                 pathlib.Path(args.emulation_root)),
+            # Ce que le lanceur a VU au dernier lancement. Même racine, même
+            # limite que les deux témoins ci-dessus — et la même raison
+            # d'exister : l'hôte n'a AUCUN moyen de savoir combien de manettes
+            # la console voit, ni lesquelles. Sans ce témoin, un pad d'un
+            # autre type, ou un pad de plus, ne se constate qu'en s'asseyant
+            # devant la télévision avec une manette qui ne répond pas.
+            pads_date=pads_date,
+            pads=pads,
             # Quelle construction du paquet produit ce rapport. Le rapport le
             # CONSTATE et ne le reproche pas : il n'a aucune référence à
             # opposer, et c'est l'hôte qui a livré la roue qui sait laquelle

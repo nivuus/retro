@@ -25,6 +25,7 @@ fait apparaître au démarrage.
 """
 from __future__ import annotations
 
+import dataclasses
 import importlib.resources
 import pathlib
 import shutil
@@ -322,6 +323,74 @@ def lire_amorcages(emulation_root_local) -> dict[str, list[tuple[str, str]]]:
             amorces.setdefault(parts[0].strip(), []).append(
                 (parts[1].strip(), parts[2].strip()))
     return amorces
+
+
+TEMOIN_PADS = "pads.txt"
+
+
+@dataclasses.dataclass(frozen=True)
+class Pad:
+    """Une manette que le lanceur a vue au dernier lancement.
+
+    `index` est l'ORDRE D'ÉNUMÉRATION, et c'est la valeur qui compte le plus
+    ici : les vingt-sept liaisons de DuckStation visent « SDL-0 », c'est-à-dire
+    la manette d'index 0. Un pad de PLUS énuméré avant celui d'Apollo les fait
+    toutes viser un périphérique qui n'est pas là — et DuckStation ne le dira
+    pas.
+
+    `vid_pid` est ce qui identifie le TYPE de manette, en hexadécimal
+    minuscule (« 045e:028e »). Il n'est pas un GUID SDL et n'en tient pas
+    lieu : il sert à comparer ce qui est branché à ce sous quoi les relevés
+    ont été faits, jamais à écrire une liaison.
+    """
+    index: int
+    vid_pid: str
+    nom: str
+
+
+def lire_pads(emulation_root_local) -> tuple[str, list[Pad]]:
+    """Ce que le lanceur a vu au dernier lancement : (date, manettes).
+
+    UN INSTANTANÉ, réécrit en entier à chaque lancement — et non un journal
+    fusionné comme `bootstrap.txt`. Ce qui compte est l'état de la DERNIÈRE
+    session : garder l'historique ferait dire « une DualShock a été vue » d'une
+    console où elle a été débranchée depuis.
+
+    Tolérant EXACTEMENT comme `lire_amorcages`, et pour la même raison : c'est
+    une TRACE, jamais une source de vérité. Fichier absent ou illisible rend
+    `("", [])`, jamais une exception — `retro status` doit se rendre sur une
+    machine où le lanceur n'a jamais tourné, sinon il devient inutilisable au
+    moment précis où l'on cherche à comprendre pourquoi rien ne marche.
+
+    Une ligne malformée est IGNORÉE plutôt que fatale. Le fichier est écrit
+    par un autre langage, sur une autre machine, que l'hôte ne peut ni
+    exécuter ni inspecter : un rapport partiel en dit plus qu'un rapport qui
+    refuse de se rendre.
+
+    Le nom est le DERNIER champ et il est pris en entier : découper sur
+    toutes les tabulations tronquerait un nom qui en contient une, et le
+    rapport nommerait un périphérique qui n'existe pas.
+    """
+    fichier = local_dir(emulation_root_local) / TEMOIN_PADS
+    try:
+        lignes = fichier.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return "", []
+    if not lignes:
+        return "", []
+    date = lignes[0].split("\t")[0].strip()
+    pads: list[Pad] = []
+    for ligne in lignes[1:]:
+        parts = ligne.split("\t", 2)
+        if len(parts) != 3:
+            continue
+        try:
+            index = int(parts[0].strip())
+        except ValueError:
+            continue
+        pads.append(Pad(index=index, vid_pid=parts[1].strip().lower(),
+                        nom=parts[2]))
+    return date, pads
 
 
 def local_dir(emulation_root_local) -> pathlib.Path:

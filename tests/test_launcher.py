@@ -716,3 +716,80 @@ def test_aucun_plan_ecrit_ne_porte_de_jeton_non_substitue(tmp_path):
                 fautives.append(f"{fichier.name} : {ligne}")
     assert fautives == [], (
         "des plans portent un jeton non substitué : " + " | ".join(fautives))
+
+
+# --- le témoin des manettes : ce que le lanceur a VU au dernier lancement ---
+#
+# Le filet de D4. Il ne répare rien : il permet de CONSTATER qu'une manette a
+# changé, ou qu'il y en a une de plus, autrement qu'en s'asseyant devant la
+# télévision avec un pad qui ne répond pas. Même partage des rôles que
+# bootstrap.txt — le lanceur écrit, `retro status` lit — et la même règle :
+# c'est une TRACE, jamais une source de vérité.
+
+
+def _ecrire_pads(tmp_path, texte):
+    dossier = launcher.local_dir(tmp_path)
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / launcher.TEMOIN_PADS).write_text(texte, encoding="utf-8")
+    return tmp_path
+
+
+def test_le_temoin_des_manettes_rend_la_date_et_chaque_pad_vu(tmp_path):
+    racine = _ecrire_pads(tmp_path, (
+        "2026-09-01 21:14:33\t2\n"
+        "0\t045e:028e\tController (Xbox 360 Controller for Windows)\n"
+        "1\t054c:05c4\tWireless Controller\n"))
+    date, pads = launcher.lire_pads(racine)
+    assert date == "2026-09-01 21:14:33"
+    assert [(p.index, p.vid_pid, p.nom) for p in pads] == [
+        (0, "045e:028e", "Controller (Xbox 360 Controller for Windows)"),
+        (1, "054c:05c4", "Wireless Controller"),
+    ]
+
+
+def test_un_temoin_de_manettes_absent_ne_leve_pas(tmp_path):
+    """Exactement la tolérance de `lire_amorcages`, et pour la même raison :
+    c'est une trace. Un témoin absent doit faire dire « le lanceur n'a jamais
+    relevé de manette » — pas planter `retro status`, qui deviendrait alors
+    inutilisable sur toute machine où le lanceur n'a pas encore tourné."""
+    assert launcher.lire_pads(tmp_path) == ("", [])
+
+
+def test_un_temoin_de_manettes_illisible_ne_leve_pas(tmp_path):
+    """Une ligne tronquée, un index qui n'est pas un nombre : le fichier est
+    écrit par un autre langage sur une autre machine, et rien ne garantit sa
+    forme. Ce qui se lit se lit, le reste est ignoré — un rapport qui refuse
+    de se rendre en dit moins qu'un rapport partiel."""
+    racine = _ecrire_pads(tmp_path, (
+        "2026-09-01 21:14:33\t2\n"
+        "pas-un-index\t045e:028e\tbruit\n"
+        "1\t054c:05c4\tWireless Controller\n"))
+    date, pads = launcher.lire_pads(racine)
+    assert date == "2026-09-01 21:14:33"
+    assert [p.index for p in pads] == [1]
+
+
+def test_un_temoin_a_zero_manette_n_est_pas_un_temoin_absent(tmp_path):
+    """DEUX CONSTATS DIFFÉRENTS, et les confondre efface le plus utile.
+
+    « Le lanceur n'a jamais relevé de manette » veut dire qu'il n'a pas encore
+    tourné, ou qu'il est trop vieux pour savoir le faire. « Aucune manette au
+    dernier lancement » veut dire qu'il a regardé et n'a rien vu — ce qui, sur
+    une console où le propriétaire vient de jouer, est un fait.
+    """
+    racine = _ecrire_pads(tmp_path, "2026-09-01 21:14:33\t0\n")
+    date, pads = launcher.lire_pads(racine)
+    assert date == "2026-09-01 21:14:33"
+    assert pads == []
+    assert (date, pads) != launcher.lire_pads(tmp_path / "ailleurs")
+
+
+def test_un_nom_de_manette_a_tabulation_ne_perd_pas_sa_fin(tmp_path):
+    """Le nom est le DERNIER champ, et il est pris en entier. Le découper sur
+    toutes les tabulations tronquerait un nom qui en contient une, et le
+    rapport nommerait un périphérique qui n'existe pas."""
+    racine = _ecrire_pads(tmp_path, (
+        "2026-09-01 21:14:33\t1\n"
+        "0\t045e:028e\tController\t(Xbox 360)\n"))
+    _, pads = launcher.lire_pads(racine)
+    assert pads[0].nom == "Controller\t(Xbox 360)"

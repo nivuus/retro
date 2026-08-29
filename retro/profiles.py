@@ -149,6 +149,36 @@ PAD_X360 = "x360"
 PAD_DS4 = "ds4"
 PADS_CONNUS = (PAD_X360, PAD_DS4)
 
+# DE QUOI ON RECONNAIT UN TYPE DE PAD : son VID/PID, en hexadecimal minuscule.
+# Courte et GELEE, au meme endroit que le vocabulaire ci-dessus pour qu'aucun
+# des deux ne puisse s'allonger sans l'autre.
+#
+# 045e:028e — MESURE le 2026-08-29 sur l'invite, qui portait
+#   USB\VID_045E&PID_028E pendant qu'Apollo annoncait « Gamepad 0 will be
+#   Xbox 360 controller (default) ». Deux sources concordantes.
+# 054c:05c4 — SUPPOSE, et il faut le dire : c'est le VID/PID d'une DualShock 4
+#   de premiere revision, celui que le plan de D4 attend de voir apparaitre
+#   apres la bascule. AUCUNE console de ce projet ne l'a encore presente. La
+#   valeur ne sera confirmee que par la tache 6, sur la machine.
+#
+# UN VID/PID ABSENT DE CETTE TABLE N'EST PAS UNE ERREUR. Il s'affiche brut et
+# ne declenche aucun probleme : accuser sur une table incomplete serait pire
+# que se taire — le rapport dirait « ce n'est pas le bon pad » d'une manette
+# parfaitement saine, et le proprietaire apprendrait a ignorer la section.
+PADS_PAR_VID_PID = {
+    "045e:028e": PAD_X360,
+    "054c:05c4": PAD_DS4,
+}
+
+
+def type_de_pad(vid_pid: str) -> str:
+    """Le type d'un VID/PID, ou une chaine vide s'il n'est pas reconnu.
+
+    Vide veut dire « on ne sait pas », JAMAIS « ce n'est aucun des deux » :
+    l'appelant qui en tirerait une discordance accuserait sur une ignorance.
+    """
+    return PADS_PAR_VID_PID.get(vid_pid.strip().lower(), "")
+
 
 @dataclasses.dataclass(frozen=True)
 class Bootstrap:

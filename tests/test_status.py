@@ -3,7 +3,7 @@ import pathlib
 
 import pytest
 
-from retro import bios, install, profiles, scan, status
+from retro import bios, install, launcher, profiles, scan, status
 
 
 def test_un_emulateur_installe_est_signale_avec_sa_version(tmp_path):
@@ -978,3 +978,156 @@ def test_un_arbre_source_n_est_pas_un_probleme():
         bios_status=[], bios_root=pathlib.Path("/BIOS"),
         paquet="0.1.0+source")
     assert not any("paquet" in p.what.lower() for p in r.problems)
+
+
+# --- le témoin des manettes, vu du rapport ---------------------------------
+#
+# Le filet de D4. Il ne répare rien : il rend CONSTATABLE, depuis l'hôte, ce
+# qui ne se voyait qu'en s'asseyant devant la télévision avec un pad muet.
+
+
+def _rapport_pads(profils, date="", pads=(), **kw):
+    return status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        profils=profils, pads_date=date, pads=list(pads), **kw)
+
+
+def _pad(index, vid_pid, nom):
+    return launcher.Pad(index=index, vid_pid=vid_pid, nom=nom)
+
+
+def _duckstation_releve(tmp_path, pad="x360"):
+    return _profil_manette(
+        tmp_path, "duckstation", "releve",
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]",
+        pad=pad)
+
+
+def test_un_temoin_de_manettes_absent_n_est_pas_un_probleme(tmp_path):
+    """« Le lanceur n'a jamais relevé de manette » n'accuse personne : c'est
+    l'état d'une console où il n'a pas encore tourné, ou d'un lanceur trop
+    vieux pour savoir le faire. Ce signal-là est déjà porté par
+    `lanceur_perime`, et le redire en problème apprendrait au propriétaire à
+    ignorer la section."""
+    rapport = _rapport_pads(_duckstation_releve(tmp_path))
+    texte = status.format_report(rapport)
+    assert "jamais relevé de manette" in texte
+    assert [p for p in rapport.problems if "manette" in p.what.lower()] == []
+
+
+def test_zero_manette_au_dernier_lancement_n_est_pas_un_probleme(tmp_path):
+    """Une session peut s'ouvrir sans manette — le propriétaire regarde ses
+    jeux depuis son téléphone, ou le pad n'est pas encore branché. En faire un
+    problème rendrait la section fausse la moitié du temps.
+
+    Mais ce constat DIFFÈRE du témoin absent, et le rapport doit les
+    distinguer : ici le lanceur a regardé et n'a rien vu."""
+    rapport = _rapport_pads(_duckstation_releve(tmp_path),
+                            date="2026-09-01 21:14:33", pads=[])
+    texte = status.format_report(rapport)
+    assert "aucune manette au dernier lancement" in texte.lower()
+    assert "jamais relevé de manette" not in texte
+    assert [p for p in rapport.problems if "manette" in p.what.lower()] == []
+
+
+def test_une_manette_du_type_attendu_est_dite_avec_son_nom(tmp_path):
+    rapport = _rapport_pads(
+        _duckstation_releve(tmp_path), date="2026-09-01 21:14:33",
+        pads=[_pad(0, "045e:028e",
+                   "Controller (Xbox 360 Controller for Windows)")])
+    texte = status.format_report(rapport)
+    assert "x360" in texte
+    assert "Controller (Xbox 360 Controller for Windows)" in texte
+    assert [p for p in rapport.problems if "manette" in p.what.lower()] == []
+
+
+def test_plus_d_une_manette_est_un_probleme_qui_nomme_les_profils(tmp_path):
+    """LE PREMIER DES DEUX PROBLÈMES, et c'est la FRAGILITÉ 1 de DuckStation
+    rendue visible.
+
+    Ses vingt-sept liaisons visent « SDL-0 », c'est-à-dire un INDEX. Un pad de
+    plus énuméré avant celui d'Apollo les fait toutes viser un périphérique
+    qui n'est pas là, et DuckStation ne le dira pas : le symptôme est
+    exactement celui d'avant le relevé, manette muette et rien au journal.
+    """
+    rapport = _rapport_pads(
+        _duckstation_releve(tmp_path), date="2026-09-01 21:14:33",
+        pads=[_pad(0, "054c:05c4", "Wireless Controller"),
+              _pad(1, "045e:028e", "Controller (Xbox 360)")])
+    problemes = [p for p in rapport.problems
+                 if "plus d'une manette" in p.what.lower()
+                 or "2 manettes" in p.what.lower()]
+    assert len(problemes) == 1, [p.what for p in rapport.problems]
+    assert "duckstation" in problemes[0].what
+    assert "[Pad1]" in problemes[0].where, (
+        "le problème n'offre rien à ouvrir : un constat sans chemin est une "
+        "accusation, pas un diagnostic")
+
+
+def test_un_pad_d_un_autre_type_que_le_releve_est_un_probleme(tmp_path):
+    """LE SECOND, et c'est la panne que D4 existe pour empêcher.
+
+    Le relevé a été fait sous un Xbox 360 ; le pad d'index 0 est une
+    DualShock. Tout identifiant que la configuration d'entrée contiendrait
+    dépend du VID/PID, donc vient de changer.
+    """
+    rapport = _rapport_pads(
+        _duckstation_releve(tmp_path), date="2026-09-01 21:14:33",
+        pads=[_pad(0, "054c:05c4", "Wireless Controller")])
+    problemes = [p for p in rapport.problems if "ds4" in p.what
+                 and "x360" in p.what]
+    assert len(problemes) == 1, [p.what for p in rapport.problems]
+    assert "duckstation" in problemes[0].what
+    assert "[Pad1]" in problemes[0].where
+    # La phrase qui empêche la fausse correction. Sans elle, le prochain
+    # lecteur recopie un identifiant trouvé dans une recette et constate le
+    # MÊME symptôme, sans comprendre que sa valeur est simplement ignorée.
+    detail = " ".join(problemes[0].details)
+    assert "silence" in detail and "identique" in detail
+
+
+def test_un_pad_inconnu_de_la_table_ne_declenche_aucun_probleme(tmp_path):
+    """Accuser sur une table incomplète serait pire que se taire : la table
+    est courte et gelée par construction, et un vid:pid qu'elle ne connaît pas
+    ne prouve RIEN sur le type de la manette. Il s'affiche brut."""
+    rapport = _rapport_pads(
+        _duckstation_releve(tmp_path), date="2026-09-01 21:14:33",
+        pads=[_pad(0, "1234:abcd", "Un pad quelconque")])
+    assert [p for p in rapport.problems if "manette" in p.what.lower()] == []
+    texte = status.format_report(rapport)
+    assert "1234:abcd" in texte, (
+        "un vid:pid inconnu doit s'afficher BRUT : c'est la seule chose que "
+        "le rapport sache de lui, et la taire prive le propriétaire de la "
+        "valeur exacte à reporter dans la table")
+
+
+def test_un_profil_sans_releve_clos_n_est_accuse_d_aucune_discordance(tmp_path):
+    """Un profil dont la manette n'a jamais été relevée n'a rien qui puisse
+    cesser d'être vrai. L'inscrire au problème noierait les deux profils qui,
+    eux, ont quelque chose à perdre."""
+    profils = _profil_manette(tmp_path, "cemu", "inconnu")
+    rapport = _rapport_pads(
+        profils, date="2026-09-01 21:14:33",
+        pads=[_pad(0, "054c:05c4", "Wireless Controller")])
+    assert [p for p in rapport.problems if "cemu" in p.what] == []
+
+
+def test_le_dernier_lancement_accorde_le_pluriel_des_manettes(tmp_path):
+    """Même famille que le « 1 jeux » déjà corrigé, et que le « Problème (1) ».
+
+    Ce rapport est lu depuis un canapé, sans clavier, par le propriétaire de
+    la console. Un « 1 manette(s) » y fait exactement ce qu'une parenthèse de
+    formulaire fait partout : il apprend au lecteur que le texte a été écrit
+    par une machine, et que ce qu'il dit est approximatif.
+    """
+    profils = _duckstation_releve(tmp_path)
+    un = status.format_report(_rapport_pads(
+        profils, date="2026-09-01 21:14:33",
+        pads=[_pad(0, "045e:028e", "X")]))
+    assert "1 manette " in un or un.count("1 manette\n") == 1
+    assert "manette(s)" not in un
+    deux = status.format_report(_rapport_pads(
+        profils, date="2026-09-01 21:14:33",
+        pads=[_pad(0, "045e:028e", "X"), _pad(1, "045e:028e", "Y")]))
+    assert "2 manettes" in deux
