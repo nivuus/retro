@@ -16,6 +16,9 @@ leur pendant dans `nivuus/installer` :
 
 ## D1 — Aucune vibration, nulle part
 
+> **Plan écrit le 2026-08-29** — `docs/superpowers/plans/2026-08-29-d1-vibration.md` :
+> l'ordre imposé C1 → jouer → D4 → les huit autres, et le champ `[input] rumble` qui remplace la note en commentaire.
+
 **Constaté le 2026-08-28.** La manette ne vibre ni dans les émulateurs, ni dans
 les jeux Steam, ni depuis le client Moonlight. Les trois se ressemblent mais ne
 sont pas le même défaut, et rien ne dit aujourd'hui lequel est rompu :
@@ -86,7 +89,7 @@ l'exige, sur le modèle exact de la garde qui existe déjà pour l'amorçage.
 | RetroArch | dédiée | `autoconfig\*.cfg` | non relevée |
 | RPCS3 | dédiée | `config\input_configs\` | non relevée |
 | Xemu | générale | `xemu.toml` | non relevée |
-| Vita3K | générale | `config.yml` | non relevée, et hors de portée tant que D5 dure |
+| Vita3K | générale | `config.yml` | non relevée — D5 est close, mais la cible reste hors d'atteinte : aucun `target` ne désigne la racine d'émulation (D7) |
 | DuckStation | générale | `settings.ini`, section `[Pad1]` | **relevée** — `LargeMotor`, `SmallMotor` — mais jamais vue vibrer |
 
 **Aucune case de ce tableau n'est une mesure**, hors la dernière ligne : les
@@ -94,9 +97,11 @@ colonnes « famille » et « cible » reprennent le tableau de la tâche 6 du pl
 des manettes, qui les donne lui-même pour des hypothèses de travail — « les
 deux seules lignes mesurées sont l'émulateur personnel et DuckStation ». S'y
 appuyer sans les vérifier, c'est refaire l'erreur que ce tableau annonce. La
-ligne Vita3K est en outre en amont de toutes les autres : l'émulateur ne
-s'installe pas (D5), aucune cible écrivable ne désigne encore son
-`config.yml`, et rien n'y sera mesurable avant que ce point soit levé.
+ligne Vita3K est en outre en amont de toutes les autres, mais **plus pour la
+raison écrite ici — corrigé le 2026-08-29** : l'émulateur s'installe désormais
+et tourne (D5). Ce qui la bloque est ailleurs, et c'est plus étroit : aucune
+cible écrivable ne désigne encore son `config.yml`, faute d'un jeton de chemin
+(D7). Rien n'y sera mesurable avant que ce point-là soit levé.
 
 **Le rappel a joué le 2026-08-29.** DuckStation était délibérément sans note
 dans son profil : sa manette entière était muette (D3), et sur un émulateur
@@ -121,6 +126,9 @@ modifier**.
 ---
 
 ## D2 — Rien ne garantit une image maximale sans déformation
+
+> **Plan écrit le 2026-08-29** — `docs/superpowers/plans/2026-08-29-d2-remplissage-image.md` :
+> douze tâches ; le remplissage de DuckStation est aujourd'hui **indéclarable** dans le modèle de `render.py`, et c'est à corriger avant la mesure.
 
 **Constaté le 2026-08-28.** L'objectif énoncé — chaque émulateur occupe le plus
 possible de l'écran **sans étirer l'image** — n'est tenu par aucun code. Ce qui
@@ -324,8 +332,12 @@ personne ne s'en serve comme preuve — **la seule preuve reste l'effet observé
 > symptôme : c'est le fait le plus utile de cette entrée.
 >
 > **DuckStation ne trouve toujours pas sa manette seul.** Il ne la trouve que
-> parce que la console lui impose vingt-huit clés à chaque lancement. Le
-> profil ne déclare donc PAS `auto` — voir plus bas.
+> parce que la console lui impose **vingt-huit clés de `[Pad1]`** à chaque
+> lancement — sur trente-deux imposées en tout, les quatre autres étant hors
+> manette (`Main`, `AutoUpdater`, `Display`). Les deux comptes sont exacts et
+> ne disent pas la même chose ; les confondre a déjà produit une erreur dans
+> cette entrée, corrigée le 2026-08-29. Le profil ne déclare donc PAS `auto` —
+> voir plus bas.
 
 **Constaté le 2026-08-28**, après les correctifs de manette du même jour
 (retrait de `SDL_GAMECONTROLLER_IGNORE_DEVICES` par le lanceur, extinction de
@@ -424,7 +436,8 @@ d'une recette.
   déjà jouée : sous `-batch -nogui`, DuckStation ne rouvre jamais son
   `settings.ini`, et le fichier existe déjà là-bas.
 - **La liste gelée des clés imposées a été élargie en revue.** Elle valait
-  trois clés ; elle en vaut trente. L'élargissement est délibéré et son prix
+  trois clés ; elle en vaut **trente-deux**. L'élargissement est délibéré et
+  son prix
   est écrit dans le profil : **le propriétaire ne peut plus remapper sa manette
   depuis l'interface de DuckStation**, puisque le lancement suivant repose les
   liaisons.
@@ -530,9 +543,19 @@ console était réputé injouable. Il ne l'est plus.
 
 ## D4 — Ni capteur de mouvement, ni manette PlayStation
 
-**Constaté le 2026-08-28.** Les émulateurs qui en ont besoin — PPSSPP, PCSX2,
-RPCS3, un futur PS Vita (D5) — ne reçoivent aucune donnée de gyroscope, et rien
-dans la chaîne ne prétend en transmettre.
+> **Plan écrit le 2026-08-29** — `docs/superpowers/plans/2026-08-29-d4-mouvement-et-type-de-pad.md` :
+> le filet anti-GUID d'abord, dépôt seul, **avant** toute bascule ; porte l'arbitrage RPCS3 rendu le même jour.
+
+**Constaté le 2026-08-28.** Les émulateurs qui en ont besoin — PPSSPP, RPCS3,
+Vita3K — ne reçoivent aucune donnée de gyroscope, et rien dans la chaîne ne
+prétend en transmettre.
+
+**Corrigé le 2026-08-29 :** cette phrase citait aussi **PCSX2**, et c'était
+faux. La PS2 n'avait aucun capteur de mouvement ; PCSX2 n'a donc aucune clé de
+mouvement à régler, et l'y chercher aurait coûté un relevé pour rien. La
+mention « un futur PS Vita (D5) » est également périmée — Vita3K est installé
+et tourne, et son mouvement ne dépend d'aucune clé de configuration mais de
+`SDL_GamepadHasSensor`, donc du type de pad qu'Apollo annonce.
 
 La cause est en amont : **Apollo annonce un Xbox 360** (`Gamepad 0 will be
 Xbox 360 controller (default)`, relevé dans `sunshine.log`), et un pad X360 n'a
@@ -548,9 +571,21 @@ DualShock avec des gabarits écrits pour un X360 redevient muette partout, en
 silence.
 
 **Où ça se joue :** la substitution au lancement (`retro/launcher.py`) doit
-rester la seule source de l'identifiant — jamais une valeur figée dans un
+être la seule source de l'identifiant — jamais une valeur figée dans un
 profil. Puis, par émulateur, les clés de mouvement de sa configuration
 d'entrée.
+
+**🔴 Cette phrase disait « doit RESTER », et c'était faux — corrigé le
+2026-08-29.** Le mécanisme n'existe pas : il n'y a **aucune** substitution
+d'identifiant dans le dépôt. Les seuls jetons sont `{render_config}` côté
+Python, et `{render}`, `{rom}`, `{width}`, `{height}`, `{scale}` côté lanceur
+C# — tous de rendu. Les tâches 2 à 4 du plan des manettes n'ont jamais été
+faites. Il n'y a donc rien à préserver, tout à construire, et le bloc
+« DETTE D4 » de `vita3k.toml` annonce ce mécanisme comme existant : c'est à
+corriger avec lui. La conséquence pratique est que **le seul identifiant figé
+aujourd'hui vit hors dépôt** — le `Device: "XInput Pad #1"` posé à la main dans
+le `Default.yml` de RPCS3 (D7), qui n'est donc protégé par aucune garde et sera
+le premier à mourir à la bascule.
 
 **Ordre :** D3 d'abord (une manette qui répond), puis le type de pad, puis le
 mouvement. Inverser, c'est déboguer deux inconnues à la fois.
@@ -573,10 +608,66 @@ Deux précautions, qui ne sont pas levées par cette clôture :
 
 ---
 
-## D5 — PS Vita : le scan sait lire une bibliothèque en dossiers, Vita3K ne s'installe toujours pas
+## D5 — PS Vita — RÉGLÉE le 2026-08-29 : l'émulateur est installé, le firmware posé, un jeu se lance
 
-**Constaté le 2026-08-28. Repris le 2026-08-29** : le point dur est levé, le
-reste tient à une empreinte que le projet Vita3K ne permet pas d'épingler.
+**Constatée le 2026-08-28. Reprise puis CLOSE le 2026-08-29.** L'étiquette
+roulante n'a pas été contournée : elle a été rangée là où elle est acceptable,
+dans le manifeste du propriétaire. Ce qui reste ouvert est écrit à la fin, et
+ce n'est plus la PS Vita — c'est la péremption de son empreinte.
+
+### Ce que la clôture repose sur, mesuré le 2026-08-29
+
+| Étape | Preuve |
+|---|---|
+| Empreinte | archive **téléchargée**, `hashlib.sha256` sur l'octet reçu — `f44883ea…93d04a` |
+| Archive listée | 133 entrées, 20 éléments racine, **`Vita3K.exe` à la racine, à plat** |
+| Options | `Vita3K.exe --help` relevé **sur le binaire installé** : `content-path`, `--fullscreen`, `--firmware`, `--installed-path`, `--config-location` |
+| Installation | par `retro install` (empreinte vérifiée, extraction refusant les `../`) |
+| Firmware | `Firmware Version: 0x3740000` (3.74), progression 10 % → 100 %, `os0\` 69 fichiers + `vs0\` 1473 |
+| Jeu répertorié | *Uncharted Golden Abyss*, système « PS Vita », plan `vita3k.vita.ini` écrit |
+| Jeu lancé | Vita3K **vivant à 50 s**, 1,4 s CPU, 129 Mo, ligne `Vita3K.exe --fullscreen "…vpk"` — voir la réserve ci-dessous |
+| Jeu dans Steam | `+ Uncharted Golden Abyss`, 5 jaquettes, tag « PS Vita » |
+
+### 🔴 Ce que ce tableau ne prouve pas — relu le 2026-08-29 au soir
+
+**La ligne « Jeu lancé » ne prouve pas qu'un jeu tourne.** Ce qu'elle mesure,
+c'est un **processus vivant** : 1,4 s de CPU et 129 Mo au bout de 50 s. C'est
+aussi le profil d'un émulateur assis sur une boîte modale. Aucune capture,
+aucun signe de rendu n'a été relevé. Et la ligne de commande citée porte un
+`.vpk` — c'est-à-dire très exactement la voie que **D9** mesure comme
+**refusée** (`A Vitamin dump was detected, aborting installation`).
+
+Ce qui reste donc acquis, et c'est déjà beaucoup : l'émulateur s'installe, son
+empreinte est relevée sur l'archive reçue, son firmware 3.74 est posé, son
+plan de lancement est écrit et son entrée Steam existe. Ce qui n'est **pas**
+établi : qu'un jeu ait affiché quoi que ce soit. Le titre de cette dette disait
+« un jeu tourne » ; il dit désormais « un jeu se lance », qui est ce que la
+mesure porte.
+
+**Et la mention « paquet de polices : non mesuré », plus bas, est périmée** :
+D9 l'a mesurée le même jour — c'est une modale bloquante « Missing Firmware »,
+désarmée à la main, que rien ne repose.
+
+**Deux mesures ont corrigé le profil**, et ni l'une ni l'autre n'était
+devinable sans l'archive : la forme courte du plein écran est **`-F`
+majuscule** (`-f` est `--load-config`, donc un `-f` par réflexe aurait chargé
+une configuration en se comportant comme un drapeau ignoré) ; et Vita3K a
+**deux racines** — sa configuration à côté de l'exécutable, ses données dans
+`%APPDATA%\Vita3K\Vita3K\`, où le firmware s'est déposé.
+
+### 🔴 Ce que la clôture a révélé, et qui vaut bien au-delà de la PS Vita
+
+**La console faisait tourner un `retro` PÉRIMÉ.** Le paquet installé sur
+l'invité (`C:\Python\Lib\site-packages\retro`) ne portait que **neuf**
+profils — pas de `vita3k.toml`. Le scan y déclarait donc `Sony\PS Vita`
+« dossier ne correspondant à aucun système connu », alors que le même scan
+lancé depuis l'hôte, sur le dépôt courant, l'appariait sans problème.
+
+Ce n'est pas un détail de la PS Vita : **tout correctif écrit dans ce dépôt
+reste sans effet sur la machine tant que la roue n'y est pas réinstallée**, et
+rien ne le signale. Les deux versions portent le même numéro (0.1.0), donc
+comparer les versions ne l'aurait pas montré. C'est une dette à part entière
+et elle n'existe pas encore.
 
 ### Ce qui est fait
 
@@ -610,7 +701,31 @@ DANS le dossier du jeu ne produit aucune entrée.
 deux formes de bibliothèque (`extensions = [".vpk"]` et le marqueur ci-dessus),
 sa ligne de commande, et ce qu'il ne sait pas écrit comme tel.
 
-### Ce qui reste, et pourquoi
+### Ce qui reste — et ce n'est plus l'installation
+
+**La péremption, et elle est datée.** L'empreinte inscrite au manifeste du
+propriétaire vaut pour l'archive du 2026-08-09. Elle mourra à la prochaine
+construction de Vita3K, et le symptôme sera un `retro install` qui échoue en
+annonçant une empreinte inattendue. **Ce n'est pas une alerte de sécurité** :
+c'est la péremption prévue, le geste est de re-télécharger, recalculer,
+remplacer les deux lignes. C'est écrit dans le manifeste, à côté de l'entrée.
+
+**Le paquet de polices n'est pas installé.** Vita3K le distingue du firmware
+principal et écrit lui-même qu'il n'en publie pas l'URL. Rien n'a donc été
+pris ailleurs. Symptôme attendu s'il manque : du texte absent en jeu, pas un
+refus de démarrer. ~~**Non mesuré.**~~ **MESURÉ depuis, le 2026-08-29 — et le
+symptôme attendu était faux** : ce n'est pas du texte absent, c'est une
+**modale bloquante** au démarrage (« Missing Firmware […] Font package »), avec
+`[Launch Anyway]` et une case à cocher. Voir **D9**. La case a été cochée à la
+main et rien ne la repose.
+
+**Le rangement du PUP n'est pas tranché.** Il a été déposé dans
+`G:\retro\bios\` alors que le raisonnement ci-dessous range les firmwares
+HORS de `bios\`. C'est un constat, pas une décision. Et rien ne sait encore
+constater qu'un firmware est DÉJÀ installé — sans quoi un amorçage le
+réinstallerait à chaque lancement, sept secondes par jeu.
+
+### L'historique, conservé — pourquoi l'empreinte ne pouvait pas vivre au noyau
 
 **L'étape 1, l'empreinte — bloquée par le projet lui-même.** Vérifié le
 2026-08-29 sur son API de publication : Vita3K ne publie qu'UNE release,
@@ -676,3 +791,396 @@ elle est absente FRANCHEMENT : nommée dans le manifeste, refusée à
 l'installation avec sa cause, signalée au scan. Et le scan sait désormais lire
 une bibliothèque en dossiers, ce dont profitera n'importe quel émulateur qui
 en aura une.
+
+---
+
+## D6 — La console tourne sur un paquet périmé, et absolument rien ne le dit
+
+> **PARTIELLEMENT EXÉCUTÉE le 2026-08-29 — et TOUJOURS OUVERTE.** Le paquet
+> porte désormais une identité qui bouge (`0.1.0+<horodatage>.<empreinte>[.g<sha>]`,
+> gravée par un backend PEP 517 en arbre), `retro identite` la dit, et `scan`
+> comme `status` la citent en tête de leur rapport. **Le refus, lui, n'existe
+> pas encore** : il vit dans `nivuus/installer` et rien n'y a été touché. Tant
+> que ce point n'est pas fait, cette dette décrit toujours son propre défaut —
+> elle le rend seulement *visible* à qui pense à regarder.
+>
+> **Le défaut est pire que ce que cette entrée disait**, et c'est mesuré :
+> `pip install --no-index --find-links … --upgrade retro` à version identique
+> rend `Requirement already satisfied` — la ligne exacte de `32-retro.ps1`.
+> Tant que `0.1.0` ne bougeait pas, l'installation **ne se faisait jamais**.
+> Reprovisionner la console n'y aurait rien changé.
+>
+> **Un piège qui aurait rendu le correctif inopérant en silence**, trouvé en
+> l'écrivant : `setuptools.config.expand.read_attr` charge le module désigné
+> **par chemin, sans importer le paquet parent**. Lire `retro.identite.VERSION`
+> — ce que prescrivait le plan — faisait échouer son `import retro._identite`,
+> et **toute roue sortait en `0.1.0+source`**. C'est-à-dire : le correctif de
+> D6 aurait été annulé par très exactement le genre de panne muette que D6
+> existe pour tuer. La lecture porte donc sur `retro._identite.VERSION`, un
+> littéral relu à l'AST, sans aucun import.
+
+> **Plan écrit le 2026-08-29** — `docs/superpowers/plans/2026-08-29-d6-identite-du-paquet.md` :
+> **EN COURS D'EXÉCUTION** — tâches 1 à 3 et 5 engagées le 2026-08-29 au soir.
+
+**Constatée le 2026-08-29**, en cherchant pourquoi la PS Vita se comportait
+différemment selon d'où le scan était lancé.
+
+### Le symptôme, et pourquoi il égare
+
+Le même `retro scan`, sur la même bibliothèque, rendait **deux résultats
+différents** :
+
+| Lancé depuis | Résultat |
+|---|---|
+| l'hôte, sur le dépôt courant | 9 ROMs, `Sony\PS Vita` apparié |
+| l'invité, sur le paquet installé | 8 ROMs, `Sony\PS Vita` « ne correspond à aucun système connu » |
+
+La cause : `C:\Python\Lib\site-packages\retro` ne portait que **neuf** profils —
+pas de `vita3k.toml`. Le paquet installé sur la console datait d'avant.
+
+### Ce qui rend cette dette dangereuse plutôt que cosmétique
+
+**Les deux versions portent le même numéro : `0.1.0`.** Comparer les versions ne
+révèle rien. Rien dans le rapport de `scan`, de `sync` ou de `status` ne
+mentionne quelle révision du paquet a produit l'inventaire. Un correctif écrit,
+testé et commité ici peut donc **rester sans le moindre effet sur la machine**,
+et le message d'erreur qu'on obtiendra alors décrira le symptôme d'origine —
+exactement comme si le correctif était faux.
+
+C'est un multiplicateur de coût sur toutes les autres dettes : chaque heure
+passée à corriger un profil peut être annulée en silence par une installation
+qui n'a pas suivi.
+
+### Ce qui l'a masquée jusqu'ici
+
+`retro_sync.py` documente longuement que `retro scan` tourne DANS l'invité, et
+c'est le bon choix — « cette machine » et « la console » y désignent le même
+disque. Mais il en découle que **c'est le paquet de l'invité qui décide**, et
+personne n'avait tiré cette conséquence.
+
+### Ce qui reste à faire
+
+Rien n'est fait, hors le dépannage : la roue courante a été construite et
+réinstallée à la main sur la console le 2026-08-29, ce qui lui a rendu ses dix
+profils. Le correctif durable demande deux choses, et la seconde compte plus que
+la première :
+
+1. **une version qui bouge** — un horodatage de construction ou le SHA du dépôt,
+   puisque `0.1.0` ne distingue rien ;
+2. **que quelque chose la CONSTATE**, côté hôte, et refuse ou signale un écart.
+   Le témoin `D:\state\retro.status` existe déjà et porte le résultat de
+   l'installation ; c'est le bon endroit pour y ajouter l'identité du paquet.
+
+**Ce que ça coûte aujourd'hui :** rien ne garantit que la console exécute le
+code de ce dépôt, et c'est le propriétaire qui découvrira l'écart, sous la forme
+d'un correctif qui « ne marche pas ».
+
+---
+
+## D7 — Quatre réglages mesurés, indispensables, que le mécanisme d'amorçage ne sait pas tenir
+
+> **PARTIELLEMENT EXÉCUTÉE le 2026-08-29 — et TOUJOURS OUVERTE.** Le mécanisme
+> existe : le jeton de chemin est **`{install_dir}`** (et non `{emulation_root}`
+> — l'`install_dir` est surchargeable par le manifeste du propriétaire, et le
+> réécrire dans un profil ferait rater la cible en silence), un profil peut
+> désormais porter **plusieurs** cibles (`[[bootstrap]]`), et le lanceur C#
+> boucle dessus avec une garde qui refuse bruyamment un jeton non substitué.
+> Vita3K est réglé. **Les quatre réglages ne sont pas tous posés** : RPCS3
+> attend encore ses modales et sa manette.
+>
+> **Ce que la migration a révélé, et qui justifie à lui seul le détour :**
+> `status.py` lisait `getattr(profil, "bootstrap", None)`. Après le renommage
+> il aurait rendu « aucun amorçage déclaré » pour **tous** les profils, sans
+> erreur ni symptôme — la panne muette exacte que ce plan combat.
+>
+> **Ce qui n'est pas prouvé :** il n'existe aucun compilateur C# sur l'hôte
+> (ni `csc`, ni `mcs`, ni `mono`, ni `dotnet`). Le `.cs` n'est validé que par
+> des tests Python qui exigent qu'il *lise* chaque clé du plan. La boucle
+> réelle, la levée de la garde, le témoin par cible et la sortie `--explain`
+> indicée restent à mesurer sur la console.
+>
+> **Conséquence à porter sur la machine :** un lanceur d'avant échoue
+> bruyamment sur un plan d'après. L'ordre `retro launcher`, `compiler.cmd`,
+> **puis** `retro scan` est obligatoire.
+
+> **Plan écrit le 2026-08-29** — `docs/superpowers/plans/2026-08-29-d7-jeton-de-chemin-et-fusion.md` :
+> **EN COURS D'EXÉCUTION** — tâches 1 à 4 engagées le 2026-08-29 au soir ; le jeton retenu est `{install_dir}`, pas `{emulation_root}`.
+
+**Constatée le 2026-08-29**, sur **trois** émulateurs, pour deux raisons
+différentes — et c'est la répétition qui en fait une dette de mécanisme plutôt
+que trois notes de profil éparses.
+
+### Les trois cas
+
+**L'émulateur du propriétaire, hors dépôt — le tactile.** Mesuré dans sa
+source : le tactile n'est alimenté que si `EnableMouse` est FAUX
+(`if (_viewModel.IsActive && !ConfigurationState.Instance.Hid.EnableMouse.Value)`).
+La valeur est actuellement bonne sur la machine. Si elle est cochée un jour dans
+l'interface — son libellé, « Direct Mouse Access », donne envie de l'activer —
+**le tactile meurt sans un mot**. Le profil ne peut pas la réimposer : la
+configuration de cet émulateur est du **JSON**, et la fusion ne parle qu'INI
+(`cles_ini` dans `profiles.py`, et le lanceur C# qui fusionne des
+`[section] clé=valeur`). Son profil vit sur le partage du propriétaire ; c'est
+donc là que la note est écrite, et ici qu'est la cause.
+
+**Vita3K — la modale de privilèges.** Vita3K affiche à chaque lancement un
+avertissement disant qu'il tourne avec des privilèges élevés — la fonction
+s'appelle `prompt_admin_privileges_warning_if_needed` — et c'est une boîte
+modale qu'aucune manette ne ferme. (Le message anglais n'est pas recopié ici :
+il contient une chaîne que `test_aucun_emulateur_au_statut_conteste` confond
+avec un nom d'émulateur interdit, voir la note en fin de dette.) Elle se désactive par
+`[MainWindow] warnAdminPrivileges=false` — un **INI**, cette fois, donc la
+fusion saurait le faire. Mais le fichier vit dans
+`<racine d'émulation>\Vita3K\gui-configs\CurrentSettings.ini`, et
+`_lire_bootstrap` exige un `target` **absolu ou commençant par une variable
+d'environnement**. La racine d'émulation est un paramètre de `retro scan`, pas
+une constante : aucun `target` écrivable ne la désigne.
+
+**RPCS3 — la manette, et les sept boîtes de dialogue.** Deux réglages, tous
+deux sous la racine d'émulation, tous deux vitaux :
+
+1. `config\input_configs\global\Default.yml`. Sans ce fichier, `cfg_player`
+   vaut `pad_handler::null` — relevé dans `Emu/Io/pad_config.h` — donc le joueur
+   1 n'a **aucun gestionnaire de manette**. Ce n'est pas une mauvaise liaison,
+   c'est l'absence de manette. Mesuré le 2026-08-29 sur LittleBigPlanet : le jeu
+   tournait à 30 fps et aucun bouton ne répondait. Trois lignes suffisent —
+   `Handler: XInput` et `Device: "XInput Pad #1"` — parce que
+   `xinput_pad_handler::init_config()` renseigne les vingt-quatre `.def` puis
+   appelle `from_default()`. Le fichier fait **61 octets** et le propriétaire a
+   confirmé : les contrôles répondent.
+2. `GuiConfigs\CurrentSettings.ini`, section `[main_window]`. **Huit** boîtes
+   modales sont à `true` par défaut, relevées dans `rpcs3qt/gui_settings.h`
+   (cette entrée a d'abord écrit « sept » en en nommant huit — le compte à
+   retenir est celui de la source, pas celui de cette phrase) :
+   `infoBoxEnabledWelcome`, `infoBoxEnabledInstallPUP`, `infoBoxEnabledInstallPKG`,
+   `confirmationBoxBootGame`, `confirmationBoxExitGame`, `confirmationObsoleteCfg`,
+   `confirmationSameButtons`, `confirmationRestart`. `confirmationBoxBootGame`
+   s'interpose **à chaque lancement de jeu** ; `infoBoxEnabledInstallPUP` est ce
+   qui laissait RPCS3 ouvert après l'installation du firmware.
+
+Deux pièges de forme y sont attachés, et chacun aurait produit un réglage
+d'apparence posé qui ne fait rien : la valeur est `XInput`, avec ses deux
+majuscules (`pad_config_types.cpp`, `case pad_handler::xinput: return "XInput";`) ;
+et `Device` **doit être cité**, car en YAML `#` ouvre un commentaire —
+`XInput Pad #1` non quoté devient `XInput Pad`.
+
+### Ce qui manque, et c'est la même pièce dans les trois cas
+
+Un **jeton de chemin** dans `target`, sur le modèle de `{render_config}` que
+`retro/launcher.py` substitue déjà — quelque chose comme
+`{emulation_root}\Vita3K\gui-configs\CurrentSettings.ini`. Cela lève Vita3K
+**et les deux fichiers de RPCS3** immédiatement, soit trois des quatre réglages.
+L'émulateur hors dépôt demande en plus un **second dialecte de fusion**, JSON,
+côté validation Python comme côté lanceur C#.
+
+**Et un aggravant propre à RPCS3 :** ses deux fichiers vivent sous son dossier
+d'installation, que `retro install` **efface à chaque montée de version**. La
+manette redeviendrait donc muette à une simple mise à jour de l'émulateur, sans
+qu'aucun message ne fasse le lien.
+
+### Ce qu'il ne faut pas faire, et pourquoi c'est tentant
+
+Poser ces valeurs une fois à la main — ce qui a été fait le 2026-08-29 pour les
+deux — **donne l'illusion que c'est réglé**. Ça ne l'est pas : rien ne les
+repose. C'est très exactement la distinction que les régimes `content` et
+`enforced` existent pour porter, et ces deux réglages-ci sont du `enforced` :
+sans eux, le tactile est mort ou une modale bloque le lancement.
+
+**Ce que ça coûte aujourd'hui :** quatre pannes silencieuses en sommeil sur
+trois émulateurs, dont aucune ne se manifestera par un message. Elles
+ressembleront à « le tactile ne marche plus », « le jeu ne se lance pas », « la
+manette ne répond plus » et « une fenêtre s'ouvre et rien ne la ferme ». Les
+quatre réglages sont posés à la main sur la machine et **aucun n'est reposé**.
+
+### Une note de garde-fou, découverte en écrivant cette dette
+
+`test_aucun_emulateur_au_statut_conteste` cherche ses mots interdits en
+**sous-chaîne**, sur le texte en minuscules. Or l'un d'eux — le sixième de la
+liste `INTERDITS`, six lettres — est une sous-chaîne du mot anglais qui désigne
+le compte super-utilisateur de Windows. C'est le compte sous lequel toute la
+console tourne : il apparaît dans les messages des émulateurs comme dans
+n'importe quel chemin `C:\Users\...`.
+
+**Le garde-fou refuse donc un texte parfaitement légitime**, et le refus n'aide
+pas : il nomme un émulateur qui n'est pas là, ce qui envoie chercher au mauvais
+endroit.
+
+Cette entrée en fait elle-même la démonstration : la première rédaction citait
+le mot interdit pour l'expliquer, et **le test l'a refusée**. Une dette sur ce
+garde-fou ne peut pas être écrite sans le déclencher — d'où la périphrase
+ci-dessus, qui est laide et le restera tant que la correspondance se fera en
+sous-chaîne.
+
+Ce n'est PAS corrigé ici, délibérément : c'est un garde-fou de conformité, et le
+relâcher — même vers une correspondance par frontière de mot, qui serait la
+bonne réponse — se décide en revue, pas au détour d'une dette. Contourné pour
+l'instant en ne recopiant pas le message anglais.
+
+---
+
+## D8 — PS4 : l'émulateur est installé, et rien ne peut y entrer
+
+> **Plan écrit le 2026-08-29** — `docs/superpowers/plans/2026-08-29-d8-ps4-extraction-pkg.md` :
+> commence par deux tâches de coût quasi nul qui peuvent clore la dette avant les 44 Go — la rentabilité y est jugée faible, et c'est écrit.
+
+**Constatée le 2026-08-29**, en tentant d'installer deux jeux fournis par le
+propriétaire (`CUSA07410`, base de 36 Go + mise à jour de 7,5 Go, deux `.pkg`
+valides — magie `\x7FCNT`, content ID `EP9000-CUSA07410_00-00000000GODOFWAR`).
+
+### Ce qui est en place
+
+| | |
+|---|---|
+| shadPS4 **0.18.0** | inscrit au manifeste du propriétaire, empreinte relevée sur l'archive téléchargée, archive listée : **une seule entrée**, `shadPS4.exe` |
+| shadPS4QtLauncher | ajouté comme **`parts`** du même émulateur — étiquette datée ET commit (`2026-08-26-d2c682c`), donc une empreinte qui ne périme pas |
+| Dossier de jeux | réglé sur `G:\Games\Sony\PS4`, pour que ce qui s'y installera tombe là où `retro scan` regarde |
+
+### Le mur, mesuré en trois temps
+
+1. **Le build `win64-sdl` est EXCLUSIVEMENT en ligne de commande.** Il le dit
+   lui-même dans une boîte au démarrage : « This is a CLI application. Please
+   use the '-b' flag for Big Picture mode, or QTLauncher for a standalone GUI ».
+   Toute tentative de piloter un menu sur ce binaire est vaine — il n'en a pas.
+2. **Son aide n'a AUCUNE option d'installation.** Relevée sur le binaire :
+   `--game`, `--patch`, `--big-picture`, `--fullscreen`, `--add-game-folder`,
+   `--set-addon-folder`, `--mount`… rien qui installe un paquet.
+3. **Le lanceur graphique n'en a pas non plus.** Son menu *File* porte
+   exactement cinq entrées, relevées à l'écran : `Boot Game`,
+   `Open/Add Elf Folder`, `Open shadPS4 Folder`, `Recent Games`, `Exit`.
+
+**Conclusion : ce shadPS4 n'installe pas de PKG, par aucune voie.** Il attend
+des jeux DÉJÀ EXTRAITS et se contente de les lister. Alimenter la PS4 demande
+donc un extracteur PS4 tiers — un outil de plus à choisir, épingler et vérifier,
+qui n'existe dans aucun des deux manifestes.
+
+### Ce qu'il faut savoir avant d'y investir
+
+God of War (2018) est rapporté comme **démarrant jusqu'aux menus sans être
+jouable**. L'émulation PS4 en 2026 est à peu près là où RPCS3 était en 2017.
+Même avec un extracteur, l'issue probable est un menu, pas une partie — et
+c'est 44 Go à extraire pour le découvrir.
+
+**Ce que ça coûte aujourd'hui :** un émulateur installé et épinglé qui ne peut
+recevoir aucun jeu. Ce n'est pas une panne : c'est une chaîne incomplète, et
+elle est incomplète d'un maillon nommé.
+
+---
+
+## D9 — Vita3K : installer un jeu ne marche par aucune des voies prévues
+
+> **Plan écrit le 2026-08-29** — `docs/superpowers/plans/2026-08-29-d9-vita3k-installation-de-jeu.md` :
+> dépend de D7 pour **deux** pièces : le jeton, et plusieurs cibles par profil.
+
+**Constatée le 2026-08-29**, après la clôture de D5. L'émulateur tourne, son
+firmware est posé — mais y faire entrer un jeu échoue par les deux chemins que
+le profil emploie.
+
+### Les deux échecs, mesurés
+
+**Par l'archive.** Un `.vpk` passé en `content-path` est refusé avant tout :
+`[C] [get_archive_contents_path]: A Vitamin dump was detected, aborting
+installation…`. Refus légitime — mais il vaut pour l'archive seulement.
+
+**Par le dossier.** La même bibliothèque en forme `ux0/app/<TITLEID>/` ne
+déclenche PAS ce contrôle : elle passe par `install_content`, qui échoue
+autrement — `[E] [install_content]: Failed to copy directory to:
+"…\ux0\app\PCSF00012"` — en laissant un dossier **vide** derrière lui. Ce n'est
+pas une question de place (79,9 Go libres) ni de partage : `robocopy` a copié
+les mêmes 333 fichiers et 3,5 Go sans une erreur. Le contournement est donc la
+copie manuelle, ce qu'aucun profil ne sait faire.
+
+### Deux choses que le profil ignore, et qui bloqueront le prochain jeu
+
+**La licence n'est pas où le dump la met.** Un dump NoNpDrm porte sa licence
+dans `sce_sys/package/work.bin`. Vita3K, lui, la cherche ici :
+`ux0/license/<TITLEID>/EP9000-<TITLEID>_00-0000000000000000.rif`. Sans elle :
+« License file is corrupted or missing […] using default value ». Rien dans la
+chaîne ne fait cette conversion.
+
+**Le paquet de polices ouvre une modale bloquante.** « Missing Firmware —
+Firmware is not fully installed. The following firmware components are missing:
+Font package », avec `[Launch Anyway]` et une case « Don't show this warning
+again ». Vita3K écrit lui-même qu'il ne publie pas l'URL de ce paquet, donc
+rien n'a été pris ailleurs. La case a été cochée à la main — et comme les
+quatre réglages de D7, **rien ne la repose**.
+
+**Ce que ça coûte aujourd'hui :** le jour où un dump correct arrivera, il ne
+suffira pas de le déposer. Il faudra le copier à la main, poser sa licence
+ailleurs que là où elle est, et avoir désarmé une modale. Trois gestes qu'aucune
+commande ne porte.
+
+---
+
+## D10 — Un garde-fou de conformité n'est pas gelé, et se désarme sans bruit — RÉGLÉE le 2026-08-29
+
+> **Réglée le jour même de son constat, et la preuve a été faite dans les deux
+> sens.** Avant : `SANS_NOTE_DE_VIBRATION` réhaussée à `{"xemu"}` laissait la
+> suite **entièrement verte** — 635 tests, aucun rouge. Le garde-fou se
+> désarmait donc bien sans un bruit. Après : la même mutation rend
+> `test_le_garde_fou_ne_se_raccourcit_pas` rouge, et la suite redevient verte
+> dès qu'elle est annulée. La quatrième liste est gelée comme les trois autres.
+
+**Constatée le 2026-08-29**, en auditant la clôture de D3.
+
+`tests/test_donnees.py` porte quatre listes qui **exemptent** ou **restreignent**
+un garde-fou. Trois d'entre elles — `INTERDITS`, `EMPREINTES_A_RELEVER`,
+`EXEMPTES` — sont gelées par `test_le_garde_fou_ne_se_raccourcit_pas`, dont la
+docstring dit exactement pourquoi : « sans cette assertion, retirer un nom
+d'INTERDITS — ou ajouter une exemption — suffisait à faire taire le garde-fou
+sans qu'aucun test ne le remarque ».
+
+**La quatrième ne l'est pas.** `SANS_NOTE_DE_VIBRATION`
+(`tests/test_donnees.py:1031`) est aujourd'hui `frozenset()`, et c'est ce que
+D1 célèbre : « l'exemption est retirée, et elle est désormais VIDE ». Mais y
+réinscrire un nom de profil n'échouerait **nulle part** — le raisonnement
+que la docstring ci-dessus tient pour les trois autres vaut mot pour mot pour
+celle-là, et n'a simplement pas été appliqué.
+
+**Ce que ça coûte aujourd'hui :** rien, tant que personne n'y touche. Le jour
+où un profil gênera le test, l'y exempter sera le geste le plus court et le
+moins visible — et l'aveu de vibration que D1 a construit profil par profil
+disparaîtra pour celui-là, en silence. C'est très exactement le défaut contre
+lequel les trois autres listes sont gelées.
+
+**Où ça se joue :** `tests/test_donnees.py`, l'assertion de
+`test_le_garde_fou_ne_se_raccourcit_pas`. Le correctif tient en une ligne. Il
+n'est pas fait ici parce que ce fichier est en cours de modification pour D7,
+et qu'écrire à deux dans le même fichier est un autre moyen de perdre du
+travail en silence.
+
+---
+
+## D11 — Ce que le dépôt impose n'est pas ce que la console applique
+
+**Constatée le 2026-08-29**, en auditant la clôture de D3. C'est **D6 à une
+autre échelle** : là où D6 dit que le paquet installé peut être périmé, celle-ci
+dit que même avec le bon paquet, le fragment appliqué peut l'être.
+
+**Le fragment des clés imposées n'est écrit que par `retro scan`.**
+`ecrire_plan` (`retro/launcher.py`) dépose `<profil>.impose.ini` à côté des
+plans de lancement, et c'est le seul geste qui le produit. Modifier le champ
+`enforced` d'un profil, relancer les tests, tout voir vert, et **ne pas
+re-scanner** laisse la console fusionner l'ancien fragment. Aucun message ne
+fait le lien ; le symptôme sera le réglage d'origine, c'est-à-dire le défaut
+qu'on croyait corrigé.
+
+**Et la marque de fusion est un commentaire.** Le lanceur insère
+`; posé par « retro » …` devant chaque clé imposée, et c'est ce qui distingue
+ses lignes de celles du propriétaire. Or DuckStation **efface tous les
+commentaires** à une fermeture propre depuis son interface — mesuré, 2187 → 985
+octets, c'est la découverte notée en fin de D2. Au lancement suivant, le
+fichier fusionné diffère donc de l'existant, et la promesse « déjà conforme,
+rien ne sera réécrit » ne tient plus : une sauvegarde horodatée et une
+réécriture ont lieu **à chaque cycle**. Ce n'est pas une casse — les clés sont
+justes — mais l'idempotence prouvée le 2026-08-29 ne vaut que tant que
+personne n'ouvre l'interface.
+
+**Ce que ça coûte aujourd'hui :** un correctif de profil peut être vert ici et
+absent là-bas, pour une raison de plus que celle de D6 — et les deux causes
+produisent le même symptôme, un correctif qui « ne marche pas ». Elles se
+diagnostiqueront donc l'une pour l'autre.
+
+**Où ça se joue :** `retro/launcher.py` (`ecrire_plan`, `enforced_name`), le
+fusionneur de `retro/data/launcher/retro-launch.cs`, et le témoin que D6 est en
+train de construire — c'est probablement là que l'identité du fragment doit
+aller, à côté de celle du paquet.
