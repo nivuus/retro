@@ -848,6 +848,37 @@ def test_un_emulateur_qui_trouve_sa_manette_seul_est_dit_sans_etre_accuse(tmp_pa
         ("retroarch", profiles.MAPPING_AUTO)]
 
 
+def test_un_releve_clos_n_est_plus_un_probleme_mais_reste_dit(tmp_path):
+    """La clôture de D3, le 2026-08-29, vue du rapport.
+
+    Deux moitiés, et les deux comptent. Ne plus accuser : `retro status`
+    annoncerait sinon « manette muette » sur le seul émulateur dont un bouton
+    ait été VU agir, et le propriétaire apprendrait à ignorer la section.
+    Continuer de le dire, AVEC son fichier : les vingt-huit clés de [Pad1] sont
+    reposées à chaque lancement, et elles peuvent cesser d'être trouvées sans
+    un mot — « SDL-0 » est un index, et un pad de plus branché avant celui
+    d'Apollo ramène exactement le symptôme d'origine.
+    """
+    profils = _profil_manette(
+        tmp_path, "duckstation", "releve",
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]")
+    rapport = _rapport_manette(profils)
+    assert [p for p in rapport.problems if "manette" in p.what] == []
+    assert [(m.profile_id, m.etat) for m in rapport.manettes] == [
+        ("duckstation", profiles.MAPPING_RELEVE)]
+    ligne = [l for l in status.format_report(rapport).splitlines()
+             if "duckstation" in l and "relev" in l]
+    assert len(ligne) == 1
+    assert "[Pad1]" in ligne[0], (
+        "le rapport dit le relevé clos sans dire où ses liaisons vivent : "
+        "il n'y a plus rien à ouvrir le jour où elles cessent d'agir"
+    )
+    assert "seul" not in ligne[0], (
+        "le rapport laisse croire que DuckStation trouve sa manette seul, ce "
+        "que D3 a réfuté : il ne la trouve que parce que la console impose"
+    )
+
+
 def test_un_mapping_jamais_mesure_est_nomme_sans_etre_accuse(tmp_path):
     """« personne n'a regardé » n'est pas « c'est cassé ». Le confondre ferait
     huit accusations sans mesure, et noierait la seule qui en a une — mais le
