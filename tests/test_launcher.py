@@ -447,27 +447,67 @@ def test_un_lanceur_sans_source_deposee_n_est_pas_dit_perime(tmp_path):
     assert not launcher.lanceur_perime(tmp_path)
 
 
-# --- la seconde stratégie d'écriture : la fusion --------------------------
+# --- les clés imposées : le second régime ---------------------------------
 
-def test_le_plan_porte_la_strategie_declaree(tmp_path):
-    """La stratégie est décidée ICI et lue là-bas : le lanceur n'en choisit
-    aucune, il applique celle que le plan nomme."""
-    p = tmp_path / "d.toml"
-    p.write_text(PROFIL_AMORCE.replace(
-        "[bootstrap]\n",
-        '[bootstrap]\nstrategy = "fusion"\n').replace(
-        "; Écrit par « retro » au premier lancement, parce que ce fichier "
-        "était absent.",
-        "; Écrit par « retro », qui MODIFIE ce fichier."), encoding="utf-8")
-    profil = profiles.load_profile(p)
-    texte = launcher.plan_systeme(
+PROFIL_IMPOSE = PROFIL + """
+[bootstrap]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé UNE FOIS, et le reste, qui est à vous.
+[Main]
+ConfirmPowerOff = false
+'''
+enforced = '''
+[Main]
+SetupWizardIncomplete = false
+'''
+"""
+
+
+@pytest.fixture
+def profils_imposes(tmp_path):
+    p = tmp_path / "duckstation-impose.toml"
+    p.write_text(PROFIL_IMPOSE, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(p)}
+
+
+def test_le_plan_porte_le_fichier_des_cles_imposees(profils_imposes):
+    """Deux fichiers pour une seule cible : celui qu'on pose si elle est
+    absente, celui qu'on refusionne à chaque lancement."""
+    profil = profils_imposes["duckstation"]
+    l = lignes(launcher.plan_systeme(
         "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
-        "D:\\E\\_launcher\\systems", bootstrap=profil.bootstrap)
-    assert lignes(texte)["bootstrap_when"] == launcher.FUSION
+        "D:\\E\\_launcher\\systems", bootstrap=profil.bootstrap))
+    assert l["bootstrap_source"] == (
+        "D:\\E\\_launcher\\systems\\duckstation.bootstrap.ini")
+    assert l["bootstrap_enforced"] == (
+        "D:\\E\\_launcher\\systems\\duckstation.impose.ini")
+    assert l["bootstrap_when"] == launcher.SI_ABSENT
 
 
-def test_les_deux_strategies_sont_distinctes_et_connues():
-    """Une stratégie que le lanceur ne connaît pas fait échouer l'amorçage sur
-    la console. Les deux listes doivent donc rester la même."""
-    assert launcher.STRATEGIES == (launcher.SI_ABSENT, launcher.FUSION)
-    assert launcher.SI_ABSENT != launcher.FUSION
+def test_un_profil_qui_n_impose_rien_porte_la_ligne_vide(profils_amorces):
+    """Vide, jamais absente : une clé manquante est une faute du plan, et
+    c'est cette propriété qui attrape les plans d'une version antérieure."""
+    profil = profils_amorces["duckstation"]
+    l = lignes(launcher.plan_systeme(
+        "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
+        "D:\\E\\_launcher\\systems", bootstrap=profil.bootstrap))
+    assert l["bootstrap_enforced"] == ""
+
+
+def test_le_fichier_des_cles_imposees_est_depose(tmp_path, profils_imposes):
+    dossier = launcher.local_dir(tmp_path) / launcher.PLAN
+    launcher.ecrire_plan(tmp_path, "D:\\E", profils_imposes,
+                         {"duckstation": "DS"})
+    impose = dossier / "duckstation.impose.ini"
+    assert impose.is_file()
+    assert "SetupWizardIncomplete" in impose.read_text(encoding="utf-8")
+    # Et le fichier « posé une fois » reste à côté, distinct.
+    assert "ConfirmPowerOff" in (
+        dossier / "duckstation.bootstrap.ini").read_text(encoding="utf-8")
+
+
+def test_les_deux_fichiers_d_un_profil_ne_se_confondent_pas():
+    assert launcher.enforced_name("duckstation", "x.ini") \
+        != launcher.bootstrap_name("duckstation", "x.ini")

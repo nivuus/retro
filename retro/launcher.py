@@ -76,29 +76,48 @@ def config_name(cle: str, mode: str) -> str:
 
 BOOTSTRAP = "bootstrap"
 
-# Les deux stratégies d'écriture d'une configuration d'émulateur. Le champ
-# existait déjà pour qu'il y en ait une seconde ; la voici.
+# Les deux régimes d'écriture d'une configuration d'émulateur. Ils portent
+# sur LE MÊME fichier et ne se déclarent pas : le profil les distingue par
+# STRUCTURE — `content` pour l'un, `enforced` pour l'autre — de sorte qu'on ne
+# puisse pas mettre le régime annoncé en contradiction avec ce qu'il contient.
 #
-# SI_ABSENT — poser le fichier s'il n'existe pas, ne jamais y revenir. C'est
-#   ce que fait `retro` depuis toujours, et ce que l'en-tête du fichier posé
-#   promet au propriétaire.
+# SI_ABSENT — le fichier est posé s'il n'existe pas, et plus jamais retouché.
+#   Ce sont des préférences : le propriétaire les change dans l'interface de
+#   son émulateur, et son choix tient.
 #
-# FUSION — le propriétaire a AUTORISÉ `retro` à modifier un fichier qui
-#   existe déjà. Autorisé à MODIFIER, jamais à ÉCRASER : la fusion ne touche
-#   qu'aux clés qu'elle apporte, préserve tout le reste — clés inconnues,
-#   commentaires, ordre — sauvegarde avant d'écrire, et ne réécrit rien si le
-#   fichier est déjà conforme.
+# FUSION — les clés que la console IMPOSE, reposées à chaque lancement. Le
+#   propriétaire l'a autorisé le 2026-08-29, et pour ces clés-là seulement :
+#   sans elles, un jeu ne démarre pas sans clavier — assistant de première
+#   configuration, fenêtre de mise à jour, plein écran manquant. Autorisé à
+#   MODIFIER, jamais à ÉCRASER : la fusion ne touche qu'aux clés qu'elle
+#   apporte, préserve tout le reste — clés inconnues, commentaires, ordre —
+#   sauvegarde avant d'écrire, et ne réécrit rien si le fichier est déjà
+#   conforme.
 #
-#   Elle existe parce que deux dettes butent sur le même mur : le remplissage
-#   de DuckStation (D2) et sa manette (D3) se règlent tous deux dans un
-#   settings.ini que « si-absent » ne rouvre jamais. Une stratégie par dette
-#   aurait fait deux mécanismes divergents sur le MÊME fichier, ce que ce
-#   dépôt s'interdit déjà pour les configurations d'entrée.
+#   Un seul mécanisme pour deux dettes, délibérément : le remplissage de
+#   DuckStation (D2) et sa manette (D3) se règlent tous deux dans un
+#   settings.ini que « si-absent » ne rouvre jamais. Un mécanisme par dette
+#   aurait divergé sur le MÊME fichier, ce que ce dépôt s'interdit déjà pour
+#   les configurations d'entrée. D3 n'a qu'à ajouter sa section [Pad1] au
+#   champ `enforced` du profil : rien d'autre à écrire.
 SI_ABSENT = "si-absent"
 FUSION = "fusion"
-# L'ordre compte : `test_donnees` compare cette liste à ce que retro-launch.cs
-# sait faire, et le lanceur refuse toute stratégie qu'il ne connaît pas.
 STRATEGIES = (SI_ABSENT, FUSION)
+
+
+IMPOSE = "impose"
+
+
+def enforced_name(profile_id: str, target: str) -> str:
+    """Le nom du fragment des clés IMPOSÉES, déposé à côté des plans.
+
+    Un fichier SÉPARÉ de celui de l'amorçage, et non un second bloc dans le
+    même : les deux ont des durées de vie différentes — l'un n'est lu qu'une
+    fois, l'autre à chaque lancement — et le lanceur doit pouvoir prendre le
+    second sans rouvrir le premier.
+    """
+    suffixe = pathlib.PureWindowsPath(target).suffix or ".txt"
+    return f"{profile_id}.{IMPOSE}{suffixe}"
 
 
 def bootstrap_name(profile_id: str, target: str) -> str:
@@ -167,14 +186,22 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
     # antérieure. Vides, elles disent « cet émulateur n'a rien à recevoir ».
     source = (f"{plan_dir}\\{bootstrap_name(profile_id, bootstrap.target)}"
               if bootstrap else "")
+    # Le fragment des clés imposées, s'il y en a. Vide sinon : c'est ce qui
+    # distingue un profil qui n'impose rien — les huit autres — de celui qui
+    # impose, sans que le lanceur ait à ouvrir quoi que ce soit pour le
+    # savoir.
+    impose = (f"{plan_dir}\\{enforced_name(profile_id, bootstrap.target)}"
+              if bootstrap and bootstrap.enforced else "")
     lignes += [
         f"bootstrap_target={bootstrap.target if bootstrap else ''}",
         f"bootstrap_source={source}",
-        # La stratégie vient du PROFIL, elle n'est plus constante : c'est le
-        # profil qui sait si sa configuration doit être posée une fois ou
-        # fusionnée à chaque passage. Le lanceur ne la choisit pas, il
-        # l'applique — et refuse celle qu'il ne connaît pas.
-        f"bootstrap_when={bootstrap.strategy if bootstrap else ''}",
+        f"bootstrap_when={SI_ABSENT if bootstrap else ''}",
+        # Les DEUX régimes visent la même cible, et le lanceur les applique
+        # dans cet ordre : poser le fichier s'il est absent, puis y refondre
+        # les clés imposées. L'ordre compte — sur une console neuve, la
+        # seconde étape doit trouver le fichier que la première vient de
+        # poser.
+        f"bootstrap_enforced={impose}",
     ]
     return "\n".join(lignes) + "\n"
 
@@ -378,6 +405,11 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
             (dossier / nom).write_text(profil.bootstrap.content,
                                        encoding="utf-8")
             fichiers.add(nom)
+            if profil.bootstrap.enforced:
+                impose = enforced_name(pid, profil.bootstrap.target)
+                (dossier / impose).write_text(
+                    profil.bootstrap.enforced + "\n", encoding="utf-8")
+                fichiers.add(impose)
 
     # Tout fichier que ce passage n'a pas écrit s'en va : ce dossier
     # appartient entièrement à « retro scan », et un amorçage d'un format
