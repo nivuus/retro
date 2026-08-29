@@ -319,20 +319,30 @@ _MOTIF_PAR_MODE = {
 # 2026-08-29 avec la valeur `BilinearSmooth`, et il a été RECONNU. Le nom
 # n'est plus l'inconnue.
 #
-# CE QUI N'EST PAS MESURÉ, et c'est tout ce qui reste : personne n'a vu
-# `NearestInteger` ni `BilinearInteger` AGIR sur la machine. Ce qu'on sait de
-# `Scaling` est un fait négatif — `BilinearSmooth` n'a RIEN changé à la
-# géométrie de l'image, donc `Scaling` est un FILTRE — et ce fait ne dit rien
-# de ses deux valeurs entières, qui portent un autre nom pour une raison.
+# LU DANS LA SOURCE au tag, le 2026-08-29 — et cette lecture PRÉDIT un effet
+# géométrique : les variantes `NearestInteger` et `BilinearInteger` de
+# `[Display] Scaling` arrondissent le facteur d'échelle au plancher dans
+# GPU::CalculateDrawRect, et centrent le résidu. Le relevé complet — fichiers,
+# symboles, lignes — est dans le profil, au-dessus de son champ `enforced`.
 #
-# Deux faux oracles, payés ici même, qui interdisent d'écrire une valeur avant
-# de l'avoir vue agir :
+# CE QUI N'EST PAS MESURÉ, et c'est tout ce qui reste : personne n'a vu l'une
+# de ces deux valeurs AGIR sur la machine. Une lecture de source établit un
+# nom, des valeurs et un chemin de code ; elle n'établit pas que le binaire
+# livré se comporte comme sa source.
+#
+# TROIS faux oracles, payés ici même, qui interdisent d'écrire une valeur
+# avant de l'avoir vue agir :
 #   - les CHAÎNES d'un binaire donnent les LIBELLÉS de l'interface, pas les
 #     valeurs du fichier de configuration. Les valeurs sont dans la SOURCE
 #     (src/core/settings.cpp). Deux tentatives ont échoué ainsi sur CropMode ;
 #   - « la clé a survécu » ne prouve PAS « la clé est reconnue » :
 #     `DisplayCropMode`, une clé INVENTÉE, a survécu à une réécriture complète
-#     du fichier par DuckStation, qui conserve ce qu'il ne comprend pas.
+#     du fichier par DuckStation, qui conserve ce qu'il ne comprend pas ;
+#   - POSER LA VALEUR PAR DÉFAUT NE MESURE RIEN. `BilinearSmooth`, essayé le
+#     2026-08-29, EST le défaut de cette révision : l'essai n'a rien posé, donc
+#     il n'a rien prouvé — ni que `Scaling` serait un simple filtre, ni même
+#     que la clé était reconnue, une valeur inconnue retombant silencieusement
+#     sur ce même défaut.
 # Une valeur fausse se comporte exactement comme l'absence de valeur : aucun
 # message, aucune ligne de journal, aucun symptôme distinct.
 #

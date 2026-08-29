@@ -143,6 +143,196 @@ n'établit pas un effet.
 
 ---
 
+### LE RELEVÉ — FAIT le 2026-08-29, au tag `v0.1-11609`
+
+Lu dans la source, fichier par fichier, au tag épinglé — jamais `master`.
+Chaque bloc ci-dessous a été **récupéré et relu octet par octet**, pas
+résumé par une lecture de page.
+
+**Correction de chemin, d'abord.** `src/core/gpu_presenter.cpp` **n'existe
+pas** à cette révision — l'URL rend 404. Le fichier s'appelle
+`src/core/video_presenter.cpp`, et la classe est `VideoPresenter`. Le point
+de départ écrit en tâche 2 était donc faux ; le reste du chemin tient.
+
+#### 1. Les valeurs du fichier — `s_display_scaling_names`
+
+`src/core/settings.cpp`, ligne 2218 :
+
+```cpp
+static constexpr const std::array s_display_scaling_names = {
+  "Nearest", "NearestInteger", "BilinearSmooth", "BilinearHybrid",
+  "BilinearSharp", "BilinearInteger", "Lanczos",
+};
+```
+
+Sept valeurs, dans cet ordre. `NearestInteger` et `BilinearInteger`, qui
+n'étaient jusqu'ici que des **libellés lus dans le binaire**, sont donc
+**confirmés comme valeurs de fichier** — c'est le premier des deux
+libellés-devenus-valeurs de ce dépôt qui survit à la vérification.
+
+**Et le piège est visible à l'œil nu, trois lignes plus bas** : le tableau
+`s_display_scaling_display_names` (ligne 2221) porte, lui,
+`"Nearest-Neighbor"`, `"Nearest-Neighbor (Integer)"`, `"Bilinear (Smooth)"`…
+enveloppés dans `TRANSLATE_DISAMBIG_NOOP`. **Ce sont ceux-là que `strings`
+remonte**, et aucun n'est jamais écrit dans le `.ini`. Les deux tableaux sont
+voisins dans le fichier ; c'est exactement le couple qui a coûté deux
+tentatives sur `CropMode`.
+
+L'énumération correspondante, `src/core/types.h` ligne 193 :
+
+```cpp
+enum class DisplayScalingMode : u8
+{
+  Nearest, NearestInteger, BilinearSmooth, BilinearHybrid,
+  BilinearSharp, BilinearInteger, Lanczos, Count
+};
+```
+
+**La clé et sa section**, `Settings::Load`, `settings.cpp` lignes 387-392 :
+
+```cpp
+display_scaling =
+  ParseDisplayScaling(si.GetStringViewValue("Display", "Scaling",
+                        GetDisplayScalingName(DEFAULT_DISPLAY_SCALING)))
+    .value_or(DEFAULT_DISPLAY_SCALING);
+```
+
+`[Display] Scaling` est confirmé — avec un jumeau `Scaling24Bit` pour le
+24 bits. `ParseDisplayScaling` (ligne 2231) compare **exactement**, casse
+comprise, contre `s_display_scaling_names`.
+
+#### 🔴 2. LE FAIT QUI INVALIDE LA MESURE DU MATIN
+
+`src/core/settings.h`, ligne 242 :
+
+```cpp
+static constexpr DisplayScalingMode DEFAULT_DISPLAY_SCALING =
+  DisplayScalingMode::BilinearSmooth;
+```
+
+**`BilinearSmooth` EST LE DÉFAUT.** Deux conséquences, et elles défont
+toutes deux ce que le dépôt croyait avoir mesuré le 2026-08-29 :
+
+1. **poser `BilinearSmooth` ne pouvait rien changer** — c'était déjà la
+   valeur en vigueur. « Il n'a rien changé à la géométrie » n'est donc **pas
+   une mesure** de ce que fait `Scaling` : c'est la mesure d'un non-geste.
+   La conclusion « `Scaling` est un FILTRE » n'était **pas établie** ;
+2. **`.value_or(DEFAULT_DISPLAY_SCALING)`** : une valeur non reconnue
+   retombe **silencieusement** sur `BilinearSmooth`. Donc « la valeur a été
+   reconnue » n'était pas établie non plus — une valeur reconnue et une
+   valeur inconnue produisent, dans ce cas précis, **exactement le même
+   résultat observable**.
+
+**C'est un TROISIÈME faux oracle**, de la même famille que les deux déjà
+écrits, et il mérite d'être nommé : *poser la valeur par défaut ne mesure
+rien.* Les deux premiers disaient qu'une valeur fausse est muette et qu'une
+clé survivante n'est pas une clé reconnue ; celui-ci dit qu'un essai peut
+être muet **parce qu'on a réécrit ce qui était déjà là**.
+
+#### 3. Où la valeur est CONSOMMÉE — GÉOMÉTRIE, et filtre
+
+**Le verdict est la première des deux issues de la tâche 2 : le calcul
+BRANCHE sur les variantes `*Integer` pour arrondir la taille du rectangle.**
+
+Le pont, `src/core/settings.h` ligne 217 :
+
+```cpp
+ALWAYS_INLINE bool IsUsingIntegerDisplayScaling(bool is_24bit) const
+{
+  const DisplayScalingMode mode = is_24bit ? display_scaling_24bit : display_scaling;
+  return (mode == DisplayScalingMode::NearestInteger ||
+          mode == DisplayScalingMode::BilinearInteger);
+}
+```
+
+L'appel, `src/core/video_presenter.cpp` ligne 610, dans
+`VideoPresenter::PresentFrame` :
+
+```cpp
+const bool integer_scale = g_gpu_settings.IsUsingIntegerDisplayScaling(s_locals.display_texture_24bit);
+```
+
+puis `VideoPresenter::CalculateDrawRect` (ligne 1417), qui délègue à
+`GPU::CalculateDrawRect` (`src/core/gpu.cpp`, ligne 2250). `integer_scale` y
+sert **trois fois**, dont deux qui sont l'arrondi lui-même (lignes 2336 et
+2367, le même code sur chaque axe) :
+
+```cpp
+scale = fwindow_size.x / fvideo_size.x;
+if (integer_scale)
+{
+  // skip integer scaling if we cannot fit in the window at all
+  scale = (scale >= 1.0f) ? std::floor(scale) : scale;
+  padding.x = std::max<float>((fwindow_size.x - fvideo_size.x * scale) / 2.0f, 0.0f);
+}
+else
+{
+  padding.x = 0.0f;
+}
+```
+
+Ce qui est arrondi, exactement : le **facteur d'échelle flottant** est
+tronqué au plancher par `std::floor`, mais **seulement s'il vaut au moins
+1.0** — sinon la fenêtre est trop petite et l'échelle fractionnaire est
+gardée. Le résidu devient un **remplissage centré**, là où le mode non
+entier met ce résidu à zéro. Le troisième usage (ligne 2264) choisit l'axe
+de correction du ratio de pixel. En sortie :
+
+```cpp
+*out_draw_rect = GSVector4i(fvideo_active_rect + padding4);
+*out_display_rect = GSVector4i(GSVector4::loadh(fvideo_size) + padding4);
+```
+
+**Le second rôle, distinct et réel** : la même valeur choisit aussi le
+shader de présentation (`video_presenter.cpp` ligne 307) et
+l'échantillonneur (ligne 916), et **les variantes `*Integer` n'ont aucun
+shader propre** — `BilinearInteger` partage celui de `BilinearSmooth`,
+`NearestInteger` celui de `Nearest`. Autrement dit : **`*Integer` = la même
+qualité d'échantillonnage que sa variante de base, PLUS l'arrondi
+géométrique.** C'est la seule différence entre `BilinearSmooth` et
+`BilinearInteger` — et c'est ce qui rend la mesure de la tâche 3 concluante
+si elle compare précisément ces deux-là.
+
+#### 4. Aucune autre clé `[Display]` ne porte le remplissage
+
+Écarté : `IntegerScaling` et `LinearFiltering` **n'existent plus** à cette
+révision — absentes de `settings.cpp` comme de `settings.h`, fondues dans
+l'énumération `Scaling`. `Stretch` n'existe que sous `#ifdef __ANDROID__`,
+comme migration héritée : **inopérante sur cette plateforme**.
+
+Les clés `[Display]` qui touchent bien à la géométrie, et ce qu'elles font —
+aucune n'est le remplissage :
+
+| Clé | Ce qu'elle fait |
+|---|---|
+| `Scaling` / `Scaling24Bit` | **le remplissage** : arrondi entier + résidu centré |
+| `AspectRatio` | le ratio — étire la taille sur un axe (deuxième axe, pas le troisième) |
+| `Alignment` | répartit le résidu sur l'axe mineur, ne change pas sa taille |
+| `Rotation` | échange largeur et hauteur à 90°/270° |
+| `FineCropMode`, `FineCrop*` | rognage fin, en amont |
+| `CropMode` | **le cadrage — déjà posé**, en amont du calcul, via le CRTC |
+| `ActiveStartOffset`, `ActiveEndOffset`, `LineStartOffset`, `LineEndOffset` | décalent les bornes actives, en amont |
+| `Force4_3For24Bit` | force le ratio en 24 bits, en amont |
+
+L'hypothèse « la bonne clé est ailleurs » — celle qui a coûté deux
+tentatives sur `CropMode` — est donc **écartée par lecture**, pas par
+conviction.
+
+#### Ce que ce relevé change pour la suite
+
+- **la tâche 3 doit CONFIRMER un effet géométrique**, pas en chercher un.
+  L'issue B de la tâche 4 est celle qui se prépare, pas l'issue A ;
+- **les trois captures de la tâche 3 restent nécessaires telles quelles**,
+  et la première — `Scaling` absent — devient d'autant plus importante que
+  l'absence et `BilinearSmooth` sont maintenant connues équivalentes : c'est
+  la comparaison 1↔2 et 1↔3 qui porte l'information ;
+- **la lecture ne remplace pas la mesure.** Elle établit un nom, des valeurs
+  et un chemin de code ; elle n'établit pas que le binaire livré se comporte
+  comme sa source au tag. C'est la règle du dépôt, et le tableau de la
+  tâche 3 reste le juge.
+
+---
+
 ## Tâche 3 : la mesure sur la console — BLOQUÉE PAR LE PROPRIÉTAIRE
 
 **À jouer par le propriétaire.** Un agent n'atteint pas la console. Tant que
