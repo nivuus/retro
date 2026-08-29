@@ -730,10 +730,30 @@ name       = "Arcade"
 folders    = ["MAME", "FBNeo", "Neo Geo"]
 extensions = [".zip", ".7z"]
 launch     = '-L "RetroArch-Win64\cores\fbneo_libretro.dll" {render} -f "{rom}"'
-# FinalBurn Neo cherche ses BIOS de plateau dans system\fbneo\ ; ils dépendent
-# du romset joué (neogeo.zip pour Neo Geo, pgm.zip pour PGM…) et son .info les
-# déclare tous optionnels. Rien à exiger au niveau du système.
-bios       = []
+# FinalBurn Neo déclare VINGT-TROIS BIOS de plateau, tous optionnels
+# (« firmware_count = 23 », chacun avec _opt = "true"), parce qu'ils dépendent
+# du romset joué : neogeo.zip pour Neo Geo, pgm.zip pour PGM, decocass.zip
+# pour DECO Cassette… Rien ne peut donc être EXIGÉ au niveau du système, et
+# c'est pourquoi aucun n'est `required`.
+#
+# NEO GEO EST DÉCLARÉ, ET LUI SEUL, parce que le propriétaire en a deux jeux
+# (Neo Bomberman, Metal Slug 2) et qu'aucun romset Neo Geo ne démarre sans
+# lui : ce sont des cartouches, la ROM de démarrage vivait dans la borne. En
+# déclarer un ne le rend pas obligatoire — `required = false` dit vrai pour
+# les autres plateaux, et `retro bios` va tout de même le chercher, puisqu'il
+# demande tout besoin non satisfait.
+#
+# LE SOUS-DOSSIER VIENT DE FBNEO, PAS D'UNE SUPPOSITION :
+# fbneo_libretro.info, relevé sur la console le 2026-08-29, déclare
+# « firmware0_path = "fbneo/neogeo.zip" ». Ses `notes` ajoutent que les BIOS
+# « can also be inside the ROM directory or the root of SYSTEM directory » —
+# donc deux emplacements marchent, et c'est CELUI QU'IL DÉCLARE qui est posé.
+#
+# L'empreinte vient du System.dat de libretro-database, la même autorité que
+# les autres.
+bios       = [
+  { file = "neogeo.zip", md5 = "00dad01abdbf8ea9e79ad2fe11bdb182", required = false, dir = "fbneo" },
+]
 cost       = "light"
 [system.render.native]
 # Le shader est le mode natif : « ce que la console d'origine fournissait »

@@ -1536,6 +1536,19 @@ def test_un_bios_dir_qui_sort_du_dossier_est_refuse(tmp_path, chemin):
                               f'schema = 1\nbios_dir = "{chemin}"')))
 
 
+@pytest.mark.parametrize("sous", ["D:\\\\ailleurs", "..\\\\voisin"])
+def test_un_sous_dossier_de_bios_qui_sort_est_refuse(tmp_path, sous):
+    """Le fichier y serait depose hors de portee de l'emulateur, sans autre
+    symptome qu'un jeu qui ne demarre pas."""
+    with pytest.raises(profiles.ProfileError, match="'dir' d'un BIOS"):
+        profiles.load_profile(ecrire(
+            tmp_path, "r.toml",
+            RETROARCH.replace(
+                '{ file = "scph5501.bin", md5 = "abc", required = true }',
+                '{ file = "scph5501.bin", md5 = "abc", required = true, '
+                f'dir = "{sous}" }}', 1)))
+
+
 # --- un jeu qui est un DOSSIER ---------------------------------------------
 #
 # `extensions` dit ce qu'est un jeu quand un jeu est un fichier. Une

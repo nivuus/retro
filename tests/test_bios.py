@@ -409,3 +409,31 @@ def test_un_profil_sans_dossier_est_nomme_et_non_devine(contexte):
                           {"retroarch": "RetroArch"})
     assert [r.state for r in res] == [bios.SANS_DOSSIER]
     assert not (racine.parent / "E").exists()
+
+
+def test_un_bios_va_dans_le_sous_dossier_que_l_emulateur_declare(tmp_path):
+    """FBNeo declare « fbneo/neogeo.zip » dans son propre .info : le
+    sous-dossier fait partie de ce que l'emulateur dit, pas d'une supposition.
+    Depose a la racine, le fichier serait hors de sa portee — le symptome
+    exact d'un BIOS jamais telecharge."""
+    a = b"contenu-a"
+    p = tmp_path / "retroarch.toml"
+    p.write_text(PROFIL_AVEC_DOSSIER.replace("{md5_a}", empreinte(a))
+                 .replace("{md5_b}", empreinte(b"contenu-b"))
+                 .replace('{ file = "scph5501.bin", md5 = "' + empreinte(a)
+                          + '", required = true }',
+                          '{ file = "scph5501.bin", md5 = "' + empreinte(a)
+                          + '", required = true, dir = "fbneo" }'),
+                 encoding="utf-8")
+    profils = {"retroarch": profiles.load_profile(p)}
+    racine = tmp_path / "BIOS"
+    racine.mkdir()
+    (racine / "scph5501.bin").write_bytes(a)
+    emu = tmp_path / "Emulation"
+    bios.place_bios(profils, racine, emu, {"retroarch": "RetroArch"})
+    cible = (emu / "RetroArch" / "RetroArch-Win64" / "system" / "fbneo"
+             / "scph5501.bin")
+    assert cible.read_bytes() == a
+    # ... et le dossier du proprietaire, lui, range a plat : la verification
+    # cherche par NOM, jamais par chemin.
+    assert (racine / "scph5501.bin").is_file()

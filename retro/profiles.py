@@ -1440,6 +1440,29 @@ def load_profile(path: pathlib.Path) -> Profile:
                 "quel sur la ligne de commande de l'émulateur."
             )
 
+        # Le sous-dossier d une entree de BIOS, sous le dossier de BIOS de
+        # l emulateur. Il ne se DEVINE jamais : il vient de ce que
+        # l emulateur declare lui-meme (FBNeo dit « fbneo/neogeo.zip » dans
+        # son .info). Absolu ou remontant, il deposerait le fichier hors de
+        # portee — le symptome exact d un BIOS jamais telecharge.
+        for b in brut.get("bios", ()):
+            sous = b.get("dir", "")
+            if not isinstance(sous, str):
+                raise ProfileError(
+                    f"{path} [{sid}] : le 'dir' d'un BIOS doit être un "
+                    "sous-chemin relatif au dossier de BIOS de l'émulateur "
+                    "(dir = \"fbneo\"). Un autre type ne serait joint à rien."
+                )
+            if sous:
+                ep = pathlib.PureWindowsPath(sous)
+                if ep.is_absolute() or ".." in ep.parts:
+                    raise ProfileError(
+                        f"{path} [{sid}] : le 'dir' d'un BIOS vaut {sous!r} et "
+                        "sort du dossier de BIOS de l'émulateur. Le fichier y "
+                        "serait déposé hors de sa portée, sans autre symptôme "
+                        "qu'un jeu qui ne démarre pas."
+                    )
+
         systemes.append(System(
             id=sid, name=brut["name"], extensions=exts, launch=brut["launch"],
             bios=tuple(brut.get("bios", ())),

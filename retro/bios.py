@@ -30,6 +30,14 @@ class BiosFile:
     state: str  # "ok" | "absent" | "corrompu"
     group: str | None = None
     region: str = ""
+    # LE SOUS-DOSSIER QUE L EMULATEUR DECLARE, sous son propre dossier de
+    # BIOS. Vide pour presque tous : le fichier va a la racine. FBNeo, lui,
+    # declare « fbneo/neogeo.zip » dans son propre .info — le sous-dossier
+    # fait partie de ce que l emulateur dit, ce n est pas une supposition.
+    #
+    # Il ne concerne QUE le portage. La verification, elle, cherche par NOM
+    # dans le dossier du proprietaire (bios._trouver), qui range comme il veut.
+    subdir: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -140,6 +148,7 @@ def check_bios(profils: dict, bios_root: pathlib.Path) -> list[SystemBios]:
                     required=bool(declare.get("required", True)), state=etat,
                     group=declare.get("group") or None,
                     region=declare.get("region", ""),
+                    subdir=declare.get("dir", ""),
                 ))
             resultat.append(SystemBios(
                 system_id=systeme.id, system_name=systeme.name,
@@ -323,23 +332,25 @@ def place_bios(profils: dict, bios_root: pathlib.Path,
                 if f.state != "ok":
                     continue
                 source = _trouver(bios_root, f.name)
-                cible = dossier / f.name
+                sous = (dossier.joinpath(*pathlib.PureWindowsPath(f.subdir).parts)
+                        if f.subdir else dossier)
+                cible = sous / f.name
                 try:
                     if cible.is_file() and hashlib.md5(
                             cible.read_bytes()).hexdigest() == f.expected_md5:
                         resultats.append(Portage(name=f.name, profile=pid,
                                                  state=DEJA_PORTE,
-                                                 detail=str(dossier)))
+                                                 detail=str(sous)))
                         continue
-                    dossier.mkdir(parents=True, exist_ok=True)
-                    provisoire = dossier / (f.name + ".partiel")
+                    sous.mkdir(parents=True, exist_ok=True)
+                    provisoire = sous / (f.name + ".partiel")
                     provisoire.write_bytes(source.read_bytes())
                     provisoire.replace(cible)
                 except OSError as exc:
                     resultats.append(Portage(
                         name=f.name, profile=pid, state=INJOIGNABLE,
-                        detail=f"{dossier} : {exc}"))
+                        detail=f"{sous} : {exc}"))
                     continue
                 resultats.append(Portage(name=f.name, profile=pid,
-                                         state=PORTE, detail=str(dossier)))
+                                         state=PORTE, detail=str(sous)))
     return resultats
