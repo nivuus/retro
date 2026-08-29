@@ -4,7 +4,7 @@ import pathlib
 import subprocess
 import sys
 
-from retro import cli
+from retro import cli, launcher
 from retro.steam import appid, entry, vdf_io
 
 PROFIL_AMORCE_CLI = """
@@ -850,3 +850,34 @@ bios = []
     assert code == 0
     assert "vita\\CUSA07410-UPDATE" in out
     assert "God of War" not in out
+
+def test_status_lit_le_temoin_des_manettes_ecrit_par_le_lanceur(tmp_path, capsys):
+    """Le filet de D4 branché de bout en bout.
+
+    `launcher.lire_pads` peut être parfait et `status` savoir le rendre : si
+    `retro status` ne les relie pas, le fichier est écrit à chaque lancement,
+    lu par personne, et la fonctionnalité entière est INERTE — sans un mot, ce
+    qui est très exactement la faute que ce dépôt passe son temps à traquer.
+
+    C'est le même contrat que `lire_amorcages`, et il n'a pas d'autre gardien
+    que ce test : les deux moitiés vivent dans deux langages.
+    """
+    roms = tmp_path / "ROMs"
+    roms.mkdir(exist_ok=True)
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir(exist_ok=True)
+    racine = tmp_path / "Emulation"
+    dossier = launcher.local_dir(racine)
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / launcher.TEMOIN_PADS).write_text(
+        "2026-09-01 21:14:33\t1\n"
+        "0\t045e:028e\tController (Xbox 360 Controller for Windows)\n",
+        encoding="utf-8")
+    code = cli.main(["status", "--roms", str(roms),
+                     "--profiles", str(_profil_minimal(tmp_path)),
+                     "--emulation-root", str(racine), "--bios", str(bios_dir)])
+    assert code == 0
+    texte = capsys.readouterr().out
+    assert "2026-09-01 21:14:33" in texte
+    assert "045e:028e" in texte
+    assert "Controller (Xbox 360 Controller for Windows)" in texte

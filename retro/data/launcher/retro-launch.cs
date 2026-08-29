@@ -61,6 +61,72 @@ static class RetroLaunch
     [DllImport("kernel32.dll")]
     static extern bool AssignProcessToJobObject(IntPtr job, IntPtr processus);
 
+    // L'ENUMERATION DES MANETTES, PAR WINMM.
+    //
+    // POURQUOI winmm et pas System.Management, ni SDL, ni XInput : winmm est
+    // dans mscorlib au sens ou il ne demande AUCUNE reference d'assemblage
+    // supplementaire. System.Management en exigerait une, donc une ligne de
+    // plus dans compiler.cmd — dont l'encodage cp850 est garde par un test
+    // parce qu'une seule ligne coupee rend le lanceur non compilable sur la
+    // console. Le cout d'une reference est ici plus grand qu'il n'en a l'air.
+    //
+    // CE QUE CE TEMOIN N'EST PAS, ET IL FAUT LE LIRE AVANT DE S'EN SERVIR :
+    // l'identifiant winmm d'une manette N'EST PAS l'index SDL. Les vingt-sept
+    // liaisons de DuckStation visent « SDL-0 », c'est-a-dire la premiere
+    // manette QUE SDL enumere ; rien ne garantit que les deux numerotations
+    // coincident. Elles coincident quand il n'y a qu'une manette, qui est le
+    // cas normal de cette console — et c'est justement le NOMBRE que ce
+    // temoin sert d'abord a constater. Le compte, lui, ne depend d'aucune
+    // numerotation.
+    [DllImport("winmm.dll")]
+    static extern uint joyGetNumDevs();
+    [DllImport("winmm.dll", CharSet = CharSet.Unicode)]
+    static extern uint joyGetDevCapsW(UIntPtr id, ref JOYCAPSW caps, uint taille);
+    [DllImport("winmm.dll")]
+    static extern uint joyGetPosEx(uint id, ref JOYINFOEX info);
+
+    const uint JOYERR_NOERROR = 0;
+    // Ce que joyGetPosEx rend d'un identifiant que le pilote connait mais dont
+    // aucune manette n'est branchee. C'est LA distinction qui compte :
+    // joyGetNumDevs rend le nombre d'identifiants SUPPORTES — 16 sur une
+    // machine ou rien n'est branche — et non le nombre de manettes presentes.
+    // Compter sans ce filtre annoncerait seize manettes sur une console qui
+    // n'en a aucune, ce qui leverait le probleme « plus d'une manette » a
+    // chaque lancement et apprendrait au proprietaire a l'ignorer.
+    const uint JOYERR_UNPLUGGED = 167;
+    const uint JOY_RETURNCENTERED = 0x00000400;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct JOYCAPSW
+    {
+        public ushort wMid;          // le fabricant : le VID
+        public ushort wPid;          // le produit  : le PID
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string szPname;       // le nom lisible
+        public uint wXmin, wXmax, wYmin, wYmax, wZmin, wZmax;
+        public uint wNumButtons;
+        public uint wPeriodMin, wPeriodMax;
+        public uint wRmin, wRmax, wUmin, wUmax, wVmin, wVmax;
+        public uint wCaps;
+        public uint wMaxAxes, wNumAxes, wMaxButtons;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string szRegKey;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string szOEMVxD;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct JOYINFOEX
+    {
+        public uint dwSize;
+        public uint dwFlags;
+        public uint dwXpos, dwYpos, dwZpos;
+        public uint dwRpos, dwUpos, dwVpos;
+        public uint dwButtons, dwButtonNumber;
+        public uint dwPOV;
+        public uint dwReserved1, dwReserved2;
+    }
+
     const int JobObjectExtendedLimitInformation = 9;
     const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
 
@@ -919,6 +985,99 @@ static class RetroLaunch
         }
     }
 
+    // LE TEMOIN DES MANETTES. Meme partage des roles que bootstrap.txt : le
+    // lanceur ecrit ici, retro/launcher.py::lire_pads lit la-bas, et l'hote
+    // n'a AUCUN autre moyen de savoir combien de manettes la console voit ni
+    // lesquelles. Sans lui, un pad d'un autre type — ou un pad de plus, qui
+    // decale l'index sur lequel DuckStation repose entierement — ne se
+    // constate qu'en s'asseyant devant la television avec une manette muette.
+    //
+    // UN INSTANTANE, reecrit en entier, et non un journal fusionne comme
+    // bootstrap.txt : ce qui compte est l'etat de la DERNIERE session.
+    //
+    // ZERO MANETTE N'EST PAS UNE ERREUR, et le fichier le DIT plutot que de
+    // ne pas etre ecrit. Un fichier absent veut dire « le lanceur n'a jamais
+    // regarde » ; un fichier a zero veut dire « il a regarde et n'a rien
+    // vu ». Ce sont deux constats differents, et les confondre effacerait le
+    // seul des deux qui dise quelque chose de la console.
+    static void InscrireTemoinPads()
+    {
+        try
+        {
+            var lignes = new List<string>();
+            uint supportes = joyGetNumDevs();
+            for (uint id = 0; id < supportes; id++)
+            {
+                // joyGetNumDevs rend le nombre d'identifiants que le PILOTE
+                // supporte, pas le nombre de manettes branchees. Chaque
+                // identifiant est donc verifie deux fois : ses capacites se
+                // lisent-elles, et une manette repond-elle vraiment dessus.
+                var caps = new JOYCAPSW();
+                if (joyGetDevCapsW((UIntPtr)id, ref caps,
+                                   (uint)Marshal.SizeOf(typeof(JOYCAPSW)))
+                    != JOYERR_NOERROR)
+                    continue;
+                var info = new JOYINFOEX();
+                info.dwSize = (uint)Marshal.SizeOf(typeof(JOYINFOEX));
+                info.dwFlags = JOY_RETURNCENTERED;
+                uint etat = joyGetPosEx(id, ref info);
+                if (etat != JOYERR_NOERROR)
+                {
+                    // « Debranche » est le cas NORMAL et reste muet : sur une
+                    // console qui porte une manette, quinze des seize
+                    // identifiants supportes le sont, et les noter noierait le
+                    // journal. Tout autre code est anormal et se DIT — sans
+                    // quoi un pilote en panne rendrait « aucune manette », qui
+                    // est un constat, alors que ce n'en est pas un.
+                    if (etat != JOYERR_UNPLUGGED)
+                        Noter("manette " + id.ToString(
+                                  CultureInfo.InvariantCulture)
+                            + " : joyGetPosEx rend " + etat.ToString(
+                                  CultureInfo.InvariantCulture));
+                    continue;
+                }
+                // vid:pid en hexadecimal MINUSCULE sur quatre chiffres, la
+                // forme exacte que la table de retro/profiles.py compare.
+                // « x4 » sur un ushort, en culture invariante comme la date.
+                string vidPid =
+                    caps.wMid.ToString("x4", CultureInfo.InvariantCulture)
+                    + ":"
+                    + caps.wPid.ToString("x4", CultureInfo.InvariantCulture);
+                // Le nom est le DERNIER champ de la ligne et lire_pads le
+                // prend en entier : une tabulation qu'il contiendrait ne le
+                // tronquerait pas. Les retours a la ligne, eux, casseraient
+                // le decoupage en lignes, et sont donc retires.
+                string nom = (caps.szPname ?? "")
+                    .Replace("\r", " ").Replace("\n", " ").Trim();
+                lignes.Add(id.ToString(CultureInfo.InvariantCulture)
+                    + "\t" + vidPid + "\t" + nom);
+            }
+            // InvariantCulture : dans un format personnalise, « : » est le
+            // separateur d'heure DE LA CULTURE (pas un litteral) et l'annee
+            // suit son calendrier. Ce temoin est un contrat relu par
+            // retro/launcher.py::lire_pads, qui attend exactement
+            // « yyyy-MM-dd HH:mm:ss » — exactement comme bootstrap.txt.
+            var tout = new List<string>();
+            tout.Add(DateTime.Now.ToString(
+                "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+                + "\t" + lignes.Count.ToString(CultureInfo.InvariantCulture));
+            tout.AddRange(lignes);
+            File.WriteAllLines(Path.Combine(dossier, "pads.txt"), tout,
+                               new UTF8Encoding(false));
+            Noter("manettes vues : " + lignes.Count.ToString(
+                CultureInfo.InvariantCulture));
+        }
+        catch (Exception e)
+        {
+            // Rien de ce qui sert a OBSERVER ne doit pouvoir priver le
+            // proprietaire de son jeu : le modele exact d'InscrireTemoin. Et
+            // l'echec est NOTE plutot qu'avale — un temoin non ecrit se
+            // lirait sinon comme « aucune manette », qui est un constat,
+            // alors que « on n'a pas pu regarder » n'en est pas un.
+            Noter("temoin des manettes non ecrit : " + e.Message);
+        }
+    }
+
     static int Lancer()
     {
         // La ligne de commande est lue BRUTE : découpée par le runtime, un
@@ -1128,6 +1287,11 @@ static class RetroLaunch
                               rapport.ToString(), new UTF8Encoding(false));
             return 0;
         }
+
+        // AVANT de demarrer l'emulateur : une fois le processus lance, ce
+        // lanceur peut etre en train de rendre la main, et le temoin
+        // decrirait alors une session deja finie.
+        InscrireTemoinPads();
 
         // Avant de lancer : poser la configuration si l'emulateur n'en a
         // aucune. Un echec n'empeche PAS le jeu de demarrer — il ouvrira son

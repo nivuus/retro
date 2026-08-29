@@ -394,11 +394,34 @@ bios       = []
 # tactile. C'est la dette D4, elle-même bloquée derrière D3, et elle se règle
 # côté invité — pas dans ce fichier.
 #
-# Ce qui restera à faire ICI le jour où D4 sera levée : les clés de mouvement
-# de la configuration d'entrée de Vita3K, dans son config.yml, avec
-# l'identifiant SDL substitué AU LANCEMENT par retro/launcher.py — jamais figé
-# dans ce profil, puisque changer le type de pad change le VID/PID donc le
-# GUID. Rien de tout cela n'est mesurable tant que le pad reste un X360.
+# CORRECTION DU 2026-08-29 — CE BLOC ANNONÇAIT UNE PROTECTION QUI N'EXISTE
+# PAS. Il présentait la substitution de l'identifiant SDL au lancement, par
+# retro/launcher.py, comme un mécanisme en place. Vérifié dans le code :
+# aucune substitution d'identifiant n'a jamais été écrite. Les seuls jetons
+# substitués dans tout le dépôt sont {render_config} (retro/launcher.py) et
+# {render}, {rom}, {width}, {height}, {scale} (retro-launch.cs) — tous de
+# rendu. Il n'y a ni {pad1}, ni GUID, ni index substitué nulle part. Les
+# tâches 2 à 4 du plan des manettes, celles qui devaient créer ce mécanisme,
+# n'ont pas été exécutées : elles restent entières.
+#
+# Pourquoi cette erreur-là comptait plus qu'une autre : elle décrivait une
+# GARANTIE. Le prochain lecteur écrit un gabarit d'entrée en supposant que la
+# substitution le protégera du changement de type de pad, la console devient
+# muette, et rien ne le lui dit — une liaison qui ne correspond à aucun
+# périphérique est ignorée en silence.
+#
+# ET IL N'Y A DE TOUTE FAÇON AUCUNE CLÉ DE MOUVEMENT À ÉCRIRE ICI. Relevé le
+# 2026-08-29 dans la source de Vita3K : vita3k/config/include/config/config.h
+# porte `code(bool, "disable-motion", false, disable_motion)` — le défaut est
+# déjà « mouvement actif ». Le mouvement dépend entièrement de ce que SDL
+# rapporte du pad, et de rien d'autre : vita3k/ctrl/src/ctrl.cpp interroge
+# SDL_GamepadHasSensor pour le gyroscope puis pour l'accéléromètre, et conclut
+# `has_motion_support = found_gyro && found_accel`. LES DEUX capteurs sont
+# exigés. Cette lecture est faite sur la branche amont, PAS sur la révision
+# épinglée au manifeste : à re-vérifier avant de s'en servir.
+#
+# Ce qui reste à faire ICI le jour où D4 sera levée : rien à écrire, tout à
+# mesurer — voir si le pad qu'Apollo annonce expose ses deux capteurs à SDL.
 #
 # La PS Vita a aussi un écran tactile avant et un pavé tactile arrière, dont
 # aucune manette ne dispose. C'est un manque de plus, distinct du gyroscope,

@@ -1545,6 +1545,293 @@ def test_le_lanceur_lit_chaque_cle_d_amorcage_que_le_plan_ecrit():
 # alors que pas une clé n'a bougé. La conformité doit donc se juger sur les
 # CLÉS, jamais sur les marques qui les commentent.
 
+# ---------------------------------------------------------------------------
+# D4 — le recensement de ce qui dépend du type de manette, et sa garde.
+#
+# Ce bloc est le RECENSEMENT lui-même, tenu par des assertions plutôt que par
+# de la prose : le jour où Apollo annoncera une DualShock au lieu d'un Xbox
+# 360, ce sont ces valeurs-là qui décideront si la console reste jouable.
+#
+# TROIS FAITS, MESURÉS LE 2026-08-29, et leur source :
+#
+# 1. AUCUNE SUBSTITUTION D'IDENTIFIANT N'EXISTE. Les seuls jetons substitués
+#    sont `{render_config}` (retro/launcher.py) et `{render}`, `{rom}`,
+#    `{width}`, `{height}`, `{scale}` (retro-launch.cs) — tous de rendu. Il
+#    n'y a ni `{pad1}`, ni GUID, ni index substitué nulle part. Les tâches 2 à
+#    4 du plan des manettes n'ont jamais été faites : il n'y a rien à
+#    préserver, tout à construire, et d'ici là la seule protection possible
+#    est d'EMPÊCHER qu'un identifiant figé entre dans les données livrées.
+# 2. `SDL-0`, VINGT-SEPT FOIS DANS duckstation.toml, EST TOLÉRÉ. C'est un
+#    INDEX d'énumération, pas un GUID : il ne dépend pas du VID/PID, donc pas
+#    du type de pad (FRAGILITÉ 1 de ce profil, relevée sur le binaire). Ce qui
+#    le casse est un pad DE PLUS énuméré avant celui d'Apollo — c'est le
+#    premier problème que `retro status` nomme désormais, pas celui-ci.
+# 3. `Device: "XInput Pad #1"` DE RPCS3 EST HORS DE PORTÉE DE TOUTE GARDE.
+#    Il a été posé À LA MAIN sur la console le 2026-08-29 (dette D7), dans un
+#    `Default.yml` qu'aucun fichier versionné ne repose. rpcs3.toml n'en parle
+#    qu'en COMMENTAIRE. C'est donc le premier identifiant qui mourra à la
+#    bascule, et rien dans le dépôt ne pourra l'en empêcher : la seule chose
+#    qu'on puisse faire est de l'écrire, ce que fait ce recensement.
+#
+# La forme d'un identifiant de périphérique, et pourquoi le seuil est en
+# CHIFFRES HEXADÉCIMAUX plutôt qu'en motif exact : un GUID SDL s'écrit
+# canoniquement `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (32 chiffres), mais les
+# émulateurs le recopient sous des découpages qui leur sont propres — celui
+# que l'émulateur personnel écrit, `0-00000003-045e-0000-8e02-000000007200`,
+# en porte 33 sur six groupes. Une garde calquée sur UN découpage laisserait
+# passer les autres. On normalise donc en retirant les tirets, et tout jeton
+# hexadécimal d'au moins 32 chiffres est un identifiant.
+LONGUEUR_IDENTIFIANT = 32
+
+# Un GUID SDL canonique, cité ici pour que la garde ci-dessous prouve qu'elle
+# DÉTECTE quelque chose. Sans cette preuve, une expression régulière fautive
+# rendrait le test vert sur tout l'arbre sans rien surveiller.
+GUID_EXEMPLE = "030000005e0400008e02000010010000"
+GUID_EXEMPLE_DECOUPE = "0-00000003-045e-0000-8e02-000000007200"
+
+
+def _identifiants_de_peripherique(texte: str) -> list[str]:
+    """Les jetons de `texte` qui ont la forme d'un identifiant de manette."""
+    trouves = []
+    for jeton in re.findall(r"[0-9a-fA-F-]{20,}", texte):
+        chiffres = jeton.replace("-", "")
+        if (chiffres and len(chiffres) >= LONGUEUR_IDENTIFIANT
+                and all(c in "0123456789abcdefABCDEF" for c in chiffres)):
+            trouves.append(jeton)
+    return trouves
+
+
+def _empreintes_bios_declarees(fichier: pathlib.Path) -> set[str]:
+    """Les MD5 de BIOS que CE profil déclare, lus dans sa structure.
+
+    Une empreinte MD5 fait trente-deux chiffres hexadécimaux : elle a la forme
+    exacte d'un GUID SDL compact, et la garde ci-dessous la prendrait pour un
+    identifiant de manette. On ne l'exclut donc PAS par une heuristique de
+    texte — « la ligne contient md5 » se contourne d'une ligne coupée — mais
+    en relisant les empreintes que le profil déclare vraiment. Une valeur qui
+    n'est pas déclarée comme empreinte reste fautive, où qu'elle soit écrite.
+    """
+    declarees = set()
+    for s in profiles.load_profile(fichier).systems:
+        for b in s.bios:
+            empreinte = b.get("md5")
+            if isinstance(empreinte, str):
+                declarees.add(empreinte.lower())
+    return declarees
+
+
+def test_aucun_profil_livre_ne_fige_un_identifiant_de_peripherique():
+    """Un GUID figé dans un profil est la panne que D4 existe pour empêcher.
+
+    Changer le type de pad change le VID/PID, donc le GUID SDL. Une liaison
+    qui ne correspond à aucun périphérique est ignorée EN SILENCE : la console
+    redeviendrait muette PARTOUT, sans un message, sans une ligne de journal,
+    et le symptôme serait identique à celui d'un fichier vide.
+
+    Et la substitution qui devrait fournir cet identifiant au lancement
+    N'EXISTE PAS (fait 1 du recensement ci-dessus). Tant qu'elle n'existe pas,
+    la seule protection est de refuser l'entrée.
+    """
+    # D'ABORD la preuve que la garde détecte : les deux découpages connus.
+    assert _identifiants_de_peripherique(GUID_EXEMPLE), (
+        "la garde ne reconnaît plus un GUID SDL compact : elle serait verte "
+        "sur tout l'arbre sans rien surveiller")
+    assert _identifiants_de_peripherique(GUID_EXEMPLE_DECOUPE), (
+        "la garde ne reconnaît plus le découpage que l'émulateur personnel "
+        "écrit — c'est très exactement la forme qu'un relevé recopierait")
+    # ENSUITE que l'index de DuckStation n'en est pas un, et reste accepté.
+    assert _identifiants_de_peripherique("Cross = SDL-0/A") == [], (
+        "la garde prend « SDL-0 » pour un identifiant. C'est un INDEX "
+        "d'énumération, pas un GUID : il ne dépend pas du VID/PID et survit "
+        "au changement de type de pad")
+
+    fautifs = []
+    for f in sorted(PROFILS.glob("*.toml")):
+        for jeton in _identifiants_de_peripherique(f.read_text(encoding="utf-8")):
+            if jeton.lower() in _empreintes_bios_declarees(f):
+                continue
+            fautifs.append(f"{f.name} : {jeton}")
+    assert fautifs == [], (
+        "ces profils figent ce qui ressemble à un identifiant de "
+        "périphérique : " + " | ".join(fautifs) + ". Un tel identifiant "
+        "dépend du VID/PID, donc du type de manette qu'Apollo annonce, et "
+        "aucune substitution ne le remplace au lancement — ce mécanisme n'a "
+        "jamais été écrit. Le jour où le pad change, la liaison est ignorée "
+        "en silence. L'index « SDL-0 » de DuckStation, lui, est toléré : il "
+        "ne dépend d'aucun VID/PID."
+    )
+
+
+def test_le_recensement_des_valeurs_figees_par_le_type_de_pad_ne_bouge_pas():
+    """Deux valeurs sont déjà figées, et le recensement doit les NOMMER.
+
+    Elles ne sont pas au même endroit ni dans le même état, et c'est tout
+    l'intérêt de les compter ici :
+
+    - les vingt-sept `SDL-0` de DuckStation sont dans le dépôt, sous garde, et
+      SURVIVENT à la bascule (index, pas GUID) ;
+    - le `Device: "XInput Pad #1"` de RPCS3 est HORS du dépôt — posé à la main
+      dans un `Default.yml` que rien ne repose (D7). rpcs3.toml ne le porte
+      qu'en commentaire, donc aucune garde ne le protège, et il MEURT à la
+      bascule sans qu'un mot soit dit.
+    """
+    duck = (PROFILS / "duckstation.toml").read_text(encoding="utf-8")
+    liaisons = [l for l in duck.splitlines()
+                if "SDL-0" in l and not l.lstrip().startswith("#")]
+    assert len(liaisons) == 27, (
+        f"DuckStation porte {len(liaisons)} liaisons « SDL-0 » et non 27. "
+        "Ce nombre est le recensement : s'il change, c'est que quelqu'un a "
+        "touché aux liaisons imposées, et la tâche 7 de D4 — confirmer que "
+        "cet index survit à la bascule — ne porte plus sur le même objet."
+    )
+    rpcs3 = (PROFILS / "rpcs3.toml").read_text(encoding="utf-8")
+    porteuses = [l for l in rpcs3.splitlines() if "XInput Pad" in l]
+    assert porteuses, "rpcs3.toml ne dit plus rien de son Device posé à la main"
+    # UNE EXCEPTION, ET ELLE EST NOMMÉE. Ce garde a été écrit en supposant que
+    # ce Device ne vivrait jamais que dans un commentaire. Depuis, D7 le POSE,
+    # dans le fragment `si-absent` du bloc [[bootstrap]] qui vise Default.yml,
+    # et c'est un ARBITRAGE rendu le 2026-08-29, pas un oubli : XInput est la
+    # seule des deux valeurs qu'on ait vue faire répondre une manette, et
+    # `xinput_pad_handler.cpp` pose `b_has_rumble = true`, donc le choix ne
+    # coûte que le mouvement — jamais la vibration.
+    #
+    # Ce que ce garde continue de protéger, et qui est l'essentiel : que la
+    # valeur ne se glisse nulle part AILLEURS. Elle n'a le droit d'exister
+    # qu'en commentaire, ou dans ce fragment-là, dont le profil écrit le geste
+    # de sortie (supprimer le fichier, puis relancer un jeu) — sans quoi la
+    # bascule de D4 échouerait en silence, `si-absent` ne réécrivant jamais.
+    posees = [l.strip() for l in porteuses if not l.lstrip().startswith("#")]
+    assert posees == ['Device: "XInput Pad #1"'], (
+        "rpcs3.toml pose « XInput Pad #1 » ailleurs que dans le fragment de "
+        f"son [[bootstrap]], ou sous une autre forme — reçu {posees}. Cette "
+        "valeur dépend du gestionnaire, donc du type de pad : posée hors de "
+        "l'exception nommée ci-dessus, elle mourrait à la bascule en silence."
+    )
+
+
+def _bloc_dette_d4(fichier: pathlib.Path) -> str:
+    """Le bloc de commentaires « DETTE D4 » d'un profil, tel qu'il est écrit."""
+    lignes = fichier.read_text(encoding="utf-8").splitlines()
+    debut = next((n for n, l in enumerate(lignes) if "DETTE D4" in l), None)
+    assert debut is not None, f"{fichier.name} : plus de bloc « DETTE D4 »"
+    bloc = []
+    for l in lignes[debut:]:
+        if not l.lstrip().startswith("#"):
+            break
+        bloc.append(l.lstrip().lstrip("#").strip())
+    # Recollé en UNE ligne, en minuscules : une phrase de ce bloc court sur
+    # deux lignes de commentaire, et un test qui chercherait sa forme brute
+    # deviendrait vert ou rouge selon la largeur de la colonne — c'est-à-dire
+    # sur autre chose que ce qu'il prétend vérifier.
+    return " ".join(bloc).lower()
+
+
+def test_le_bloc_dette_d4_de_vita3k_ne_promet_pas_une_substitution_absente():
+    """Ce bloc annonçait « l'identifiant SDL substitué AU LANCEMENT par
+    retro/launcher.py » comme un mécanisme existant. IL N'EXISTE PAS.
+
+    Vérifié le 2026-08-29 : les seuls jetons substitués dans tout le dépôt
+    sont `{render_config}` côté Python et `{render}`, `{rom}`, `{width}`,
+    `{height}`, `{scale}` côté lanceur — tous de rendu. Aucun jeton de
+    manette nulle part.
+
+    C'est la pire espèce d'erreur de documentation : elle décrit une
+    protection. Le prochain lecteur écrit un gabarit d'entrée en croyant que
+    la substitution le sauvera du changement de type de pad, et la console
+    devient muette exactement comme si rien n'avait été fait. Un bloc qui
+    promet une garantie inexistante est plus dangereux qu'un bloc absent.
+    """
+    bloc = _bloc_dette_d4(PROFILS / "vita3k.toml")
+    assert "substitué au lancement" not in bloc, (
+        "vita3k.toml annonce toujours la substitution d'identifiant comme "
+        "existante. Elle n'a jamais été écrite : les tâches 2 à 4 du plan des "
+        "manettes n'ont pas été exécutées."
+    )
+    # Ce que le bloc doit dire À LA PLACE, et qui est vrai.
+    assert "n'existe pas" in bloc, (
+        "le bloc ne DIT PAS que le mécanisme de substitution n'existe pas — "
+        "un lecteur qui ne trouve rien conclura qu'il a mal cherché")
+    assert "disable-motion" in bloc, (
+        "le bloc ne dit pas que le mouvement de Vita3K ne se règle par AUCUNE "
+        "clé : « disable-motion » vaut déjà false, son défaut utile "
+        "(vita3k/config/include/config/config.h). Sans ça, la tâche que ce "
+        "bloc annonce est un travail qui n'a pas lieu d'être.")
+    assert "tactile" in bloc, (
+        "le bloc a perdu l'écran tactile avant et le pavé arrière de la "
+        "Vita : un manque distinct du gyroscope, traité nulle part")
+
+
+def test_le_vocabulaire_des_types_de_pad_ne_se_rallonge_pas_tout_seul():
+    """Gelé, exactement comme INTERDITS et pour la même raison.
+
+    Un type de pad ajouté sans y penser serait un type que la table vid:pid de
+    `status` ne connaît pas : la discordance ne serait jamais détectée, et le
+    filet de D4 passerait pour vert en ne comparant plus rien. L'ajout doit se
+    faire ici ET dans la table, ou pas du tout.
+    """
+    assert profiles.PADS_CONNUS == ("x360", "ds4")
+
+
+def test_les_deux_profils_au_releve_clos_disent_sous_quel_pad_il_a_ete_fait():
+    """Les seuls relevés du dépôt ont été faits sous un Xbox 360, et ils ne
+    valent que sous lui.
+
+    Deux sources concordantes, le 2026-08-29 : Apollo annonce « Gamepad 0 will
+    be Xbox 360 controller (default) » dans son journal, et l'invité porte le
+    VID/PID d'une manette Xbox 360 filaire, 045e:028e. Le jour où ce sera une
+    DualShock, ce champ deviendra faux, et c'est précisément ce que
+    `retro status` doit pouvoir dire.
+    """
+    charges = profiles.load_profiles(PROFILS)
+    clos = {pid for pid, p in charges.items()
+            if p.input_mapping == profiles.MAPPING_RELEVE}
+    assert clos == {"duckstation", "rpcs3"}, (
+        f"les profils au relevé clos ont changé : {sorted(clos)}. Le champ "
+        "'pad_releve' est exigé de chacun d'eux — et de ceux-là seulement.")
+    for pid in sorted(clos):
+        assert charges[pid].input_pad_releve == "x360", (
+            f"{pid} ne dit pas sous quel pad son relevé a été fait")
+
+
+def test_rpcs3_dit_que_son_gestionnaire_ne_survivra_pas_a_la_bascule():
+    """C'est la seule ligne du dépôt qui reliera la panne à sa cause.
+
+    Mesuré dans la source de RPCS3 le 2026-08-29 : son gestionnaire XInput et
+    le nom de périphérique qui va avec dépendent du gestionnaire, pas d'un
+    index — le nom vient de `m_name_string` dans `xinput_pad_handler.cpp`. Le
+    fichier qui les porte a été posé À LA MAIN sur la console (D7) : aucune
+    garde du dépôt ne le voit, rien ne le repose, et il mourra à la bascule
+    sans qu'un mot soit dit.
+
+    Contrairement à DuckStation, dont les vingt-sept liaisons ne portent qu'un
+    index et survivent. Les deux cas se ressemblent et n'ont pas le même sort ;
+    sans cette note, personne ne saura lequel il lit.
+    """
+    texte = (PROFILS / "rpcs3.toml").read_text(encoding="utf-8")
+    commentaires = "\n".join(l for l in texte.splitlines()
+                             if l.lstrip().startswith("#")).lower()
+    assert "bascule" in commentaires, (
+        "rpcs3.toml ne dit pas ce que le changement de type de pad fera de "
+        "son gestionnaire")
+    assert "handler" in commentaires and "xinput" in commentaires, (
+        "rpcs3.toml ne nomme pas le gestionnaire qui ne survivra pas")
+    assert "silence" in commentaires, (
+        "rpcs3.toml ne dit pas que la panne sera SILENCIEUSE — c'est la "
+        "moitié de l'information : une panne annoncée se corrige, celle-ci "
+        "se confondra avec « rien ne marche depuis toujours »")
+
+
+# --- le lanceur écrit le témoin des manettes -------------------------------
+#
+# Il n'existe AUCUN cadre de test C# dans ce dépôt, et aucun compilateur C# sur
+# l'hôte. Ce que ces tests peuvent prouver est donc borné, et il vaut mieux le
+# dire que le laisser croire : ils vérifient que la source PORTE le mécanisme
+# et respecte les contrats testables depuis Python — le nom du fichier, le
+# format de date, l'absence de référence d'assemblage nouvelle. Ils ne
+# prouvent NI que le code compile, NI qu'il énumère correctement une manette.
+# Cela se mesure sur la console, et le plan dit comment (tâche 6).
+
+
 def _source_lanceur() -> str:
     from retro import launcher
     return (launcher.SOURCES / launcher.SOURCE).read_text(encoding="utf-8-sig")
@@ -1646,3 +1933,102 @@ def test_le_juge_de_conformite_retire_la_marque_que_la_fusion_repose():
         "SansMarques ne se réfère pas à MARQUE_FUSION : il retirerait autre "
         "chose que ce que la fusion repose"
     )
+
+def test_le_lanceur_ecrit_le_temoin_que_python_va_lire():
+    """Le nom du fichier est un CONTRAT entre deux langages, et il n'a pas
+    d'autre gardien. Écrit sous un nom, lu sous un autre, il ne produirait
+    aucune erreur : `retro status` dirait « le lanceur n'a jamais relevé de
+    manette » à chaque lancement, indéfiniment, sur une console qui écrit
+    pourtant le fichier à chaque fois."""
+    from retro import launcher
+    assert launcher.TEMOIN_PADS == "pads.txt"
+    assert f'"{launcher.TEMOIN_PADS}"' in _source_lanceur(), (
+        "retro-launch.cs n'écrit pas le témoin sous le nom que "
+        "launcher.lire_pads va chercher")
+
+
+def test_le_lanceur_enumere_les_manettes_par_winmm():
+    """Le choix retenu par le plan, et il n'est pas esthétique : winmm ne
+    demande AUCUNE référence d'assemblage supplémentaire, là où
+    System.Management en exigerait une — donc une modification de
+    `compiler.cmd`, dont l'encodage cp850 est gardé par un test et dont chaque
+    ligne coupée rend le lanceur non compilable sur la console."""
+    source = _source_lanceur()
+    for symbole in ("winmm.dll", "joyGetNumDevs", "joyGetDevCapsW",
+                    "wMid", "wPid", "szPname"):
+        assert symbole in source, (
+            f"retro-launch.cs n'utilise plus « {symbole} » : l'énumération "
+            "des manettes a changé de moyen, et ce changement doit être "
+            "réexaminé au regard de compiler.cmd")
+    # Le contrôle porte sur l'USAGE, pas sur la mention : la source EXPLIQUE
+    # en commentaire pourquoi elle n'emprunte pas cette voie, et interdire le
+    # mot effacerait justement l'explication. Ce qu'on refuse est la directive
+    # « using », seule forme qui obligerait à ajouter une référence.
+    usings = [l.strip() for l in source.splitlines()
+              if l.strip().startswith("using ")]
+    assert not [u for u in usings if "System.Management" in u], (
+        "le lanceur importe System.Management : cela exigerait une référence "
+        "d'assemblage, donc une modification de compiler.cmd — dont chaque "
+        "ligne coupée rend le lanceur non compilable sur la console. C'est "
+        "très exactement ce que le recours à winmm existe pour éviter.")
+
+
+def test_le_temoin_des_manettes_porte_la_date_en_culture_invariante():
+    """LE MÊME CONTRAT QUE bootstrap.txt, ET POUR LA MÊME RAISON. Dans un
+    format personnalisé, « : » est le séparateur d'heure DE LA CULTURE et
+    l'année suit son calendrier : une culture exotique sur la console
+    écrirait une date que `lire_pads` ne reconnaîtrait pas — et le rapport
+    dirait « jamais relevé de manette » sans qu'un mot soit dit."""
+    source = _source_lanceur()
+    bloc = source[source.index("InscrireTemoinPads"):]
+    assert '"yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture' in bloc, (
+        "le témoin des manettes n'écrit pas sa date en culture invariante")
+
+
+def test_ecrire_le_temoin_des_manettes_ne_peut_pas_empecher_un_jeu(tmp_path):
+    """La règle du lanceur, et `InscrireTemoin` en est le modèle exact : rien
+    de ce qui SERT À OBSERVER ne doit pouvoir priver le propriétaire de son
+    jeu. Une manette illisible, un partage verrouillé, un pilote absent —
+    aucun de ces cas n'a de rapport avec le fait de lancer une ROM.
+
+    Le contrôle porte sur la STRUCTURE : la méthode entière doit être sous
+    try/catch, et le catch doit noter plutôt que se taire — un échec muet
+    ferait croire à zéro manette sur une console qui en a une.
+    """
+    source = _source_lanceur()
+    debut = source.index("static void InscrireTemoinPads")
+    corps = source[debut:source.index("\n    static ", debut + 10)]
+    assert "try" in corps and "catch (Exception" in corps, (
+        "InscrireTemoinPads n'est pas protégée : une exception y remonterait "
+        "à Main(), qui affiche une boîte MODALE — et une console de salon "
+        "pilotée à la manette n'a personne pour cliquer. Le jeu ne "
+        "démarrerait jamais.")
+    assert "Noter(" in corps, (
+        "l'échec est avalé sans un mot : un témoin non écrit se lirait comme "
+        "« aucune manette », qui est un constat, et non comme « on n'a pas "
+        "pu regarder », qui n'en est pas un")
+
+
+def test_le_lanceur_note_le_nombre_de_manettes_a_chaque_lancement():
+    """Le journal est la seule trace qui reste quand le témoin ne s'écrit
+    pas. Sans elle, un témoin absent ne se distingue pas d'un lanceur qui
+    n'a jamais essayé."""
+    source = _source_lanceur()
+    debut = source.index("static void InscrireTemoinPads")
+    corps = source[debut:source.index("\n    static ", debut + 10)]
+    assert "manette" in corps.lower(), (
+        "rien n'est noté au journal sur les manettes vues")
+
+
+def test_le_temoin_des_manettes_est_ecrit_avant_le_demarrage_de_l_emulateur():
+    """« L'énumération des manettes AVANT de démarrer l'émulateur » : une fois
+    le processus lancé, le lanceur peut être en train de rendre la main, et
+    le témoin décrirait alors une session déjà finie."""
+    source = _source_lanceur()
+    appel = source.index("InscrireTemoinPads(")
+    # Le second appel — la définition étant la première occurrence du nom.
+    appels = [n for n in range(len(source))
+              if source.startswith("InscrireTemoinPads(", n)]
+    assert len(appels) >= 2, "InscrireTemoinPads est définie mais jamais appelée"
+    demarrage = source.index("new ProcessStartInfo(")
+    assert min(appels) < demarrage and appel < demarrage

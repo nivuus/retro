@@ -442,6 +442,20 @@ steam_input = "required"
 mode        = "xinput"
 mapping       = "releve"
 mapping_where = '%USERPROFILE%\Documents\DuckStation\settings.ini, section [Pad1]'
+# SOUS QUEL PAD ce releve a ete fait, et il ne vaut que sous celui-la.
+# Mesure le 2026-08-29, deux sources concordantes : Apollo annonce
+# « Gamepad 0 will be Xbox 360 controller (default) » dans son journal, et
+# l'invite porte 045e:028e, le VID/PID d'une manette Xbox 360 filaire.
+#
+# ICI, ET SEULEMENT ICI, LE CHANGEMENT DE TYPE DE PAD N'EST PAS FATAL : les
+# vingt-sept liaisons ci-dessus ne portent qu'un INDEX (« SDL-0 »), jamais un
+# GUID, et un index ne depend d'aucun VID/PID. C'est la FRAGILITE 1 lue a
+# l'envers. A CONFIRMER quand meme, un bouton en main, avant de s'en servir :
+# c'est ce que dit le binaire, ce n'est pas ce qu'on a vu.
+#
+# Ce qui les casse, c'est un pad DE PLUS enumere avant celui d'Apollo. C'est
+# le premier des deux problemes que « retro status » nomme desormais.
+pad_releve  = "x360"
 
 # Vibration : « pose », et aucun des quatre autres états ne le décrit.
 #

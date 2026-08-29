@@ -271,6 +271,11 @@ class Manette:
     profile_id: str
     etat: str
     where: str = ""
+    # SOUS QUEL PAD le relevé a été fait, quand il l'a été. Vide veut dire
+    # « rien n'a été relevé », jamais « n'importe lequel » : c'est la
+    # condition de validité de la mesure, et c'est elle que la section
+    # compare au pad vu au dernier lancement.
+    pad: str = ""
 
 
 def etat_manettes(profils: dict) -> list[Manette]:
@@ -278,8 +283,83 @@ def etat_manettes(profils: dict) -> list[Manette]:
     return [Manette(profile_id=pid,
                     etat=getattr(profils[pid], "input_mapping",
                                  profiles_mod.MAPPING_INCONNU),
-                    where=getattr(profils[pid], "input_mapping_where", ""))
+                    where=getattr(profils[pid], "input_mapping_where", ""),
+                    pad=getattr(profils[pid], "input_pad_releve", ""))
             for pid in sorted(profils)]
+
+
+def _releves_clos(manettes: list[Manette]) -> list[Manette]:
+    """Les seuls profils qui aient quelque chose à PERDRE au dernier
+    lancement : ceux dont un relevé a été fait, et sous un pad nommé.
+
+    Un profil jamais relevé n'a rien qui puisse cesser d'être vrai ;
+    l'inscrire aux problèmes ci-dessous noierait ceux qui, eux, sont
+    concernés.
+    """
+    return [m for m in manettes
+            if m.etat == profiles_mod.MAPPING_RELEVE and m.pad]
+
+
+def _problemes_pads(pads: list, manettes: list[Manette]) -> list[Problem]:
+    """DEUX problèmes, et deux seulement, tirés du témoin du lanceur.
+
+    Ni « le témoin est absent » — `lanceur_perime` porte déjà ce signal, et le
+    redire ici apprendrait à ignorer la section — ni « zéro manette », qui est
+    l'état normal d'une session ouverte sans pad branché.
+    """
+    concernes = _releves_clos(manettes)
+    if not pads or not concernes:
+        return []
+    problemes = []
+    ou = " ; ".join(f"{m.profile_id} : {m.where}" for m in concernes)
+
+    # 1. UN PAD DE PLUS. C'est la FRAGILITÉ 1 de duckstation.toml rendue
+    # visible : ses vingt-sept liaisons visent « SDL-0 », un INDEX. Le pad
+    # d'Apollo qui devient SDL-1 les fait toutes viser un périphérique absent.
+    if len(pads) > 1:
+        problemes.append(Problem(
+            what=f"plus d'une manette au dernier lancement ({len(pads)}) : "
+                 "les liaisons relevées visent un INDEX d'énumération, et un "
+                 "pad de plus le décale — "
+                 + ", ".join(sorted(m.profile_id for m in concernes)),
+            where=ou,
+            action="ne garder qu'une seule manette branchée pendant la "
+                   "session, puis relancer un jeu et relire ce rapport",
+            details=("un index qui désigne la mauvaise manette est ignoré "
+                     "en silence, exactement comme une valeur inventée : le "
+                     "symptôme est une manette muette et rien au journal",
+                     "vues : " + ", ".join(
+                         f"{p.index} {p.vid_pid} {p.nom}" for p in pads)),
+        ))
+
+    # 2. LE PAD D'INDEX 0 N'EST PAS DU TYPE DÉCLARÉ. C'est la panne que D4
+    # existe pour empêcher : changer de type de pad change le VID/PID, donc le
+    # GUID SDL, donc tout identifiant qu'une configuration d'entrée porterait.
+    premier = next((p for p in pads if p.index == 0), None)
+    vu = profiles_mod.type_de_pad(premier.vid_pid) if premier else ""
+    # Un type inconnu ne prouve RIEN : accuser sur une table incomplète serait
+    # pire que se taire.
+    if vu:
+        discordants = [m for m in concernes if m.pad != vu]
+        if discordants:
+            problemes.append(Problem(
+                what="le pad d'index 0 est un « " + vu + " » alors que ces "
+                     "relevés ont été faits sous un autre : "
+                     + ", ".join(f"{m.profile_id} ({m.pad})"
+                                 for m in sorted(discordants,
+                                                 key=lambda m: m.profile_id)),
+                where=" ; ".join(f"{m.profile_id} : {m.where}"
+                                 for m in discordants),
+                action="rejouer la procédure de relevé "
+                       f"({PROCEDURE_RELEVE}) sous ce pad-ci, puis reporter "
+                       "dans chaque profil ce que l'émulateur a écrit "
+                       "lui-même, et son nouveau 'pad_releve'",
+                details=("une liaison qui ne correspond à aucun "
+                         "périphérique est ignorée en silence ; le symptôme "
+                         "est identique avant et après une valeur inventée",
+                         f"vu : {premier.vid_pid} {premier.nom}"),
+            ))
+    return problemes
 
 
 def _probleme_manettes(manettes: list[Manette]) -> list[Problem]:
@@ -402,6 +482,12 @@ class Report:
     # n'est posée ».
     licences: list[licence_mod.EtatLicence] = dataclasses.field(
         default_factory=list)
+
+    # Le témoin du DERNIER lancement. Une date vide veut dire « le lanceur n'a
+    # jamais relevé de manette » — ce qui DIFFÈRE de « aucune manette vue »,
+    # et les confondre effacerait le plus utile des deux constats.
+    pads_date: str = ""
+    pads: list = dataclasses.field(default_factory=list)
 
 
 def _joindre(racine: str, *parties: str) -> str:
@@ -839,6 +925,9 @@ def build_report(
     dossiers_de_mise_a_jour: Sequence[str] = (),
     licences: Sequence[licence_mod.EtatLicence] = (),
     fragments: dict[str, str] | None = None,
+
+    pads_date: str = "",
+    pads: Sequence = (),
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -915,7 +1004,8 @@ def build_report(
                       dossiers_de_mise_a_jour),
                   *_probleme_vibrations(vibrations),
                   *_probleme_licences(licences),
-                  *_probleme_fragments(deposes, emulation_root)],
+                  *_probleme_fragments(deposes, emulation_root),
+                  *_problemes_pads(list(pads), manettes)],
         bios_root=bios_root,
         render_mode=render_mode,
         paquet=paquet,
@@ -924,6 +1014,9 @@ def build_report(
         manettes=manettes,
         vibrations=vibrations,
         licences=list(licences),
+
+        pads_date=pads_date,
+        pads=list(pads),
     )
 
 
@@ -1138,6 +1231,50 @@ def _lignes_manettes(report: Report) -> list[str]:
         else:
             lignes.append(f"  · {m.profile_id} : jamais mesuré — personne n'a "
                           "vérifié que sa manette répond")
+        if m.pad:
+            lignes.append(f"      relevé sous un pad « {m.pad} » — il ne vaut "
+                          "que sous celui-là")
+    return lignes + _lignes_dernier_lancement(report)
+
+
+def _lignes_dernier_lancement(report: Report) -> list[str]:
+    """Ce que le lanceur a VU la dernière fois, en quatre formulations.
+
+    Les quatre sont distinctes parce que les quatre situations le sont, et
+    que trois d'entre elles se lisaient jusqu'ici comme un même silence :
+
+    - témoin absent : le lanceur n'a pas encore tourné, ou il est trop vieux
+      pour savoir écrire ce fichier. PAS un problème — `lanceur_perime` porte
+      déjà ce signal, et le redire ici apprendrait à ignorer la section ;
+    - zéro manette : il a REGARDÉ et n'a rien vu. Ce n'est pas un problème non
+      plus — une session peut s'ouvrir sans pad branché — mais c'est un
+      constat, et le confondre avec le précédent effacerait le seul des deux
+      qui dise quelque chose de la console ;
+    - une manette : son type et son nom, parce que c'est ce qu'on compare ;
+    - deux ou plus : dites toutes, et le problème correspondant est levé
+      ailleurs. La section MONTRE, la section « Problèmes » ACCUSE.
+    """
+    if not report.pads_date:
+        return ["  · dernier lancement : le lanceur n'a jamais relevé de "
+                "manette (il n'a pas encore tourné, ou il précède ce relevé)"]
+    if not report.pads:
+        return [f"  · dernier lancement ({report.pads_date}) : aucune manette "
+                "au dernier lancement — une session peut s'ouvrir sans pad"]
+    # 1 prend le singulier : « 1 manette(s) » est de la même famille que le
+    # « 1 jeux » et le « Problèmes (1) » déjà corrigés, et une parenthèse de
+    # formulaire apprend au lecteur que le texte a été écrit par une machine.
+    nb = len(report.pads)
+    lignes = [f"  · dernier lancement ({report.pads_date}) : "
+              f"{nb} manette{'s' if nb > 1 else ''}"]
+    for pad in report.pads:
+        # Le vid:pid est dit DANS TOUS LES CAS, reconnu ou non : c'est la
+        # seule chose que le rapport sache avec certitude de ce pad, et c'est
+        # la valeur exacte à reporter dans la table le jour où elle manque.
+        type_vu = profiles_mod.type_de_pad(pad.vid_pid)
+        lignes.append(f"      [{pad.index}] {pad.vid_pid} "
+                      + (f"« {type_vu} » " if type_vu
+                         else "(type inconnu de la table) ")
+                      + pad.nom)
     return lignes
 
 
