@@ -130,15 +130,32 @@ conforme, rien ne sera réécrit » sur le résultat. L'idempotence est donc
 prouvée, et avec elle la préservation : le fichier comparé égal contenait les
 clés et commentaires du propriétaire.
 
-**Ce qui reste, et qui n'est pas une paresse** : le nom de la clé de
-DuckStation n'est toujours pas relevé — le binaire assemble ses littéraux
-dans le code —, et sous `-batch -nogui` il ne réécrit jamais son fichier,
-donc le relevé demande de l'ouvrir une fois hors du chemin de la console.
-`duckstation.toml` n'est donc **pas** basculé en fusion : le geste exact et
-la phrase d'en-tête à employer y sont écrits. Le profil pose au passage une
-seconde question au propriétaire — la fusion réaffirme ses clés à chaque
-lancement, ce qui convient au remplissage mais sûrement pas à
-`ConfirmPowerOff`.
+**L'étendue est arbitrée aussi** : le propriétaire a tranché « seulement les
+clés que la console doit imposer ». Le régime est donc **structurel** dans le
+profil — deux champs distincts, `content` (posé une fois, jamais retouché) et
+`enforced` (reposé à chaque lancement) — et non un mode déclaré qu'on
+pourrait mettre en contradiction avec ce que le bloc contient. Un même
+couple section/clé dans les deux est **refusé** au chargement.
+
+Pour DuckStation, `enforced` porte **trois clés** : `SetupWizardIncomplete`,
+`StartFullscreen`, `CheckAtStartup`. Ce sont les trois causes mesurées d'un
+lancement qui échoue. `ConfirmPowerOff`, `PauseOnFocusLoss`,
+`SaveStateOnExit`, `InhibitScreensaver` et `HideCursorInFullscreen` restent
+des préférences : changées dans l'émulateur, elles tiennent.
+
+**Ce qui reste, et qui n'est pas une paresse** : le nom de la clé de rendu
+n'est toujours pas relevé — le binaire assemble ses littéraux dans le code —
+et sous `-batch -nogui` DuckStation ne réécrit jamais son fichier, donc le
+relevé demande de l'ouvrir une fois hors du chemin de la console. Le geste
+est écrit dans le profil ; la clé rejoindra `enforced` le jour où elle sera
+relevée. **D3 n'aura qu'à ajouter sa section `[Pad1]` au même champ** — rien
+d'autre à écrire.
+
+Un piège documenté plutôt que découvert : le relevé de la manette exige de
+repasser `SetupWizardIncomplete` à `true` et de lancer DuckStation hors du
+chemin de la console. Le lancement suivant par la console le remettra à
+`false`, et **c'est voulu** — c'est le rôle même de `enforced`. Le profil le
+dit, pour que personne ne croie son relevé saboté.
 
 ---
 

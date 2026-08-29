@@ -89,15 +89,20 @@ nom du système.
   que s'il est **absent** : un émulateur que vous avez réglé vous appartient,
   et le seul chemin qui écrase est `retro launcher --reamorcer`, qui
   sauvegarde d'abord.
-  Un profil peut déclarer la seconde stratégie, `fusion`, pour un émulateur
-  dont un réglage ne s'atteint que par son fichier de configuration.
-  **Modifier n'y est jamais écraser** : seules les clés que le profil apporte
-  sont réécrites, tout le reste — vos clés, vos commentaires, l'ordre du
-  fichier — est préservé, une sauvegarde est faite avant chaque écriture, et
-  un fichier déjà conforme n'est **pas** réécrit du tout. Les lignes posées
-  par `retro` sont marquées comme telles, `retro status` nomme les profils
-  concernés, et l'en-tête du fichier doit dire qu'il est modifié — le
-  chargement refuse un profil qui fusionne en promettant le contraire.
+  Un profil peut en outre déclarer un petit nombre de clés **imposées**,
+  reposées à chaque lancement : celles sans lesquelles un jeu ne démarre pas
+  sans clavier — un assistant de première configuration qui s'ouvre
+  par-dessus, une fenêtre de mise à jour, un plein écran manquant. Pour
+  DuckStation, c'est **trois clés**, et le reste de son fichier suit le
+  régime ordinaire : ce que vous changez dans l'émulateur tient.
+  **Modifier n'y est jamais écraser** : seules ces clés-là sont réécrites,
+  tout le reste — vos clés, vos commentaires, l'ordre du fichier — est
+  préservé, une sauvegarde horodatée est faite avant chaque écriture, et un
+  fichier déjà conforme n'est **pas** réécrit du tout. Les lignes posées par
+  `retro` sont marquées comme telles, `retro status` dit combien de clés
+  chaque profil impose, et l'en-tête du fichier doit distinguer les trois
+  catégories — le chargement refuse un profil qui imposerait des clés en
+  promettant le contraire.
 - **Ça n'arrête pas Steam.** `retro sync` refuse de s'exécuter tant que Steam
   tourne — il réécrirait le fichier à sa fermeture et le travail serait perdu,
   sans le moindre message. Fermez Steam d'abord.
