@@ -1129,7 +1129,17 @@ static class RetroLaunch
                 + "les plans.");
 
         var p = LirePlan(plan);
-        if (!expliquer && !File.Exists(rom))
+        // UN JEU N'EST PAS TOUJOURS UN FICHIER. Sur PS Vita, PS4 et PS5, une
+        // application installée est un DOSSIER — « ux0:app\PCSE00123\ »,
+        // « CUSA07410\ », « PPSA01474\ » — et c'est exactement ce que le
+        // profil déclare par son `app_dir_marker`. `File.Exists` rend FAUX sur
+        // un dossier : le lanceur refusait donc TOUS ces jeux avec « La ROM
+        // est introuvable », en désignant un chemin parfaitement présent.
+        //
+        // Mesuré le 2026-08-29 sur Ratchet & Clank (PPSA01474) : le dossier
+        // existait, la synchronisation l'avait inventorié, Steam affichait son
+        // entrée, et le lanceur envoyait chercher un partage qui était monté.
+        if (!expliquer && !File.Exists(rom) && !Directory.Exists(rom))
             throw new Exception("La ROM est introuvable :\n\n" + rom
                 + "\n\nLe partage des ROMs est-il monté ?");
         string emulateur = Valeur(p, "emulator");

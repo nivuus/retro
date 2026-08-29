@@ -848,3 +848,28 @@ def test_un_nom_de_manette_a_tabulation_ne_perd_pas_sa_fin(tmp_path):
         "0\t045e:028e\tController\t(Xbox 360)\n"))
     _, pads = launcher.lire_pads(racine)
     assert pads[0].nom == "Controller\t(Xbox 360)"
+
+
+def test_le_lanceur_accepte_un_jeu_qui_est_un_dossier():
+    """UN JEU N'EST PAS TOUJOURS UN FICHIER. Sur PS Vita, PS4 et PS5, une
+    application installee est un DOSSIER — c'est exactement ce que le profil
+    declare par son `app_dir_marker`, et `scan` l'inventorie comme tel.
+
+    `File.Exists` rend FAUX sur un dossier : le lanceur refusait donc tous ces
+    jeux avec « La ROM est introuvable », en designant un chemin parfaitement
+    present. Mesure le 2026-08-29 sur Ratchet & Clank (PPSA01474) — le dossier
+    existait, Steam affichait son entree, et le lanceur envoyait verifier un
+    partage qui etait monte.
+
+    Ce test lit la SOURCE : aucun compilateur C# n'existe sur cette machine, et
+    la garde doit tout de meme se voir en revue.
+    """
+    src = (launcher.SOURCES / launcher.SOURCE).read_text(encoding="utf-8-sig")
+    assert "Directory.Exists(rom)" in src, (
+        "le lanceur ne teste que File.Exists(rom) : tout jeu qui est un "
+        "dossier (Vita, PS4, PS5) serait refuse alors qu'il est present"
+    )
+    garde = next(l for l in src.splitlines() if "File.Exists(rom)" in l)
+    assert "!Directory.Exists(rom)" in garde, (
+        f"les deux tests doivent etre sur la MEME condition : {garde.strip()}"
+    )
