@@ -84,28 +84,90 @@ console : c'est neuf comportements.
 défaut précédent, et il est réglé — mais **la manette ne répond pas** dans
 DuckStation.
 
-**Ce que ça contredit :** le plan des manettes classe DuckStation parmi les
-émulateurs qui « détectent bien tout seuls » leur manette (§ *Ce qui a été
-mesuré*, fait n° 4). Cette phrase est fausse, ou n'est vraie que d'un pad
-physique. Le pad d'Apollo n'existe que pendant la session, et DuckStation
-range son mapping dans `%USERPROFILE%\Documents\DuckStation\settings.ini`,
-section `[Pad1]` — que l'amorçage écrit **sans aucune** clé d'entrée.
+### Ce qui a été MESURÉ le 2026-08-29, sur l'invité
 
-**Où ça se joue :** `retro/data/profiles/duckstation.toml`, bloc `[bootstrap]`,
-et `[input] steam_input = "required"` — que, rappel du plan, **aucun code
-n'applique jamais**.
+Relevé sur `NIVUUS-WIN` (`provision_version = B1`, donc deux versions derrière
+le payload courant), DuckStation v0.1-11609, par lectures WinRM depuis l'hôte —
+aucune écriture dans l'invité. Ce canal n'est pas ouvert à tout le monde : les
+constats ci-dessous sont donc à prendre comme un relevé daté, à re-mesurer par
+qui en a l'accès plutôt qu'à croire sur parole.
 
-**Ce qu'il faut mesurer avant d'écrire :** ce que DuckStation attend en
-`[Pad1]` — `Type`, `Bindings/...`, et sous quelle forme d'identifiant
-(`SDL-0/...` ? `XInput-0/...` ?). L'outil de relevé du sous-projet E existe
-pour ça. **Toute valeur non relevée sur la machine est fausse :** DuckStation
-n'émet aucun message quand une liaison ne correspond à rien, et la manette
-reste muette exactement comme si le fichier était vide.
+1. **`settings.ini` ne porte aucune manette.** Il est, sur la console, octet
+   pour octet le fichier que l'amorçage a posé — commentaires compris —
+   augmenté de la seule section `[BIOS]` ajoutée à la main. **Aucune section
+   `[Pad1]`, aucune clé d'entrée.** Sa sauvegarde `settings.ini.bak-*` porte le
+   même contenu : rien n'a été perdu, il n'y a simplement jamais rien eu.
+2. **DuckStation ne réécrit jamais ce fichier.** `settings.ini` datait du 28/08
+   à 13:21 quand `playtime.dat` datait du même jour à 18:55 : il a joué cinq
+   heures et demie après la dernière écriture sans y toucher. Sous
+   `-batch -nogui`, il ne persiste pas ses réglages — donc rien ne répare
+   `[Pad1]` après coup.
+3. **La cause est le correctif du défaut précédent.** L'exécutable porte une
+   page d'assistant nommée **« Controller Setup »**, et l'appariement
+   automatique n'existe que comme geste d'interface (`Automatic Mapping`,
+   `Automatic mapping failed, no devices are available`). Or l'amorçage pose
+   `SetupWizardIncomplete = false` pour qu'un jeu démarre sans clavier : cela
+   saute l'assistant, donc cette page, donc le seul geste qui aurait écrit
+   `[Pad1]`. **Les deux réglages sont nécessaires** ; c'est la procédure de
+   relevé qui les concilie, en rouvrant l'assistant une fois.
+4. **La forme des clés, lue dans l'exécutable livré**, contredit ce que cette
+   entrée supposait : ce sont des clés de bouton **nues** (`Square`,
+   `Triangle`, `LLeft`, `RUp`…) sous des sections `Pad1`…`Pad8`, et **non** des
+   clés `Bindings/…` — cette dernière forme est celle de PCSX2 et est absente
+   du binaire de DuckStation. Les valeurs suivent `SDL-{}/{}` ou
+   `XInput-{}/{}`.
+5. **L'identifiant ne porte qu'un INDEX, jamais un GUID.** C'est une différence
+   de fond avec l'émulateur personnel (`<index>-<GUID>`), et elle **desserre le
+   couplage avec D4** : changer le type de pad ne réécrit pas mécaniquement les
+   liaisons de DuckStation. À confirmer avant de s'en servir, mais c'est ce que
+   le binaire dit.
 
-**Ce que ça coûte :** le seul émulateur PlayStation de la console est
-injouable, et rien dans `retro status` ne le dit.
+### Ce qui n'a PAS pu être mesuré, et pourquoi
 
----
+**Les valeurs des liaisons.** Aucune manette n'était connectée au moment du
+relevé : le pad d'Apollo (`USB\VID_045E&PID_028E`) et une DualShock 4
+(`VID_054C&PID_05C4`) figurent tous deux dans les périphériques de l'invité,
+avec l'état `Unknown` — c'est-à-dire absents. Le pad n'existe que pendant une
+session Moonlight, et DuckStation aurait répondu mot pour mot « Automatic
+mapping failed, no devices are available ».
+
+**Toute valeur non relevée sur la machine est fausse :** DuckStation n'émet
+aucun message quand une liaison ne correspond à rien, et la manette reste muette
+exactement comme si le fichier était vide. Une valeur recopiée d'une recette est
+donc indiscernable de l'absence de valeur, à l'œil comme au journal.
+
+### Ce qui a été fait le 2026-08-29
+
+- **Le fait n° 4 du plan des manettes est rectifié** : DuckStation ne « détecte
+  pas bien tout seul », et le tableau de sa tâche 6 le dit désormais.
+- **Les neuf profils déclarent l'état du relevé de leur manette** —
+  `[input] mapping`, valant `auto`, `a-relever` ou `inconnu`, défaut `inconnu`.
+  Le champ ne porte JAMAIS un identifiant : il porte l'état du relevé, seule
+  chose qu'on puisse écrire sans avoir mesuré. DuckStation vaut `a-relever` ;
+  les huit autres valent `inconnu`, parce que personne ne les a mesurés.
+- **`retro status` a une section « Manettes »**, avec trois formulations, et
+  fait du seul `a-relever` un problème nommant le fichier à ouvrir, la
+  procédure à jouer, et la phrase qui empêche la fausse correction : « une
+  liaison qui ne correspond à aucun périphérique est ignorée en silence ».
+- **Le squelette `[Pad1]` est posé dans le bloc `[bootstrap]`**, à l'endroit
+  exact où DuckStation le lira, **entièrement en commentaire** — avec la forme
+  relevée, la cause mesurée, et les valeurs marquées « À RELEVER ». Un test
+  refuse toute ligne active sous une section `[Pad1]`, et tout retour à la
+  forme `Bindings/…` mesurée fausse.
+- **La procédure de relevé est écrite** : `docs/releve-manettes.md`. Elle ne
+  demande de recopier aucune valeur — elle rouvre l'assistant de DuckStation le
+  temps d'un appariement automatique, session ouverte et manette branchée, et
+  fait écrire `[Pad1]` par DuckStation lui-même. C'est le seul relevé valide.
+
+### Ce qui reste
+
+**Jouer la procédure**, manette en main. C'est la seule partie qui exige une
+session Moonlight, et elle ne peut être faite ni depuis l'hôte ni sans pad.
+Ensuite seulement viendra le gabarit à jetons du sous-projet E (tâche 3), sur
+le patron de `{render_config}`.
+
+**Ce que ça coûte aujourd'hui :** le seul émulateur PlayStation de la console
+est injouable. `retro status` le dit désormais ; il ne le répare pas.
 
 ## D4 — Ni capteur de mouvement, ni manette PlayStation
 

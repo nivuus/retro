@@ -65,9 +65,43 @@ Quatre faits en découlent, et ils sont la raison d'être de ce sous-projet :
 4. **`steam_input = "required"` ne fait rien.** `profiles.py:82` le
    typographie, `profiles.py:474` le lit, et **aucun code ne l'applique
    jamais**. Le modèle réel est implicite : « l'émulateur détectera bien tout
-   seul ». DuckStation et RetroArch le font. L'émulateur personnel ne le fait
-   pas, et l'inventaire des neuf émulateurs installés montre qu'**aucun** n'a
-   de configuration d'entrée utilisateur, nulle part.
+   seul ». ~~DuckStation et RetroArch le font.~~ L'émulateur personnel ne le
+   fait pas, et l'inventaire des neuf émulateurs installés montre qu'**aucun**
+   n'a de configuration d'entrée utilisateur, nulle part.
+
+   **Rectification du 2026-08-29 (dette D3).** La phrase barrée ci-dessus est
+   fausse pour DuckStation, et n'a jamais été mesurée pour RetroArch. Mesuré le
+   2026-08-28, après les correctifs de cette page : dans DuckStation, Crash
+   Team Racing démarre et **aucun bouton ne fait rien**. Ce que la phrase
+   décrivait, c'est au mieux le comportement d'un pad PHYSIQUE — celui de la
+   console n'existe que pendant une session Moonlight.
+
+   Le manque était moins la phrase que l'impossibilité de la contredire : rien,
+   dans un profil ni dans `retro status`, ne distinguait « cet émulateur trouve
+   sa manette seul » de « personne n'a jamais regardé ». C'est ce que corrige
+   `[input] mapping` (`auto` / `a-relever` / `inconnu`, défaut `inconnu`), que
+   les neuf profils déclarent désormais et dont `retro status` fait une section
+   et — pour le seul `a-relever` — un problème. Le champ ne porte JAMAIS un
+   identifiant : il porte l'état du relevé. La procédure de relevé est écrite,
+   et reste à jouer sur la machine : `docs/releve-manettes.md`.
+
+   **La cause a été mesurée sur l'invité le 2026-08-29**, et elle est plus
+   retorse que « il ne détecte pas » : le `settings.ini` de la console est
+   octet pour octet celui que l'amorçage a posé, DuckStation ne le réécrit
+   jamais sous `-batch -nogui`, et l'appariement automatique n'existe que dans
+   la page « Controller Setup » de l'assistant — que l'amorçage saute avec
+   `SetupWizardIncomplete = false`, précisément pour qu'un jeu démarre sans
+   clavier. **Le correctif du défaut précédent est la cause du défaut
+   actuel.** Détail complet dans `docs/dettes.md`, D3.
+
+   **Deux relevés qui commandent la tâche 6 pour DuckStation :** ses clés de
+   liaison sont des noms de bouton NUS sous `[Pad1]`, et non des
+   `Bindings/…` — cette forme est celle de PCSX2 et est absente du binaire ;
+   et son identifiant est `SDL-<index>/<liaison>` ou
+   `XInput-<index>/<liaison>`, **sans GUID**. Le fait n° 2 ci-dessus —
+   « l'identifiant n'est pas prévisible » — vaut donc pour l'émulateur
+   personnel, dont l'identifiant est `<index>-<GUID>` ; il ne vaut PAS tel quel
+   pour DuckStation, dont les liaisons ne dépendent pas du VID/PID du pad.
 
 **Le problème est donc exactement celui de la résolution d'écran, que ce dépôt
 a déjà résolu** : une donnée qui n'est connue qu'au lancement, dans une
@@ -386,7 +420,7 @@ souvenir de forum est exactement le défaut que la contrainte globale interdit.
 | Émulateur | Fichier d'entrée | Famille | Auto-détecte ? |
 |---|---|---|---|
 | l'émulateur personnel | `%APPDATA%\<émulateur>\Config.json` | générale | **non** (mesuré) |
-| DuckStation | `settings.ini` | générale | oui (mesuré : jouable) |
+| DuckStation | `settings.ini`, section `[Pad1]` | générale | **non** (mesuré 2026-08-28 : le jeu démarre, la manette est muette — D3) |
 | RetroArch | `autoconfig\*.cfg` | dédiée | oui |
 | Dolphin | `User\Config\GCPadNew.ini` | dédiée | à établir |
 | Cemu | `controllerProfiles\` | dédiée | à établir |
@@ -398,8 +432,14 @@ souvenir de forum est exactement le défaut que la contrainte globale interdit.
 
 Les colonnes « famille » et « auto-détecte » de la seconde moitié du tableau
 sont des **hypothèses de travail**, pas des faits : les deux seules lignes
-mesurées sont l'émulateur personnel et DuckStation. Vérifie chaque ligne avant
-de t'appuyer dessus, et corrige le tableau.
+mesurées sont l'émulateur personnel et DuckStation — et la ligne DuckStation a
+été corrigée le 2026-08-29, elle disait l'inverse de ce qui a été constaté.
+Vérifie chaque ligne avant de t'appuyer dessus, et corrige le tableau.
+
+**Chaque ligne de ce tableau a maintenant son pendant dans le profil**, en
+`[input] mapping` : les sept lignes non mesurées y valent `inconnu`, et
+`retro status` les nomme. Corriger le tableau sans corriger le profil laisserait
+le rapport dire l'ancienne réponse.
 
 **Un émulateur qui auto-détecte correctement n'a pas besoin de gabarit** — n'en
 écris pas pour le plaisir de la symétrie. Mais dis-le dans le profil, et dis
@@ -447,7 +487,11 @@ personnel muet.
   démarre et la manette reste muette — mesuré le 2026-08-28 sur Crash Team
   Racing. Le fait n° 4 ci-dessus, qui range DuckStation parmi les émulateurs
   détectant « bien tout seuls » leur manette, est donc faux ou ne vaut que d'un
-  pad physique. Dette D3.
+  pad physique. Dette D3, dont la première moitié est faite le 2026-08-29 : le
+  fait n° 4 est rectifié, les neuf profils déclarent l'état de leur relevé,
+  `retro status` le dit, et la procédure de relevé est écrite. **La liaison
+  elle-même reste à relever sur la machine** — aucune valeur n'a été écrite,
+  parce qu'aucune n'a été mesurée.
 - **Steam Input.** Le pont Steam sert à lancer et à quitter ; y ajouter une
   couche de remappage par-dessus celle des émulateurs ferait deux endroits où
   un bouton est décidé.
