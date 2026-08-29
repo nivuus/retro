@@ -964,3 +964,61 @@ def test_l_exemple_de_bootstrap_de_la_specification_se_charge(tmp_path):
     for bloc in exemple:
         assert profiles._lire_bootstrap(
             spec, tomllib.loads(bloc)["bootstrap"]) is not None
+
+
+# --- un jeu qui est un DOSSIER ---------------------------------------------
+#
+# `extensions` dit ce qu'est un jeu quand un jeu est un fichier. Une
+# bibliothèque PS Vita est faite d'applications INSTALLÉES, qui sont des
+# dossiers. Le scan ne peut pas le deviner — deviner ferait une entrée Steam
+# de chaque dossier de sauvegardes — donc le profil le DÉCLARE, comme il
+# déclare déjà ses `folders` et ses extensions.
+
+APPS = """
+schema = 1
+id = "vita3k"
+exe = "Vita3K.exe"
+[[system]]
+id = "vita"
+name = "PS Vita"
+extensions = [".vpk"]
+app_dir_marker = "eboot.bin"
+launch = '--fullscreen "{rom}"'
+bios = []
+"""
+
+
+def test_le_marqueur_de_dossier_est_charge(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "vita3k.toml", APPS))
+    assert p.systems[0].app_dir_marker == "eboot.bin"
+
+
+def test_sans_marqueur_le_systeme_n_en_a_pas(tmp_path):
+    """Les neuf profils livrés n'en déclarent aucun : leur comportement ne
+    change pas, et l'absence se lit comme une absence."""
+    p = profiles.load_profile(ecrire(tmp_path, "retroarch.toml", RETROARCH))
+    assert all(s.app_dir_marker == "" for s in p.systems)
+
+
+def test_un_marqueur_de_dossier_vide_refuse(tmp_path):
+    """Déclaré vide, il ne reconnaîtrait aucun dossier : le système aurait
+    l'air de couvrir une bibliothèque en dossiers et rendrait zéro jeu."""
+    with pytest.raises(profiles.ProfileError, match="app_dir_marker"):
+        profiles.load_profile(ecrire(
+            tmp_path, "v.toml", APPS.replace('"eboot.bin"', '""')))
+
+
+def test_un_marqueur_de_dossier_non_textuel_refuse(tmp_path):
+    with pytest.raises(profiles.ProfileError, match="app_dir_marker"):
+        profiles.load_profile(ecrire(
+            tmp_path, "v.toml", APPS.replace('"eboot.bin"', "true")))
+
+
+def test_un_marqueur_de_dossier_qui_est_un_chemin_refuse(tmp_path):
+    """Le marqueur est cherché à la RACINE du dossier d'application. Un chemin
+    n'y serait comparé à rien, et le système rendrait zéro jeu sans un mot —
+    la même faute muette que `folders` avec un séparateur."""
+    with pytest.raises(profiles.ProfileError, match="app_dir_marker"):
+        profiles.load_profile(ecrire(
+            tmp_path, "v.toml",
+            APPS.replace('"eboot.bin"', '"sce_sys/param.sfo"')))

@@ -38,6 +38,19 @@ class System:
     # Déclaratif, dans le TOML : une liste d'exceptions dans le code
     # rouvrirait un module à chaque collection rencontrée.
     folders: tuple[str, ...] = ()
+    # À quoi se reconnaît un jeu qui est un DOSSIER, et non un fichier.
+    # `extensions` répond à la question « qu'est-ce qu'un jeu ? » tant qu'un
+    # jeu est un fichier ; une bibliothèque PS Vita est faite d'applications
+    # INSTALLÉES, qui sont des dossiers (« ux0:app\\PCSE00123\\ »), rangées à
+    # côté des .vpk. Vide — le cas des neuf profils livrés — aucun dossier
+    # n'est jamais inventorié : sous un système de ROMs, un dossier est un
+    # dossier d'extras ou de disques, et en faire une entrée Steam donnerait
+    # un raccourci qui ne lance rien.
+    # Déclaré, il porte le nom du fichier qu'une application porte à sa
+    # racine : c'est LUI qui distingue une application d'un dossier de
+    # sauvegardes. Deviner « tout sous-dossier est un jeu » aurait fait de
+    # « savedata » une entrée de la bibliothèque.
+    app_dir_marker: str = ""
     # Ce que coûte l'émulation de ce système, pour le mode `auto`. Exigé dès
     # qu'un bloc `render` est déclaré : sans lui, `auto` n'aurait rien à
     # croiser avec la machine et déciderait sur une valeur inventée.
@@ -489,6 +502,35 @@ def load_profile(path: pathlib.Path) -> Profile:
                 "dossiers de constructeur, et un nom composé ne serait comparé "
                 "à rien."
             )
+        # Le marqueur de dossier d'application. Les trois refus ci-dessous
+        # portent sur des fautes MUETTES : chacune laisse le profil se
+        # charger, le système apparaître dans `retro status`, et le scan
+        # rendre ZÉRO jeu — ce qui ressemble exactement à une bibliothèque
+        # vide. C'est la même famille que `folders` mal typé.
+        marqueur = brut.get("app_dir_marker", "")
+        if not isinstance(marqueur, str):
+            raise ProfileError(
+                f"{path} [{sid}] : 'app_dir_marker' doit être le nom du "
+                "fichier qu'une application installée porte à sa racine "
+                "(app_dir_marker = \"eboot.bin\"). Un autre type ne serait "
+                "comparé à aucun nom de fichier, et aucun dossier ne serait "
+                "reconnu comme un jeu."
+            )
+        if "app_dir_marker" in brut and not marqueur.strip():
+            raise ProfileError(
+                f"{path} [{sid}] : 'app_dir_marker' est vide. Déclaré, il dit "
+                "qu'un jeu de ce système peut être un DOSSIER ; vide, il n'en "
+                "reconnaît aucun — le système aurait l'air de couvrir une "
+                "bibliothèque en dossiers et rendrait zéro jeu. Le retirer "
+                "dit « ici un jeu est un fichier », ce qui est une réponse."
+            )
+        if "/" in marqueur or "\\" in marqueur:
+            raise ProfileError(
+                f"{path} [{sid}] : 'app_dir_marker' contient un séparateur : "
+                f"{marqueur!r}. Le marqueur est cherché à la RACINE du dossier "
+                "d'application, jamais plus bas : un chemin n'y serait comparé "
+                "à rien, et le système rendrait zéro jeu sans un mot."
+            )
         if "{rom}" not in brut["launch"]:
             raise ProfileError(
                 f"{path} [{sid}] : le gabarit launch ne contient pas {{rom}}. "
@@ -568,6 +610,7 @@ def load_profile(path: pathlib.Path) -> Profile:
             id=sid, name=brut["name"], extensions=exts, launch=brut["launch"],
             bios=tuple(brut.get("bios", ())),
             folders=tuple(declares),
+            app_dir_marker=marqueur.strip(),
             cost=cout,
             render=(_lire_render(path, sid, brut_render, brut["launch"])
                     if brut_render is not None else None),

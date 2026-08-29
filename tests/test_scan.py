@@ -665,3 +665,150 @@ def test_un_scan_sans_lanceur_est_refuse(tmp_path, profils):
     with pytest.raises(scan.ScanError, match="lanceur commun est introuvable"):
         scan.scan(racine, profils, "D:\\Emulation", INSTALL_DIRS,
                   emulation_root_local=emulation)
+
+
+# --- Une bibliothèque faite de DOSSIERS ------------------------------------
+#
+# Le scan comptait des FICHIERS, et lui seul décidait ce qu'était un jeu :
+# `_retenus` filtrait `is_file()` sur une extension. Une bibliothèque PS Vita
+# n'a pas cette forme — une application installée est un DOSSIER
+# (« ux0:app\PCSE00123\ »), rangé à côté des .vpk. Sur une telle collection,
+# l'ancien scan rendait ZÉRO jeu sans un mot : les dossiers étaient ignorés
+# par `is_file()`, et un dossier de système reconnu n'est jamais ouvert plus
+# loin.
+#
+# Ce que ces tests fixent, c'est la forme de la réponse : le PROFIL déclare
+# qu'un jeu peut être un dossier, et à quoi ce dossier se reconnaît. Le scan
+# ne connaît aucun émulateur ; il applique une règle déclarée.
+
+PROFIL_APPS = """
+schema = 1
+id = "vita3k"
+exe = "Vita3K.exe"
+[[system]]
+id = "vita"
+name = "PS Vita"
+extensions = [".vpk"]
+app_dir_marker = "eboot.bin"
+launch = '--fullscreen "{rom}"'
+bios = []
+"""
+
+
+@pytest.fixture
+def profils_apps(tmp_path):
+    p = tmp_path / "vita3k.toml"
+    p.write_text(PROFIL_APPS, encoding="utf-8")
+    return {"vita3k": profiles.load_profile(p)}
+
+
+def _scan_apps(tmp_path, profils):
+    return scan.scan(tmp_path / "ROMs", profils, "D:\\Emulation",
+                     {"vita3k": "Vita3K"}, roms_root_windows="G:\\ROMs")
+
+
+def faire_app(tmp_path, chemin, marqueur="eboot.bin"):
+    """Un dossier d'application installée : son marqueur, et du remplissage."""
+    dossier = tmp_path / "ROMs" / chemin
+    (dossier / "sce_sys").mkdir(parents=True, exist_ok=True)
+    (dossier / marqueur).write_bytes(b"x")
+    (dossier / "sce_sys" / "param.sfo").write_bytes(b"x")
+    return dossier
+
+
+def test_un_dossier_d_application_donne_une_entree(tmp_path, profils_apps):
+    faire_app(tmp_path, "vita/PCSE00123")
+    inv = _scan_apps(tmp_path, profils_apps)
+    assert [e.title for e in inv] == ["PCSE00123"]
+    assert inv[0].rom_path == "G:\\ROMs\\vita\\PCSE00123"
+    assert inv[0].system_name == "PS Vita"
+
+
+def test_le_contenu_d_une_application_ne_fait_pas_d_entrees(tmp_path,
+                                                            profils_apps):
+    """Le défaut que cette dette nommait : une entrée Steam PAR FICHIER de jeu.
+
+    Un dossier d'application contient des dizaines de fichiers, dont certains
+    portent une extension déclarée. C'est le DOSSIER qui est le jeu ; ce qu'il
+    contient ne doit jamais être inventorié.
+    """
+    dossier = faire_app(tmp_path, "vita/PCSE00123")
+    (dossier / "patch.vpk").write_bytes(b"x")
+    (dossier / "sce_sys" / "autre.vpk").write_bytes(b"x")
+    inv = _scan_apps(tmp_path, profils_apps)
+    assert [e.title for e in inv] == ["PCSE00123"]
+
+
+def test_les_vpk_a_cote_restent_des_entrees(tmp_path, profils_apps):
+    """« à côté des .vpk » : les deux formes cohabitent dans le même dossier."""
+    faire_app(tmp_path, "vita/PCSE00123")
+    faire_roms(tmp_path, ["vita/Super Jeu (USA).vpk"])
+    inv = _scan_apps(tmp_path, profils_apps)
+    assert sorted(e.title for e in inv) == ["PCSE00123", "Super Jeu"]
+
+
+def test_un_dossier_sans_marqueur_n_est_pas_un_jeu(tmp_path, profils_apps):
+    """Compter TOUT sous-dossier ferait une entrée Steam de « savedata ».
+
+    C'est pour cela que le marqueur est déclaré et non deviné : le scan
+    reconnaît une application à un fichier qu'elle porte, pas au fait d'être
+    un dossier.
+    """
+    faire_app(tmp_path, "vita/PCSE00123")
+    (tmp_path / "ROMs" / "vita" / "savedata" / "PCSE00123").mkdir(parents=True)
+    inv = _scan_apps(tmp_path, profils_apps)
+    assert [e.title for e in inv] == ["PCSE00123"]
+
+
+def test_le_marqueur_se_compare_sans_la_casse(tmp_path, profils_apps):
+    """Le scan tourne sous Linux et décrit une machine Windows, où la casse
+    d'un nom de fichier ne distingue rien. « EBOOT.BIN » et « eboot.bin » sont
+    le même fichier là où le jeu se lancera."""
+    faire_app(tmp_path, "vita/PCSE00123", marqueur="EBOOT.BIN")
+    assert [e.title for e in _scan_apps(tmp_path, profils_apps)] == ["PCSE00123"]
+
+
+def test_le_point_d_un_nom_de_dossier_n_est_pas_une_extension(tmp_path,
+                                                              profils_apps):
+    """« Jeu v1.02 » est un nom entier. Retirer « .02 » comme on retire une
+    extension renommerait le jeu dans Steam, en silence."""
+    faire_app(tmp_path, "vita/Jeu v1.02")
+    assert [e.title for e in _scan_apps(tmp_path, profils_apps)] == ["Jeu v1.02"]
+
+
+def test_un_dossier_d_application_est_desambigue_comme_un_fichier(
+        tmp_path, profils_apps):
+    """Un .vpk et un dossier de même titre rendraient le même identifiant
+    Steam, et une seule des deux entrées survivrait à l'écriture."""
+    faire_app(tmp_path, "vita/Jeu")
+    faire_roms(tmp_path, ["vita/Jeu.vpk"])
+    titres = [e.title for e in _scan_apps(tmp_path, profils_apps)]
+    assert len(titres) == 2
+    assert len(set(titres)) == 2
+
+
+def test_sans_marqueur_declare_aucun_dossier_n_est_compte(tmp_path, profils):
+    """Les neuf profils livrés n'en déclarent aucun : leur scan ne change pas.
+
+    Un dossier sous un système de ROMs est un dossier d'extras ou de disques,
+    pas un jeu — le compter donnerait une entrée Steam qui ne lance rien.
+    """
+    faire_roms(tmp_path, ["snes/Extras/notice.txt", "snes/Zelda.sfc"])
+    assert [e.title for e in scanner(tmp_path / "ROMs", profils)] == ["Zelda"]
+
+
+def test_une_application_compte_dans_les_systemes_ignores(tmp_path,
+                                                          profils_apps):
+    """Le compte annoncé au propriétaire est celui de l'inventaire.
+
+    Un émulateur absent doit dire combien de jeux il coûte : sur une
+    bibliothèque en dossiers, ce compte serait resté à zéro et le système
+    n'aurait même pas été signalé.
+    """
+    faire_app(tmp_path, "vita/PCSE00123")
+    faire_roms(tmp_path, ["vita/Super Jeu (USA).vpk"])
+    emulation = tmp_path / "Emulation"
+    emulation.mkdir()
+    ignores = scan.ignored_systems(tmp_path / "ROMs", profils_apps,
+                                   {"vita3k": "Vita3K"}, emulation)
+    assert [i.roms for i in ignores] == [2]
