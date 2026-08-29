@@ -302,6 +302,20 @@ class Profile:
     exit_native: str
     exit_fallback: str
     steam_input: str
+    # OÙ CET ÉMULATEUR CHERCHE SES BIOS, sous son dossier d'installation.
+    #
+    # Sans ce champ, `retro status --bios` vérifiait le dossier que le
+    # PROPRIÉTAIRE a choisi pendant que l'émulateur cherchait dans le SIEN :
+    # le rapport pouvait annoncer « présent, empreinte vérifiée » sur un
+    # émulateur qui n'en voyait aucun. C'est le pire des états — un rapport
+    # qui ment — et les en-têtes de duckstation.toml et retroarch.toml
+    # l'écrivaient déjà comme une dette.
+    #
+    # VIDE VEUT DIRE « PERSONNE N'A ENCORE MESURÉ », jamais « il n'en a pas
+    # besoin » : `retro bios` nomme les profils qui se taisent plutôt que de
+    # deviner un dossier. Un chemin deviné déposerait les fichiers à côté, et
+    # le symptôme serait exactement celui d'un BIOS absent.
+    bios_dir: str = ""
     # Où en est le relevé de la manette de cet émulateur, et où il se fait.
     # `input_mapping_where` n'est PAS un identifiant : c'est le fichier, et la
     # section, que le propriétaire doit ouvrir sur la console. `retro status`
@@ -1205,6 +1219,35 @@ def load_profile(path: pathlib.Path) -> Profile:
             raise ProfileError(f"{path} : champ '{champ}' manquant")
     _valider_id(path, data["id"])
 
+    # Le dossier de BIOS de l'émulateur. Les refus ci-dessous portent tous
+    # sur des fautes MUETTES : un chemin absolu ou remontant déposerait les
+    # fichiers hors du dossier d'installation, et l'émulateur n'y verrait
+    # rien — le symptôme exact d'un BIOS jamais téléchargé.
+    bios_dir = data.get("bios_dir", "")
+    if not isinstance(bios_dir, str):
+        raise ProfileError(
+            f"{path} : 'bios_dir' doit être le chemin, RELATIF au dossier "
+            "d'installation, où cet émulateur cherche ses BIOS. Un autre type "
+            "ne serait joint à aucune racine."
+        )
+    if "bios_dir" in data and not bios_dir.strip():
+        raise ProfileError(
+            f"{path} : 'bios_dir' est vide. Déclaré, il dit où cet émulateur "
+            "cherche ; vide, il ferait déposer les BIOS à la racine du "
+            "dossier d'installation, où aucun émulateur ne regarde. Le "
+            "RETIRER dit « personne n'a encore mesuré », ce qui est une "
+            "réponse que le rapport sait énoncer."
+        )
+    if bios_dir:
+        eprouve = pathlib.PureWindowsPath(bios_dir)
+        if eprouve.is_absolute() or ".." in eprouve.parts:
+            raise ProfileError(
+                f"{path} : bios_dir = {bios_dir!r} sort du dossier "
+                "d'installation. Les BIOS y seraient déposés hors de portée "
+                "de l'émulateur, sans autre symptôme qu'un jeu qui reste sur "
+                "un écran noir."
+            )
+
     systemes = []
     vus = set()
     for rang, brut in enumerate(data.get("system", [])):
@@ -1420,6 +1463,7 @@ def load_profile(path: pathlib.Path) -> Profile:
         exit_native=sortie.get("native", ""),
         exit_fallback=sortie.get("fallback", "alt+f4"),
         steam_input=entree.get("steam_input", "required"),
+        bios_dir=bios_dir.strip(),
         input_mapping=mapping,
         input_mapping_where=mapping_ou,
         input_rumble=rumble,

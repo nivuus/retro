@@ -1495,6 +1495,47 @@ def test_pad_releve_est_vide_quand_rien_n_a_ete_releve(tmp_path):
         assert p.input_pad_releve == ""
 
 
+# --- où l'émulateur cherche ses BIOS ---------------------------------------
+#
+# Le dossier du propriétaire n'est pas celui de l'émulateur. `retro status
+# --bios` vérifie le premier ; c'est le second qu'un jeu interroge.
+
+def test_sans_bios_dir_le_profil_n_en_a_pas(tmp_path):
+    """VIDE VEUT DIRE « personne n'a mesuré », jamais « il n'en a pas
+    besoin » : `retro bios` nomme les profils qui se taisent."""
+    p = profiles.load_profile(ecrire(tmp_path, "retroarch.toml", RETROARCH))
+    assert p.bios_dir == ""
+
+
+def test_un_bios_dir_est_charge(tmp_path):
+    p = profiles.load_profile(ecrire(
+        tmp_path, "r.toml",
+        RETROARCH.replace('schema = 1',
+                          "schema = 1\nbios_dir = 'RetroArch-Win64\\system'")))
+    assert p.bios_dir == "RetroArch-Win64\\system"
+
+
+def test_un_bios_dir_vide_est_refuse(tmp_path):
+    """Déclaré vide, il ferait déposer les BIOS à la racine du dossier
+    d'installation, où aucun émulateur ne regarde. Le RETIRER est une
+    réponse ; le vider est une faute muette."""
+    with pytest.raises(profiles.ProfileError, match="bios_dir"):
+        profiles.load_profile(ecrire(
+            tmp_path, "r.toml",
+            RETROARCH.replace('schema = 1', 'schema = 1\nbios_dir = ""')))
+
+
+@pytest.mark.parametrize("chemin", ["D:\\ailleurs", "..\\voisin"])
+def test_un_bios_dir_qui_sort_du_dossier_est_refuse(tmp_path, chemin):
+    """Les BIOS y seraient déposés hors de portée de l'émulateur, sans autre
+    symptôme qu'un jeu qui reste sur un écran noir."""
+    with pytest.raises(profiles.ProfileError, match="bios_dir"):
+        profiles.load_profile(ecrire(
+            tmp_path, "r.toml",
+            RETROARCH.replace('schema = 1',
+                              f'schema = 1\nbios_dir = "{chemin}"')))
+
+
 # --- un jeu qui est un DOSSIER ---------------------------------------------
 #
 # `extensions` dit ce qu'est un jeu quand un jeu est un fichier. Une

@@ -9,8 +9,8 @@ Vous la lancez à la manette.
 
 ## Ce que ça fait
 
-Sept commandes. Les quatre premières dans cet ordre, les trois dernières quand
-vous voulez :
+Huit commandes. Les quatre premières dans cet ordre, les quatre dernières
+quand vous voulez :
 
 - **`retro install`** installe les émulateurs du manifeste sous la racine
   d'émulation. Il les **télécharge depuis Internet** et les extrait — voir
@@ -50,6 +50,15 @@ vous voulez :
   d'émulation déclaré dans le profil avec ce que votre machine offre. Le mode
   vit dans un fichier que le lanceur relit à chaque jeu : en changer ne touche
   aucune entrée Steam, donc aucune vignette n'est à retélécharger.
+- **`retro bios`** obtient les BIOS manquants depuis une source **que vous
+  déclarez** dans votre propre manifeste, et n'écrit que ce qu'elle a vérifié :
+  chaque fichier reçu est comparé au **md5 que le profil déclare**, jamais à un
+  md5 rendu par la source — qui n'attesterait que d'elle. Ce qui ne correspond
+  pas n'est pas écrit, et la commande le dit en nommant le fichier. Sans source
+  déclarée, elle ne devine aucune adresse : elle liste ce qui manque et
+  s'arrête. Avec `--emulation-root-local`, elle **porte** en plus chaque BIOS
+  vérifié dans le dossier où son émulateur le cherche — sans quoi le rapport
+  peut être vert sur des BIOS qu'aucun émulateur ne voit.
 - **`retro status`** est la seule commande faite pour un humain : elle écrit un
   rapport lisible depuis le canapé. Quels émulateurs sont installés et en
   quelle version, combien de jeux par système, **quels BIOS manquent**, et la
@@ -76,6 +85,35 @@ un autre BIOS, que vous croyez avoir déposé.
 Quand plusieurs BIOS sont interchangeables — les trois BIOS PlayStation, un par
 région — le rapport le dit : un seul suffit, celui de la région de vos jeux. Il
 ne réclame pas les deux autres.
+
+`retro bios` va les chercher pour vous, à une adresse **que vous écrivez dans
+votre manifeste** — jamais dans celui livré avec le paquet, dont le dépôt est
+public : y pointer un dépôt de BIOS serait un acte de distribution.
+
+```toml
+[bios]
+base_url = "https://exemple/BIOS"
+
+# Facultatif : ce que VOTRE source range ailleurs que sous le nom du fichier.
+# Le nom à gauche est celui que le profil déclare, celui de droite le chemin
+# chez la source. Rien n'est deviné : une source qui range autrement rend 404,
+# et la commande donne l'URL qu'elle a essayée.
+[bios.paths]
+"dc_boot.bin" = "dc/dc_boot.bin"
+```
+
+**Ce qui rend une source utilisable n'est pas sa réputation, c'est
+l'empreinte.** Le md5 vient du profil, pas de la source ; un fichier qui ne
+correspond pas n'est pas écrit. C'est la même règle que l'empreinte SHA256 des
+émulateurs, et elle vaut davantage ici : un émulateur faux plante, un BIOS faux
+démarre.
+
+**Et un BIOS dans votre dossier n'est pas un BIOS que l'émulateur voit.** Les
+deux dossiers sont distincts, et le second est celui qu'un jeu interroge. Un
+profil déclare `bios_dir` quand on a **mesuré** où son émulateur cherche ;
+`retro bios --emulation-root-local` y porte alors les fichiers vérifiés. Un
+profil qui ne le déclare pas est **nommé** plutôt que deviné : un dossier
+inventé déposerait les fichiers à côté, sans autre symptôme qu'un écran noir.
 
 ### Ce que Steam ne sait pas afficher
 

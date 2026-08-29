@@ -15,6 +15,28 @@ schema = 1
 id  = "retroarch"
 exe = 'RetroArch-Win64\retroarch.exe'
 
+# OÙ RETROARCH CHERCHE SES BIOS, et ce que ça ferme.
+#
+# Sans ce champ, `retro status --bios` vérifiait le dossier que le
+# PROPRIÉTAIRE a choisi pendant que RetroArch cherchait dans le sien : le
+# rapport pouvait annoncer « présent, empreinte vérifiée » sur un émulateur
+# qui n'en voyait aucun. L'en-tête ci-dessus l'écrivait déjà comme une dette ;
+# la voici fermée du côté qui se mesure.
+#
+# CE QUI EST MESURÉ : le dossier `RetroArch-Win64\system\` est LIVRÉ PAR
+# L'ARCHIVE épinglée au manifeste, et il existe sur l'installation de la
+# console — relevé le 2026-08-29 par WinRM, vide à cette date. C'est le
+# `system_directory` par défaut de RetroArch, celui qu'un core interroge quand
+# rien n'a été changé.
+#
+# CE QUI NE L'EST PAS : ce que le retroarch.cfg de CETTE console déclare
+# aujourd'hui. RetroArch réécrit ce fichier en quittant, et une session
+# précédente a pu y poser un autre dossier. La console était éteinte au moment
+# d'écrire ces lignes. Si les deux divergent, les BIOS déposés ici sont
+# invisibles à l'émulateur — le symptôme exact d'un BIOS absent — et c'est un
+# lancement qui le dira, pas ce fichier.
+bios_dir = 'RetroArch-Win64\system'
+
 # Amorçage : pas de bloc [[bootstrap]]. Ce que RetroArch doit recevoir pour
 # lancer un jeu au lieu de son assistant de première configuration reste À
 # MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir

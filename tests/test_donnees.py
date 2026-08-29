@@ -306,6 +306,26 @@ def test_aucun_emulateur_au_statut_conteste():
     assert trouves == [], f"références interdites : {trouves}"
 
 
+def test_le_manifeste_noyau_ne_declare_aucune_source_de_bios():
+    """Le dépôt est public, et pointer un dépôt de BIOS depuis un dépôt public
+    est un acte de DISTRIBUTION — exactement le raisonnement qui tient les
+    émulateurs au statut contesté hors d'ici, et la promesse que le README
+    fait en toutes lettres : « Ça ne distribue aucune ROM, aucun BIOS, aucun
+    émulateur ».
+
+    Le mécanisme, lui, est bien dans le paquet : c'est l'ADRESSE qui doit
+    rester chez le propriétaire. Ce test est ce qui applique la distinction,
+    plutôt que la vigilance d'un relecteur — une seule ligne ajoutée au
+    manifeste livré suffirait sinon à la renverser sans que rien ne le dise.
+    """
+    from retro import manifest as manifest_mod
+
+    assert manifest_mod.load_bios_source(CORE) is None, (
+        f"{CORE} déclare une source de BIOS. Elle vit dans le manifeste du "
+        "PROPRIÉTAIRE, hors du dépôt : voir README, « Les BIOS »."
+    )
+
+
 def test_les_identifiants_de_systeme_sont_uniques_entre_profils():
     """Deux profils qui revendiquent le même système rendraient le scan
     dépendant de l'ordre de chargement."""

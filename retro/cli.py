@@ -418,6 +418,110 @@ def _cmd_identite(args) -> int:
     return 0
 
 
+def _cmd_bios(args) -> int:
+    """Obtenir les BIOS manquants depuis la source que le propriétaire a
+    déclarée, et n'écrire que ce qui est vérifié.
+
+    RIEN N'EST DISTRIBUÉ PAR CE PAQUET. Cette commande télécharge depuis une
+    adresse écrite dans le manifeste — celui du propriétaire, jamais le noyau
+    livré, dont le dépôt est public. Sans source déclarée, elle le DIT et rend
+    2 : se taire ferait passer « personne n'a déclaré d'adresse » pour « il ne
+    manquait rien ».
+
+    Elle rend 1 si un fichier a été refusé ou n'a pu être atteint. Un refus
+    n'est pas une panne de réseau et n'appelle pas le même geste : le premier
+    veut qu'on regarde la source, le second qu'on réessaie.
+    """
+    try:
+        profils = profiles.load_profiles(pathlib.Path(args.profiles),
+                                         _dossier(args.user_profiles))
+        source = manifest.load_bios_source(pathlib.Path(args.manifest),
+                                           _dossier(args.user_manifest))
+    except (profiles.ProfileError, manifest.ManifestError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    racine = pathlib.Path(args.bios)
+    avant = bios.check_bios(profils, racine)
+    manquants = bios._a_obtenir(avant)
+    if not manquants:
+        print("aucun BIOS ne manque : tout ce que les profils déclarent est "
+              f"présent et vérifié dans {racine}")
+        return 0
+
+    if source is None:
+        print(f"{len(manquants)} BIOS manque(nt), et AUCUNE SOURCE n'est "
+              "déclarée — rien n'a été téléchargé :", file=sys.stderr)
+        for nom_systeme, f in manquants:
+            print(f"  - {nom_systeme} : {f.name}", file=sys.stderr)
+        print("\nDéclarez-en une dans VOTRE manifeste (jamais le noyau, dont "
+              "le dépôt est public) :\n\n  [bios]\n  base_url = "
+              '"https://…"\n\n'
+              "Chaque fichier reçu sera comparé au md5 que le profil déclare ; "
+              "ce qui ne correspond pas n'est pas écrit.", file=sys.stderr)
+        return 2
+
+    resultats = bios.fetch_bios(profils, racine, source)
+    obtenus = [r for r in resultats if r.state == bios.OBTENU]
+    rates = [r for r in resultats if r.state != bios.OBTENU]
+    for r in obtenus:
+        suffixe = f" ({r.detail})" if r.detail else ""
+        print(f"  + {r.system_name} : {r.name}{suffixe}")
+    for r in rates:
+        print(f"  ! {r.system_name} : {r.name} — {r.state}\n      {r.detail}",
+              file=sys.stderr)
+    print(f"{len(obtenus)} obtenu(s), {len(rates)} en échec, dans {racine}")
+
+    # Ce que le rapport dira APRÈS, et non ce que cette commande a fait : un
+    # groupe régional reste satisfait par un seul de ses fichiers, donc
+    # « 3 obtenus » ne veut pas dire « 3 besoins fermés », ni l'inverse.
+    reste = [f"{s.system_name} : {', '.join(s.missing_required)}"
+             for s in bios.check_bios(profils, racine) if not s.ok]
+    if reste:
+        print("il manque encore :", file=sys.stderr)
+        for ligne in reste:
+            print(f"  - {ligne}", file=sys.stderr)
+    return _porter(args, profils, racine, echecs=bool(rates))
+
+
+def _porter(args, profils, racine: pathlib.Path, echecs: bool) -> int:
+    """La seconde moitié, et sans elle la première ne sert à rien : le dossier
+    du propriétaire n'est pas celui où l'émulateur regarde.
+
+    Facultative — sans `--emulation-root-local`, aucun émulateur n'est
+    atteignable depuis cette machine — mais son absence se DIT : un rapport
+    vert sur des BIOS qu'aucun émulateur ne voit est pire qu'un rapport rouge.
+    """
+    if not args.emulation_root_local:
+        print("\n⚠ rien n'a été porté vers les émulateurs : "
+              "--emulation-root-local n'a pas été donné. Les BIOS sont dans "
+              f"{racine}, que « retro status --bios » vérifie — mais c'est "
+              "dans SON dossier qu'un émulateur cherche, et il n'y est pas.",
+              file=sys.stderr)
+        return 1 if echecs else 0
+    try:
+        emulateurs = manifest.load_manifest(pathlib.Path(args.manifest),
+                                            _dossier(args.user_manifest))
+    except manifest.ManifestError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    portages = bios.place_bios(
+        profils, racine, pathlib.Path(args.emulation_root_local),
+        _install_dirs_pour(profils, emulateurs))
+    portes = [p for p in portages if p.state == bios.PORTE]
+    muets = [p for p in portages if p.state == bios.SANS_DOSSIER]
+    casses = [p for p in portages
+              if p.state not in (bios.PORTE, bios.DEJA_PORTE,
+                                 bios.SANS_DOSSIER)]
+    for p in portes:
+        print(f"  → {p.profile} : {p.name} porté dans {p.detail}")
+    for p in casses:
+        print(f"  ! {p.profile} : {p.name} — {p.detail}", file=sys.stderr)
+    for p in muets:
+        print(f"  ? {p.profile} : {p.detail} ({p.name})", file=sys.stderr)
+    return 1 if echecs or casses else 0
+
+
 def _cmd_status(args) -> int:
     """Le rapport lisible. Une consultation, jamais une validation : elle ne
     modifie rien et rend 0 même quand des problèmes sont signalés — les
@@ -772,6 +876,27 @@ def _build_parser() -> argparse.ArgumentParser:
         "identite",
         help="dit quelle construction du paquet tourne ici (une ligne)")
     idt.set_defaults(func=_cmd_identite)
+
+    bio = sous.add_parser(
+        "bios",
+        help="obtient les BIOS manquants depuis la source de VOTRE manifeste")
+    bio.add_argument("--bios", required=True,
+                     help="dossier où le propriétaire dépose ses BIOS")
+    bio.add_argument("--profiles", default=str(DEFAULT_PROFILES))
+    bio.add_argument("--user-profiles", default=None, help=_AIDE_USER_PROFILES)
+    bio.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
+    bio.add_argument("--user-manifest", default=None,
+                     help="votre manifeste, le SEUL endroit où une source de "
+                          "BIOS se déclare : le noyau livré vit dans un dépôt "
+                          "public, et y pointer un dépôt de BIOS serait un "
+                          "acte de distribution")
+    bio.add_argument("--emulation-root-local", default=None,
+                     help="chemin par lequel CETTE machine atteint les "
+                          "émulateurs. Donné, chaque BIOS vérifié est aussi "
+                          "PORTÉ dans le dossier où son émulateur cherche — "
+                          "sans quoi le rapport peut être vert sur des BIOS "
+                          "qu'aucun émulateur ne voit")
+    bio.set_defaults(func=_cmd_bios)
 
     st = sous.add_parser(
         "status", help="rapport lisible : émulateurs, jeux, BIOS, problèmes"

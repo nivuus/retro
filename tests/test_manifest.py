@@ -204,3 +204,81 @@ profile = "retroarch"
     message = str(exc.value)
     assert "retroarch" in message      # la clé en conflit
     assert "extracteur" in message     # les deux entrées, nommées
+
+
+# --- la source des BIOS ----------------------------------------------------
+#
+# Le paquet ne distribue aucun BIOS. Ce mécanisme n'y change rien : il porte
+# une adresse QUE LE PROPRIÉTAIRE A ÉCRITE, dans SON manifeste. Le noyau,
+# livré dans un dépôt public, ne doit jamais en déclarer — y pointer un dépôt
+# de BIOS est un acte de distribution.
+
+SOURCE = """
+schema = 1
+[bios]
+base_url = "https://exemple.invalid/BIOS"
+"""
+
+
+def ecrire_toml(tmp_path, nom, texte):
+    p = tmp_path / nom
+    p.write_text(texte, encoding="utf-8")
+    return p
+
+
+def test_sans_table_bios_il_n_y_a_pas_de_source(tmp_path):
+    """Le cas NORMAL. `retro bios` ne télécharge alors rien et le dit ; il
+    n'invente pas d'adresse."""
+    assert manifest.load_bios_source(
+        ecrire_toml(tmp_path, "core.toml", NOYAU)) is None
+
+
+def test_la_source_du_proprietaire_surcharge_le_noyau(tmp_path):
+    core = ecrire_toml(tmp_path, "core.toml", NOYAU)
+    user = ecrire_toml(tmp_path, "user.toml", SOURCE)
+    src = manifest.load_bios_source(core, user)
+    assert src.base_url == "https://exemple.invalid/BIOS"
+    assert src.url_for("scph5501.bin") == \
+        "https://exemple.invalid/BIOS/scph5501.bin"
+
+
+def test_une_source_en_clair_est_refusee(tmp_path):
+    """En HTTP, n'importe qui sur le chemin substitue le fichier. L'empreinte
+    le rattraperait — mais après le transfert, et sans distinguer une
+    substitution d'un miroir périmé."""
+    with pytest.raises(manifest.ManifestError, match="HTTPS"):
+        manifest.load_bios_source(
+            ecrire_toml(tmp_path, "c.toml",
+                        SOURCE.replace("https://", "http://")))
+
+
+def test_une_source_vide_est_refusee(tmp_path):
+    """La table existe : quelqu'un a voulu déclarer une source. Vide, elle ne
+    téléchargerait rien, et « aucune source » aurait l'air d'être un choix."""
+    with pytest.raises(manifest.ManifestError, match="base_url"):
+        manifest.load_bios_source(
+            ecrire_toml(tmp_path, "c.toml",
+                        SOURCE.replace('"https://exemple.invalid/BIOS"', '""')))
+
+
+def test_un_sous_chemin_deplace_le_fichier_chez_la_source(tmp_path):
+    """Le nom que le profil déclare est celui du fichier DANS LE DOSSIER DU
+    PROPRIÉTAIRE ; la source peut le ranger ailleurs. Mesuré sur un miroir
+    réel : dc_boot.bin y vit sous « dc/ ». Les deux ne se confondent pas."""
+    src = manifest.load_bios_source(ecrire_toml(
+        tmp_path, "c.toml",
+        SOURCE + '\n[bios.paths]\n"dc_boot.bin" = "dc/dc_boot.bin"\n'))
+    assert src.url_for("dc_boot.bin") == \
+        "https://exemple.invalid/BIOS/dc/dc_boot.bin"
+    # Ce qui n'est pas dans la table garde son nom.
+    assert src.url_for("gba_bios.bin") == \
+        "https://exemple.invalid/BIOS/gba_bios.bin"
+
+
+def test_un_sous_chemin_vide_est_refuse(tmp_path):
+    """Vide, il ferait construire une adresse qui s'arrête au dossier — une
+    URL d'apparence normale qui ne rend aucun fichier."""
+    with pytest.raises(manifest.ManifestError, match="paths"):
+        manifest.load_bios_source(ecrire_toml(
+            tmp_path, "c.toml",
+            SOURCE + '\n[bios.paths]\n"dc_boot.bin" = ""\n'))

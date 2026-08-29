@@ -50,6 +50,105 @@ class Emulator:
     parts: tuple[Part, ...] = ()
 
 
+@dataclasses.dataclass(frozen=True)
+class BiosSource:
+    """D'où le propriétaire fait venir ses BIOS, quand il en déclare une.
+
+    CE PAQUET NE DISTRIBUE AUCUN BIOS, et cette classe ne change rien à cela :
+    elle porte une URL QUE LE PROPRIÉTAIRE A ÉCRITE, exactement comme le
+    manifeste porte celles des émulateurs. Le manifeste NOYAU, livré avec le
+    paquet dans un dépôt public, n'en déclare aucune et ne doit jamais en
+    déclarer : pointer un dépôt de BIOS depuis un dépôt public est un acte de
+    distribution, le même raisonnement qui tient les émulateurs au statut
+    contesté hors d'ici.
+
+    CE QUI REND UNE SOURCE UTILISABLE N'EST PAS SA RÉPUTATION, C'EST
+    L'EMPREINTE. Le fichier téléchargé est comparé au md5 que le PROFIL
+    déclare — jamais à un md5 fourni par la source elle-même, qui n'attesterait
+    que d'elle. Une source qui rend autre chose est refusée en le nommant, et
+    rien n'est écrit : un BIOS faux ne se distingue pas d'un BIOS absent avant
+    d'être en jeu, sur un canapé, sans clavier.
+    """
+    base_url: str
+    # CE QUE LA SOURCE RANGE AILLEURS QUE SOUS SON NOM.
+    #
+    # Le nom qu'un profil déclare est celui du fichier DANS VOTRE DOSSIER DE
+    # BIOS ; la source, elle, peut le ranger sous un sous-chemin. Mesuré le
+    # 2026-08-29 sur un miroir réel : `dc_boot.bin` y vit sous « dc/ », et les
+    # BIOS de plateau d'arcade sous « fbneo/ ». Ce n'est pas une lubie du
+    # miroir — c'est la disposition que les cores libretro attendent sous leur
+    # propre dossier système.
+    #
+    # Ces deux choses ne se confondent PAS, et c'est pourquoi la table vit ici
+    # plutôt que dans le profil : le sous-chemin est une propriété de LA
+    # SOURCE, qui change avec elle, pas du BIOS. Le mettre au profil aurait
+    # gravé la disposition d'un miroir dans un fichier livré à tout le monde.
+    #
+    # Rien n'est DEVINÉ. Une source qui range autrement rend 404, et « retro
+    # bios » le dit en donnant l'URL essayée : c'est une ligne à écrire ici,
+    # pas une heuristique à écrire dans le code.
+    paths: tuple[tuple[str, str], ...] = ()
+
+    def url_for(self, nom: str) -> str:
+        """L'adresse d'UN fichier. Le nom est celui que le profil déclare ;
+        la table `paths` dit où la source le range, quand ce n'est pas là."""
+        for declare, chemin in self.paths:
+            if declare.lower() == nom.lower():
+                nom = chemin
+                break
+        return f"{self.base_url.rstrip('/')}/{nom.lstrip('/')}"
+
+
+def load_bios_source(core: pathlib.Path,
+                     user: pathlib.Path | None = None) -> BiosSource | None:
+    """La source de BIOS déclarée, ou None — et None est le cas NORMAL.
+
+    Sans source, `retro bios` ne télécharge rien et le dit ; il ne se tait pas,
+    et il n'invente pas d'adresse.
+    """
+    brut = dict(_lire_table(core, obligatoire=True, table="bios"))
+    if user is not None:
+        brut.update(_lire_table(user, obligatoire=False, table="bios"))
+    if not brut:
+        return None
+    url = brut.get("base_url")
+    if not isinstance(url, str) or not url.strip():
+        raise ManifestError(
+            "[bios] : 'base_url' manquante ou vide. La table existe donc "
+            "quelqu'un a voulu déclarer une source ; vide, elle ne "
+            "téléchargerait rien et « aucune source » aurait l'air d'être un "
+            "choix alors que c'est une faute de frappe."
+        )
+    if not url.startswith("https://"):
+        raise ManifestError(
+            f"[bios] base_url = {url!r} : le téléchargement se fait en HTTPS. "
+            "En clair, n'importe qui sur le chemin peut substituer le fichier "
+            "— l'empreinte le rattraperait, mais après le transfert, et sans "
+            "que rien ne dise que c'est une substitution plutôt qu'un miroir "
+            "périmé."
+        )
+    chemins = brut.get("paths", {})
+    if not isinstance(chemins, dict):
+        raise ManifestError(
+            "[bios.paths] doit être une table « nom déclaré = sous-chemin » "
+            '(par exemple : "dc_boot.bin" = "dc/dc_boot.bin"). Un autre type '
+            "ne serait comparé à aucun nom, et le fichier serait redemandé à "
+            "la racine de la source, où il n'est pas."
+        )
+    mauvais = [repr(k) for k, v in chemins.items()
+               if not isinstance(v, str) or not v.strip()]
+    if mauvais:
+        raise ManifestError(
+            f"[bios.paths] : sous-chemin vide ou non textuel pour "
+            f"{', '.join(mauvais)}. Vide, il ferait construire une adresse qui "
+            "s'arrête au dossier — une URL d'apparence normale qui ne rend "
+            "aucun fichier."
+        )
+    return BiosSource(base_url=url.strip(),
+                      paths=tuple(sorted((k, v.strip())
+                                         for k, v in chemins.items())))
+
+
 def _lire(path: pathlib.Path, obligatoire: bool) -> dict:
     if not path.exists():
         if obligatoire:
@@ -66,6 +165,31 @@ def _lire(path: pathlib.Path, obligatoire: bool) -> dict:
             f"{path} déclare schema = {schema}, ce paquet lit le schéma {SCHEMA}"
         )
     return data.get("emulator", {})
+
+
+def _lire_table(path: pathlib.Path, obligatoire: bool, table: str) -> dict:
+    """Une AUTRE table du même fichier, aux mêmes conditions de schéma.
+
+    `_lire` ci-dessus ne rend que `[emulator]`, et c'est ce qu'il doit faire :
+    son appelant construit des émulateurs. Une seconde table se lit par ici
+    plutôt qu'en élargissant la première, dont chaque appelant aurait alors à
+    trier le contenu.
+    """
+    if not path.exists():
+        if obligatoire:
+            raise ManifestError(f"manifeste introuvable : {path}")
+        return {}
+    try:
+        with path.open("rb") as f:
+            data = tomllib.load(f)
+    except tomllib.TOMLDecodeError as exc:
+        raise ManifestError(f"{path} n'est pas du TOML valide : {exc}") from exc
+    if data.get("schema") != SCHEMA:
+        raise ManifestError(
+            f"{path} déclare schema = {data.get('schema')}, ce paquet lit le "
+            f"schéma {SCHEMA}"
+        )
+    return data.get(table, {})
 
 
 def _valider_install_dir(cle: str, valeur: str) -> None:
