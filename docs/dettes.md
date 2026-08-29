@@ -87,7 +87,7 @@ l'exige, sur le modèle exact de la garde qui existe déjà pour l'amorçage.
 | RPCS3 | dédiée | `config\input_configs\` | non relevée |
 | Xemu | générale | `xemu.toml` | non relevée |
 | Vita3K | générale | `config.yml` | non relevée, et hors de portée tant que D5 dure |
-| DuckStation | générale | `settings.ini`, section `[Pad1]` | non relevée, et non mesurable tant que D3 dure |
+| DuckStation | générale | `settings.ini`, section `[Pad1]` | **relevée** — `LargeMotor`, `SmallMotor` — mais jamais vue vibrer |
 
 **Aucune case de ce tableau n'est une mesure**, hors la dernière ligne : les
 colonnes « famille » et « cible » reprennent le tableau de la tâche 6 du plan
@@ -98,10 +98,19 @@ ligne Vita3K est en outre en amont de toutes les autres : l'émulateur ne
 s'installe pas (D5), aucune cible écrivable ne désigne encore son
 `config.yml`, et rien n'y sera mesurable avant que ce point soit levé.
 
-DuckStation est délibérément sans note dans son profil : sa manette entière est
-muette (D3), et sur un émulateur dont aucun bouton ne répond, la vibration
-n'est pas mesurable. Le test l'exempte nommément, et retirer cette exemption le
-jour où D3 se clôt le rend rouge — c'est le rappel voulu.
+**Le rappel a joué le 2026-08-29.** DuckStation était délibérément sans note
+dans son profil : sa manette entière était muette (D3), et sur un émulateur
+dont aucun bouton ne répond, la vibration n'est pas mesurable. Le test
+l'exemptait nommément, en disant que retirer l'exemption le jour où D3 se clôt
+le rendrait rouge. **D3 s'est close, l'exemption est retirée, et elle est
+désormais VIDE** (`SANS_NOTE_DE_VIBRATION` dans `tests/test_donnees.py`) : les
+dix profils livrés disent tous où en est leur vibration.
+
+Ce que DuckStation en dit, et c'est tout ce qu'on en sait : ses deux liaisons
+de vibration ont été écrites par son propre assistant, elles ont la bonne
+forme, et **personne ne les a vues faire vibrer quoi que ce soit**. Le maillon
+« émulateur → SDL → ViGEmBus » est désormais testable sans nouveau relevé — il
+suffit de jouer, avec la manette qui répond depuis la clôture de D3.
 
 **Le maillon Apollo → client, et la procédure de mesure que le propriétaire
 joue au canapé**, vivent dans `nivuus/installer`, `docs/console-dettes.md`,
@@ -207,19 +216,13 @@ profil — deux champs distincts, `content` (posé une fois, jamais retouché) e
 pourrait mettre en contradiction avec ce que le bloc contient. Un même
 couple section/clé dans les deux est **refusé** au chargement.
 
-Pour DuckStation, `enforced` porte **trois clés** : `SetupWizardIncomplete`,
-`StartFullscreen`, `CheckAtStartup`. Ce sont les trois causes mesurées d'un
-lancement qui échoue. `ConfirmPowerOff`, `PauseOnFocusLoss`,
-`SaveStateOnExit`, `InhibitScreensaver` et `HideCursorInFullscreen` restent
-des préférences : changées dans l'émulateur, elles tiennent.
-
-**Ce qui reste, et qui n'est pas une paresse** : le nom de la clé de rendu
-n'est toujours pas relevé — le binaire assemble ses littéraux dans le code —
-et sous `-batch -nogui` DuckStation ne réécrit jamais son fichier, donc le
-relevé demande de l'ouvrir une fois hors du chemin de la console. Le geste
-est écrit dans le profil ; la clé rejoindra `enforced` le jour où elle sera
-relevée. **D3 n'aura qu'à ajouter sa section `[Pad1]` au même champ** — rien
-d'autre à écrire.
+Pour DuckStation, `enforced` portait au matin du 2026-08-29 **trois clés** :
+`SetupWizardIncomplete`, `StartFullscreen`, `CheckAtStartup` — les trois causes
+mesurées d'un lancement qui échoue. Il en porte **trente-deux** au soir : les
+vingt-sept liaisons de `[Pad1]` (D3), puis `CropMode`, `ForceAnalogOnReset`, et
+les trois d'origine. `ConfirmPowerOff`, `PauseOnFocusLoss`, `SaveStateOnExit`,
+`InhibitScreensaver` et `HideCursorInFullscreen` restent des préférences :
+changées dans l'émulateur, elles tiennent.
 
 Un piège documenté plutôt que découvert : le relevé de la manette exige de
 repasser `SetupWizardIncomplete` à `true` et de lancer DuckStation hors du
@@ -227,14 +230,102 @@ chemin de la console. Le lancement suivant par la console le remettra à
 `false`, et **c'est voulu** — c'est le rôle même de `enforced`. Le profil le
 dit, pour que personne ne croie son relevé saboté.
 
+### D2 est CLOSE POUR DUCKSTATION — 2026-08-29
+
+`[Display] CropMode = Borders`, dans `enforced`. **Confirmé par le
+propriétaire : plus aucune bande.** Le cas dur énoncé en tête de cette dette —
+« pour lui, ça devra passer par son `settings.ini` » — est donc réglé, par le
+mécanisme de fusion que l'arbitrage du matin a permis de construire.
+
+D2 **reste ouverte** pour tout le reste : le remplissage de DuckStation, et les
+six systèmes qui n'ont aucun bloc de rendu du tout.
+
+#### La leçon, qui vaut plus que le réglage
+
+**Deux tentatives ont échoué avant, et pour la même raison.** Les **chaînes du
+binaire** donnent les **libellés de l'interface** — `All Borders`,
+`Auto (Game Native)` — et **pas** les valeurs du fichier de configuration. Les
+recopier produit une clé qui a l'air posée et qui ne fait rien.
+
+Les vraies valeurs sont dans la **source** de DuckStation,
+`src/core/settings.cpp`, tableau `s_display_crop_mode_names` :
+
+    None, Overscan, OverscanUncorrected, Borders, BordersUncorrected
+
+La même lecture a tranché `AspectRatio` : il **n'a pas** de tableau statique —
+ses valeurs sont en minuscules (`auto`, `stretch`, `PAR 1:1`) ou un ratio
+littéral. **`AspectRatio = Auto` est donc faux, et a été retiré.**
+
+Ce que ces deux échecs confirment, et c'est la règle de fond de ce dépôt :
+**une valeur fausse se comporte exactement comme l'absence de valeur.** Elle ne
+produit aucun message, aucune ligne de journal, aucun symptôme distinct. La
+même leçon est écrite dans `docs/releve-manettes.md`, parce que c'est là qu'on
+la relit avant de recopier une valeur.
+
+#### `Scaling` est un filtre, pas un cadrage
+
+Mesuré le 2026-08-29 : **`Scaling = BilinearSmooth` a été posé, il a été
+reconnu, et il n'a rien changé à la géométrie de l'image.** Il ne fait donc
+**pas** partie du correctif, et le présenter comme tel ferait croire le cadrage
+réglé par lui.
+
+Ce que cela déplace pour le **remplissage** : le couple section/clé n'est plus
+l'inconnue — c'est `[Display] Scaling`. Ce qui reste non mesuré, et qui interdit
+d'écrire quoi que ce soit : personne n'a vu `NearestInteger` ni
+`BilinearInteger` agir sur la machine.
+
+### 🔴 Une découverte qui invalide une hypothèse de la conception de D2
+
+**DuckStation réécrit son `settings.ini` à une fermeture propre depuis son
+interface, et il en EFFACE TOUS LES COMMENTAIRES.** Mesuré le 2026-08-29 : le
+fichier est passé de **2187 à 985 octets**. Les clés ont survécu — `[Pad1]`,
+`[BIOS] SearchDirectory`, `SetupWizardIncomplete` ; les commentaires, non.
+
+Or D2 a construit ce matin même un **en-tête en trois catégories** — ce que la
+console impose, ce qu'elle a posé une fois, ce qui appartient au propriétaire —
+et une garde au chargement qui **refuse un profil dont le `content` ne
+l'explique pas**. **Cet en-tête disparaîtra au premier lancement en
+interface.** Le mécanisme `enforced` repose bien les clés au lancement suivant ;
+**rien ne repose l'explication** que le propriétaire est censé lire. Sous
+`-batch -nogui` — le seul mode que la console emploie — la réécriture n'a pas
+lieu : c'est le passage par l'interface qui efface.
+
+**Ce n'est pas corrigé, délibérément. L'arbitrage appartient au propriétaire :**
+
+> **Accepte-t-on qu'un `settings.ini` puisse se retrouver sans son en-tête
+> explicatif après un passage par l'interface de DuckStation — oui ou non ?**
+
+Si **oui**, il n'y a rien à faire, et la garde du `content` protège alors le
+dépôt, pas la machine : elle garantit que le profil livré porte l'explication,
+pas que le fichier de la console la porte encore. Si **non**, l'en-tête devient
+une chose que `enforced` doit reposer comme il repose les clés — ce que le
+mécanisme de fusion ne sait pas faire aujourd'hui, puisqu'il ne connaît que des
+couples section/clé.
+
+#### Et un faux oracle, issu de la même mesure
+
+**« La clé a survécu » ne prouve PAS « la clé est reconnue ».**
+`DisplayCropMode`, une clé **inventée**, a survécu à cette réécriture aussi :
+DuckStation conserve ce qu'il ne comprend pas. C'est écrit ici pour que
+personne ne s'en serve comme preuve — **la seule preuve reste l'effet observé.**
+
 ---
 
-## D3 — DuckStation : liaisons relevées, réponse en jeu NON vérifiée
+## D3 — DuckStation : la manette ne répond pas — RÉGLÉE le 2026-08-29
 
-> **Cette dette n'est pas réglée.** Les liaisons existent, elles ont été
-> écrites par DuckStation lui-même, elles sont dans le profil livré. Il manque
-> la seule preuve qui compte : **personne n'a vu un bouton faire quelque chose
-> dans un jeu.** Tant que ce n'est pas fait, D3 reste ouverte.
+> **Cette dette est réglée.** La preuve qui manquait a été faite : **Crash Team
+> Racing répond à la manette**, confirmé par le propriétaire le 2026-08-29 —
+> le jeu qui était le défaut d'origine. Les trois conditions de la procédure
+> sont remplies.
+>
+> **Elle n'a pas été réglée par les liaisons seules.** Il a fallu une seconde
+> clé, `[Pad1] ForceAnalogOnReset = false`, sans laquelle les vingt-sept
+> liaisons étaient justes et le jeu restait muet. Deux causes, un seul
+> symptôme : c'est le fait le plus utile de cette entrée.
+>
+> **DuckStation ne trouve toujours pas sa manette seul.** Il ne la trouve que
+> parce que la console lui impose vingt-huit clés à chaque lancement. Le
+> profil ne déclare donc PAS `auto` — voir plus bas.
 
 **Constaté le 2026-08-28**, après les correctifs de manette du même jour
 (retrait de `SDL_GAMECONTROLLER_IGNORE_DEVICES` par le lanceur, extinction de
@@ -312,14 +403,16 @@ d'une recette.
 - **Le fait n° 4 du plan des manettes est rectifié** : DuckStation ne « détecte
   pas bien tout seul », et le tableau de sa tâche 6 le dit désormais.
 - **Les neuf profils déclarent l'état du relevé de leur manette** —
-  `[input] mapping`, valant `auto`, `a-relever` ou `inconnu`, défaut `inconnu`.
-  Le champ ne porte JAMAIS un identifiant : il porte l'état du relevé, seule
-  chose qu'on puisse écrire sans avoir mesuré. DuckStation vaut `a-relever` ;
-  les huit autres valent `inconnu`, parce que personne ne les a mesurés.
-- **`retro status` a une section « Manettes »**, avec trois formulations, et
-  fait du seul `a-relever` un problème nommant le fichier à ouvrir, la
-  procédure à jouer, et la phrase qui empêche la fausse correction : « une
-  liaison qui ne correspond à aucun périphérique est ignorée en silence ».
+  `[input] mapping`, valant alors `auto`, `a-relever` ou `inconnu`, défaut
+  `inconnu`. Le champ ne porte JAMAIS un identifiant : il porte l'état du
+  relevé, seule chose qu'on puisse écrire sans avoir mesuré. DuckStation valait
+  `a-relever` ; les huit autres valent `inconnu`, parce que personne ne les a
+  mesurés. *(Un quatrième état est né le soir même, à la clôture : voir plus
+  bas.)*
+- **`retro status` a une section « Manettes »**, et fait du seul `a-relever` un
+  problème nommant le fichier à ouvrir, la procédure à jouer, et la phrase qui
+  empêche la fausse correction : « une liaison qui ne correspond à aucun
+  périphérique est ignorée en silence ».
 - **La procédure de relevé est écrite** : `docs/releve-manettes.md`. Elle ne
   demande de recopier aucune valeur — elle rouvre l'assistant de DuckStation le
   temps d'un appariement automatique et fait écrire `[Pad1]` par DuckStation
@@ -336,53 +429,104 @@ d'une recette.
   depuis l'interface de DuckStation**, puisque le lancement suivant repose les
   liaisons.
 
-### Ce qui reste — et pourquoi D3 N'EST PAS RÉGLÉE
+### Ce qui a CLOS D3, le 2026-08-29 au soir
 
-La procédure pose **trois** conditions pour tenir un relevé pour bon. Deux sont
-remplies, la troisième ne l'est pas :
+La procédure pose **trois** conditions pour tenir un relevé pour bon. **Les
+trois sont remplies**, la troisième ce jour-là :
 
 | Condition | État |
 |---|---|
-| `[Pad1]` existe et porte des clés qui n'y étaient pas | ✅ vingt-sept |
+| `[Pad1]` existe et porte des clés qui n'y étaient pas | ✅ vingt-sept liaisons |
 | ces lignes ont été écrites par DuckStation, pas à la main | ✅ par son assistant |
-| **un jeu lancé depuis Steam répond à la manette** | ❌ **non vérifié** |
+| **un jeu répond à la manette** | ✅ **Crash Team Racing, confirmé par le propriétaire** |
 
-C'est la troisième qui compte, et c'est celle qui manque. Ce n'est pas un
-détail de forme : **DuckStation ne dira jamais qu'une liaison ne correspond à
-rien.** Une valeur juste et une valeur fausse produisent le même silence. Tant
-que personne n'a vu un bouton agir dans un jeu, ces vingt-sept lignes sont une
-hypothèse bien fondée, pas une manette qui marche.
+La troisième était celle qui comptait, et pour une raison qui n'a pas changé :
+**DuckStation ne dira jamais qu'une liaison ne correspond à rien.** Une valeur
+juste et une valeur fausse produisent le même silence. C'est pourquoi seule une
+manette vue répondre dans un jeu pouvait clore cette dette — et pourquoi aucune
+relecture de fichier n'aurait suffi.
 
-S'ajoute une raison matérielle de ne pas conclure : **le relevé a été restauré**
-sur l'invité à la fin de l'opération. La console n'a plus de `[Pad1]`, et rien
-n'y a été joué depuis. Les liaisons n'existent aujourd'hui que dans le profil ;
-elles n'auront été posées qu'au prochain `retro launcher`.
+#### Le relevé ne suffisait pas : une SECONDE cause, même symptôme
 
-**Pour la clore, dans cet ordre :**
+`[Pad1] ForceAnalogOnReset = false`, désormais dans `enforced`. **Confirmé par
+le propriétaire : la manette répond dès le lancement, sans bascule manuelle.**
 
-1. Lancer `retro launcher` pour que l'amorçage repose le `settings.ini`, puis
-   vérifier que `[Pad1]` y est bien et que `SetupWizardIncomplete` vaut `false`.
-2. **Lancer un jeu depuis Steam, manette en main, et voir un bouton agir.**
-   C'est la seule preuve. Crash Team Racing est le cas d'origine.
-3. Vérifier au passage l'index : `SDL-0` désigne la PREMIÈRE manette énumérée.
-   S'il y en a une autre branchée, ce n'est pas celle d'Apollo, et le symptôme
-   sera identique à la panne d'origine.
-4. Alors seulement basculer `[input] mapping` de `a-relever` vers ce que la
-   mesure dit, dans `retro/data/profiles/duckstation.toml`.
+Source : `src/core/analog_controller.cpp`. `ForceAnalogOnReset` est un booléen,
+**de défaut `true`**, décrit *« Forces the controller to analog mode when the
+game is started/restarted »*. Crash Team Racing est un jeu **d'avant
+l'analogique** : forcé en mode analogique, il ne répond pas. Le message
+« passage manette 1 en mode numérique », affiché après une bascule à la main,
+réparait exactement ce symptôme — c'est ce qui a mis sur la piste.
 
-Le champ `mapping` reste **`a-relever`** jusque-là, et `retro status` continue
-donc de signaler DuckStation. C'est voulu : `auto` dirait que DuckStation trouve
-sa manette seul, ce qui est faux — il ne la trouve que parce que la console lui
-impose vingt-sept liaisons.
+**Les vingt-sept liaisons étaient donc justes pendant que le jeu restait
+muet.** Deux causes indiscernables l'une de l'autre vu du canapé, et c'est le
+fait à retenir de cette entrée.
 
-**Ce que ça coûte aujourd'hui :** le seul émulateur PlayStation de la console
-est toujours réputé injouable, faute d'avoir été essayé. La différence avec
-hier, c'est qu'un essai a maintenant une chance d'aboutir.
+**L'arbitrage, et il se paie.** `ForceAnalogOnReset` est un réglage **global**,
+pas par jeu. Les titres qui veulent l'analogique — **Gran Turismo, Ape Escape,
+Metal Gear Solid** — démarreront donc en mode **numérique**. La bascule existe
+en jeu et elle est mappée : `Analog = SDL-0/Guide`, le bouton Guide du pad.
+Deux clés voisines ont été lues et **non retenues**, faute d'avoir été mesurées :
+`AnalogDPadInDigitalMode` (défaut `true`) et `AnalogSensitivity` (défaut 1.33).
 
-**Un essai AU FLUX reste bloqué** par le `perm=0x3000000` du client appairé
-(`403 Permission denied` au `/launch`). Qui voudra vérifier dans les conditions
-réelles — session Moonlight, pad d'Apollo, canapé — devra d'abord régler ce
-`perm`. Voir `docs/console-dettes.md` de `nivuus/installer`.
+#### `[input] mapping` : aucun des trois états existants n'était vrai
+
+Le champ vaut désormais **`releve`**, un **quatrième** état ajouté ce jour-là
+(`retro/profiles.py`, `MAPPING_RELEVE`). Les trois autres ont été écartés un
+par un, et le raisonnement est le cœur de cette clôture :
+
+- **`auto`** — « cet émulateur trouve sa manette seul » — aurait été **faux**,
+  et faux de la façon exacte que cette dette a réfutée : DuckStation ne trouve
+  sa manette **que** parce que la console lui impose vingt-huit clés. Le jour
+  où quelqu'un « simplifierait » ce champ en `auto`, plus rien dans le dépôt ne
+  dirait que retirer `enforced` rend la console muette.
+- **`a-relever`** — « il ne la trouve pas, rien n'est relevé » — serait devenu
+  faux aussi : `retro status` annoncerait « manette muette » sur le seul
+  émulateur dont un bouton ait été VU agir, et le propriétaire apprendrait à
+  ignorer la section.
+- **`inconnu`** effacerait la mesure.
+
+Plutôt que de tordre l'un des trois, le vocabulaire s'est allongé. `releve` dit
+exactement ce qui a été constaté : *le relevé est fait, les liaisons sont
+imposées, et un bouton a été vu répondre.* `mapping_where` y reste **exigé**,
+pour la raison inverse d'avant : c'est le seul endroit où vérifier que les
+liaisons imposées y sont encore.
+
+#### ⚠️ Ce que la clôture NE dit PAS
+
+- **Rien sur la vibration.** `LargeMotor` et `SmallMotor` ont la bonne forme,
+  personne ne les a vus faire vibrer quoi que ce soit — c'est D1, et le maillon
+  « émulateur → SDL → ViGEmBus » y devient seulement *testable*.
+- **La FRAGILITÉ 1 n'est pas levée.** `SDL-0` est un **index**, pas un GUID. Un
+  pad de plus énuméré avant celui d'Apollo — une DualShock 4 laissée branchée,
+  un pad du client — et les vingt-sept liaisons visent un périphérique absent.
+  DuckStation ne le dira pas : le symptôme sera identique à la panne d'origine.
+- **La FRAGILITÉ 2 non plus** : le propriétaire ne peut pas remapper sa manette
+  depuis l'interface de DuckStation, `enforced` reposant les liaisons à chaque
+  lancement. C'est le prix assumé, écrit dans le profil.
+- **Un essai AU FLUX n'a toujours pas eu lieu.** Le `perm=0x3000000` du client
+  appairé (`403 Permission denied` au `/launch`) bloque l'ouverture d'une
+  session Moonlight. La confirmation du propriétaire vaut ce qu'elle vaut :
+  une manette qui répond dans le jeu. Qui voudra vérifier dans les conditions
+  du canapé — session Moonlight, pad d'Apollo — devra d'abord régler ce `perm`.
+  Voir `docs/console-dettes.md` de `nivuus/installer`.
+
+### Ce que la clôture DÉBLOQUE
+
+**C2 et D4 attendaient « une manette qui répond » depuis le début. Elles sont
+débloquées.**
+
+- **D4** (ici même) posait l'ordre : « D3 d'abord (une manette qui répond),
+  puis le type de pad, puis le mouvement. Inverser, c'est déboguer deux
+  inconnues à la fois. » La première étape est franchie.
+- **C2** (`docs/console-dettes.md` de `nivuus/installer`) imposait le même
+  ordre pour la bascule d'Apollo vers une DualShock. Ce n'est plus une dette en
+  attente d'une autre : c'est la prochaine.
+
+**Ce que ça coûtait, et qui est réglé :** le seul émulateur PlayStation de la
+console était réputé injouable. Il ne l'est plus.
+
+---
 
 ## D4 — Ni capteur de mouvement, ni manette PlayStation
 
@@ -410,6 +554,22 @@ d'entrée.
 
 **Ordre :** D3 d'abord (une manette qui répond), puis le type de pad, puis le
 mouvement. Inverser, c'est déboguer deux inconnues à la fois.
+
+**D4 EST DÉBLOQUÉE — 2026-08-29.** La première étape de cet ordre est
+franchie : D3 est close, la manette répond dans DuckStation (Crash Team Racing,
+confirmé par le propriétaire). D4 n'attend donc plus rien qu'elle-même — c'est
+au type de pad de venir, et il se change dans `nivuus/installer` (C2).
+
+Deux précautions, qui ne sont pas levées par cette clôture :
+
+- **Ce qui rend D4 coûteuse n'a pas changé** : basculer Apollo en DualShock
+  change le VID/PID, donc le GUID SDL, donc les identifiants des configurations
+  d'entrée. C'est le fait n° 2 du plan des manettes.
+- **Sauf pour DuckStation, et c'est mesuré.** Ses liaisons ne portent qu'un
+  **index** (`SDL-0`), jamais un GUID — le relevé du matin l'a tranché sur le
+  binaire. Un changement de type de pad ne les casse donc pas mécaniquement.
+  Ce qui les casse, c'est un pad **de plus** énuméré avant celui d'Apollo. À
+  confirmer avant de s'en servir, mais c'est ce que le binaire dit.
 
 ---
 
