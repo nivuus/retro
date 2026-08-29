@@ -80,10 +80,27 @@ MARQUE_BOOTSTRAP = "Écrit par « retro »"
 # qui ne correspond à aucun périphérique est ignorée EN SILENCE, et la manette
 # reste muette exactement comme si le fichier était vide. Un profil ne peut
 # donc écrire honnêtement qu'une chose : où en est le relevé.
+#
+# QUATRE ÉTATS DEPUIS LE 2026-08-29, et le quatrième n'est pas un raffinement :
+# aucun des trois premiers ne pouvait dire ce que la clôture de D3 a mesuré.
+# Crash Team Racing a répondu à la manette, confirmé par le propriétaire.
+# Écrire `auto` aurait été FAUX — DuckStation ne trouve pas sa manette seul,
+# c'est précisément ce que D3 a réfuté, et il ne la trouve que parce que la
+# console lui impose vingt-sept liaisons. Garder `a-relever` aurait été faux
+# aussi — le relevé EST fait, et `retro status` aurait continué d'annoncer
+# « manette muette » sur le seul émulateur dont on ait vu un bouton agir.
+# `inconnu` aurait effacé la mesure. Plutôt que de tordre l'un des trois, le
+# vocabulaire s'allonge d'un état qui dit exactement ce qui a été constaté.
 MAPPING_AUTO = "auto"           # mesuré : cet émulateur trouve la manette seul
 MAPPING_A_RELEVER = "a-relever"  # mesuré : il ne la trouve pas, rien n'est relevé
+MAPPING_RELEVE = "releve"       # mesuré : relevé fait, imposé, et VU répondre
 MAPPING_INCONNU = "inconnu"     # personne n'a mesuré
-MAPPINGS = (MAPPING_AUTO, MAPPING_A_RELEVER, MAPPING_INCONNU)
+MAPPINGS = (MAPPING_AUTO, MAPPING_A_RELEVER, MAPPING_RELEVE, MAPPING_INCONNU)
+
+# Les deux états qui NOMMENT un fichier : dans les deux cas le propriétaire a
+# un endroit précis à ouvrir — celui où le relevé se fait, celui où les
+# liaisons relevées sont reposées. `mapping_where` y est donc exigé.
+MAPPINGS_AVEC_OU = (MAPPING_A_RELEVER, MAPPING_RELEVE)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -556,7 +573,7 @@ def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
 def _lire_mapping(path: pathlib.Path, entree: dict) -> tuple[str, str]:
     """L'état du relevé de la manette, validé, et l'endroit où il se fait.
 
-    Le défaut est `inconnu`, et ce choix se défend contre les deux autres :
+    Le défaut est `inconnu`, et ce choix se défend contre les trois autres :
 
     - `auto` par défaut ferait dire au rapport que neuf émulateurs trouvent
       leur manette seuls, ce que personne n'a mesuré. C'est très exactement le
@@ -564,7 +581,11 @@ def _lire_mapping(path: pathlib.Path, entree: dict) -> tuple[str, str]:
       relit sans qu'aucun code ne l'applique jamais, et qui a fait croire
       pendant tout un diagnostic que la question des manettes était traitée ;
     - `a-relever` par défaut accuserait huit émulateurs d'une panne que
-      personne n'a constatée, et noierait la seule qui l'a été.
+      personne n'a constatée, et noierait la seule qui l'a été ;
+    - `releve` par défaut serait le pire des quatre : il affirmerait qu'un
+      bouton a été VU répondre dans un jeu sur huit émulateurs où personne n'a
+      tenu de manette. C'est la seule affirmation de ce vocabulaire qui exige
+      un témoin humain, et elle ne peut jamais être un défaut.
 
     `inconnu` est le seul état vrai d'un profil qui se tait. Il n'est pas un
     problème — mais il est NOMMÉ, faute de quoi « personne n'a regardé » et
@@ -588,13 +609,15 @@ def _lire_mapping(path: pathlib.Path, entree: dict) -> tuple[str, str]:
             f"console. Reçu {ou!r}."
         )
     ou = ou.strip()
-    if etat == MAPPING_A_RELEVER and not ou:
+    if etat in MAPPINGS_AVEC_OU and not ou:
         raise ProfileError(
-            f"{path} [input] : 'mapping' vaut « {MAPPING_A_RELEVER} » mais "
+            f"{path} [input] : 'mapping' vaut « {etat} » mais "
             "'mapping_where' est vide. « Un constat sans chemin ni action "
             "n'aide personne » : le rapport dirait « la manette restera "
             "muette » sans dire quel fichier ouvrir, et cette panne-là ne se "
-            "constate que le pad en main, devant la télévision."
+            "constate que le pad en main, devant la télévision. Un relevé "
+            "clos doit nommer le même fichier, pour la raison inverse : c'est "
+            "là que le propriétaire ira voir si ses liaisons y sont encore."
         )
     return etat, ou
 
