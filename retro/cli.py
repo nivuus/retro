@@ -451,6 +451,13 @@ def _cmd_status(args) -> int:
             pathlib.Path(args.roms), profils, install_dirs,
             pathlib.Path(args.emulation_root),
         )
+        # Les dossiers d'application dont le NOM évoque une mise à jour.
+        # Ils sont dans l'inventaire ci-dessus — le scan ne peut pas prouver
+        # qu'ils n'en sont pas sans les ouvrir, et il ne les ouvre jamais —,
+        # donc chacun y double un jeu d'une entrée Steam qui lancerait le
+        # correctif seul. Ce rapport est le seul endroit où ça puisse se dire.
+        suspects = scan.suspected_update_dirs(pathlib.Path(args.roms), profils)
+
         etat_bios = bios.check_bios(profils, pathlib.Path(args.bios))
 
         # Steam Input, et seulement si la racine Steam est donnée. Un rapport
@@ -509,6 +516,7 @@ def _cmd_status(args) -> int:
             # section Amorçage annoncerait « pas encore amorcé » aussi
             # longtemps qu'il resterait en place, et rien ne dirait que le
             # geste à faire est de le recompiler.
+            dossiers_de_mise_a_jour=suspects,
             lanceur_perime=launcher_mod.lanceur_perime(
                 pathlib.Path(args.emulation_root)),
             # Quelle construction du paquet produit ce rapport. Le rapport le
