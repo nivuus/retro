@@ -38,6 +38,43 @@ Deux conséquences, et ce sont les fondations de cette page :
    squelette `[Pad1]` livré dans `duckstation.toml` est entièrement en
    commentaire.
 
+### La leçon du 2026-08-29 : les chaînes d'un binaire donnent les LIBELLÉS, pas les valeurs
+
+Elle ne vient pas du relevé des manettes mais de celui du cadrage (dette D2), et
+elle vaut pour **tout** ce qu'on écrit dans un fichier de configuration — donc
+pour cette page.
+
+**Deux tentatives ont échoué avant la bonne, et pour la même raison.** Chercher
+les valeurs de `CropMode` dans les **chaînes** de l'exécutable de DuckStation
+rend `All Borders`, `Auto (Game Native)` : ce sont les **libellés affichés dans
+l'interface**. Les valeurs que le fichier attend sont ailleurs — dans la
+**source**, `src/core/settings.cpp`, tableau `s_display_crop_mode_names` :
+`None`, `Overscan`, `OverscanUncorrected`, **`Borders`**,
+`BordersUncorrected`. La bonne valeur a fonctionné du premier coup une fois
+lue là.
+
+La même lecture a tranché `AspectRatio` : il **n'a pas** de tableau statique —
+ses valeurs sont en minuscules (`auto`, `stretch`, `PAR 1:1`) ou un ratio
+littéral. `AspectRatio = Auto` était donc faux, et a été retiré.
+
+**Ce que ces deux échecs confirment, et qui est la règle de cette page :**
+
+> **Une valeur fausse se comporte exactement comme l'absence de valeur.**
+
+Pas de message, pas de ligne de journal, pas de symptôme distinct. C'est vrai
+d'une liaison de manette, c'est vrai d'un mode de cadrage, et c'est pour cela
+qu'une valeur se relève au lieu de se recopier.
+
+**Deux corollaires mesurés le même jour, sur le même émulateur :**
+
+- **« La clé a survécu » ne prouve pas « la clé est reconnue ».**
+  `DisplayCropMode`, une clé **inventée**, a survécu à une réécriture complète
+  du fichier par DuckStation. Il conserve ce qu'il ne comprend pas. La survie
+  est donc un **faux oracle** — la seule preuve est l'effet observé.
+- **Une clé reconnue peut ne pas faire ce qu'on croit.** `Scaling =
+  BilinearSmooth` a été posé, il a été reconnu, et il n'a **rien** changé à la
+  géométrie de l'image : `Scaling` est un **filtre**, pas un cadrage.
+
 ---
 
 ## Ce qu'il faut avant de commencer
@@ -354,10 +391,23 @@ python3 <installer>/console/guest/winrm_exec.py ps '$f="$env:USERPROFILE\Documen
   manette relevée doit donc être IMPOSÉE, ou elle n'arrivera jamais là où elle
   manque.
 - **Basculer le profil** : `retro/data/profiles/duckstation.toml`, bloc
-  `[input]`, de `mapping = "a-relever"` vers ce que la mesure dit. Il y reste
-  tant que la **troisième condition de l'étape 4** — un jeu qui répond à la
-  manette — n'a pas été vue. Si la manette répond sans qu'on ait rien eu à
-  écrire, c'est `auto`. `retro status` cessera alors de le signaler.
+  `[input]`, de `mapping = "a-relever"` vers ce que la mesure dit. **Fait le
+  2026-08-29 : le champ vaut `releve`.** Les trois conditions de l'étape 4 sont
+  remplies — Crash Team Racing répond à la manette, confirmé par le
+  propriétaire. `retro status` a cessé de le signaler comme un problème, et
+  continue de le nommer avec son fichier.
+  **Ce n'est PAS `auto`**, et la distinction est le cœur de la clôture : `auto`
+  veut dire « l'émulateur trouve sa manette seul », et DuckStation ne la trouve
+  **que** parce que la console lui impose vingt-huit clés. Aucun des trois
+  états d'origine ne pouvait dire cela ; un quatrième a donc été ajouté.
+- **Une liaison ne suffisait pas — la seconde cause, à connaître avant de
+  conclure un relevé.** Les vingt-sept liaisons étaient justes et Crash Team
+  Racing ne répondait toujours à **aucun bouton**. La cause était
+  `[Pad1] ForceAnalogOnReset`, booléen de défaut `true`
+  (`src/core/analog_controller.cpp`) : CTR est un jeu **d'avant l'analogique**
+  et ne répond pas en mode analogique forcé. Le passer à `false` a réglé la
+  panne. **Avant de conclure qu'un relevé a échoué, vérifier qu'aucun réglage
+  de MODE ne rend le jeu sourd à des liaisons pourtant justes.**
 
 ---
 
@@ -373,7 +423,15 @@ Après chaque relevé, mettre à jour le `[input]` du profil concerné :
 |---|---|
 | la manette répond sans rien configurer | `mapping = "auto"` |
 | la manette est muette, rien n'est relevé | `mapping = "a-relever"` + `mapping_where` |
+| le relevé est fait, imposé, et un bouton a été VU répondre | `mapping = "releve"` + `mapping_where` |
 | personne n'a essayé | `mapping = "inconnu"` (le défaut) |
+
+La troisième ligne est née le 2026-08-29, avec la clôture de D3, parce
+qu'aucune des trois autres n'était vraie de DuckStation. **Ne jamais écrire
+`auto` pour un émulateur dont les liaisons sont imposées** : `auto` dit que
+l'émulateur se débrouille, et effacerait la raison pour laquelle `enforced`
+existe. La quatrième valeur exige un **témoin humain** — c'est la seule du
+vocabulaire dans ce cas.
 
 **« Ça a l'air de marcher » n'est pas une mesure.** Un journal lu deux secondes
 après le démarrage ne prouve rien : le 2026-08-28, l'absence d'un message
