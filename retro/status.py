@@ -141,7 +141,15 @@ def etat_amorcage(profils: dict,
         for rang, amorcage in enumerate(profils[pid].bootstraps):
             date, cible = poses[rang] if rang < len(poses) else ("", "")
             etats.append(Amorcage(
-                profile_id=pid, declare=True, date=date, target=cible,
+                # Amorçée, la cible est celle que le lanceur a RÉSOLUE et
+                # écrite au témoin ; pas encore amorcée, c'est celle que le
+                # profil DÉCLARE, jeton compris. Sans ce repli, un profil à
+                # deux cibles imprimait deux lignes identiques mot pour mot —
+                # qui ne se lisent pas comme deux cibles, mais comme un
+                # doublon d'affichage, alors que l'une impose huit clés et
+                # l'autre aucune.
+                profile_id=pid, declare=True, date=date,
+                target=cible or amorcage.target,
                 imposees=len(profiles_mod.cles_ini(amorcage.enforced))))
     return etats
 
@@ -925,9 +933,9 @@ def _lignes_amorcage(report: Report) -> list[str]:
             lignes.append(f"  · {a.profile_id} : amorcé le {a.date} "
                           f"({a.target})")
         else:
-            lignes.append(f"  · {a.profile_id} : pas encore amorcé — sa "
-                          "configuration sera posée au premier lancement "
-                          "d'un de ses jeux")
+            lignes.append(f"  · {a.profile_id} : pas encore amorcé "
+                          f"({a.target}) — sa configuration sera posée au "
+                          "premier lancement d'un de ses jeux")
         # Dit à CHAQUE état, y compris « déjà amorcé » : c'est justement
         # l'émulateur déjà amorcé dont le fichier sera rouvert, et le taire
         # là serait le taire au seul endroit où ça compte.

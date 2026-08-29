@@ -15,6 +15,12 @@ vous voulez :
 - **`retro install`** installe les émulateurs du manifeste sous la racine
   d'émulation. Il les **télécharge depuis Internet** et les extrait — voir
   « Ce qui est téléchargé » plus bas, qui dit d'où et comment c'est vérifié.
+  Une montée de version **efface le dossier d'installation** : les
+  configurations qui y vivaient partent avec, et la commande les **nomme** au
+  lieu de les laisser disparaître en silence. Elles sont reposées au prochain
+  lancement d'un jeu ; d'ici là, l'émulateur repart sur ses défauts. C'est
+  pourquoi `install` lit les mêmes profils que `scan` (`--profiles`,
+  `--user-profiles`) : eux seuls savent quels fichiers vivaient là.
 - **`retro launcher`** dépose le lanceur commun sous la racine d'émulation et
   vous donne la commande qui le compile. C'est lui que Steam appelle pour
   chaque jeu : il mesure la session au moment du clic, compose la ligne de
@@ -151,7 +157,8 @@ Les entrées gardent l'histoire complète, y compris les tentatives qui ont
 ```bash
 # 1. installer les émulateurs (télécharge depuis Internet)
 retro install --emulation-root 'D:\Emulation' \
-              --user-manifest 'G:\retro\emulators.toml'
+              --user-manifest 'G:\retro\emulators.toml' \
+              --user-profiles 'G:\retro\profiles'
 
 # 2. inventorier les ROMs
 retro scan --roms /mnt/roms \

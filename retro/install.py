@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import pathlib
 import re
+import textwrap
 
-from retro import acquire
+from retro import acquire, profiles
 
 # Un chemin du manifeste ou d'un profil est décrit POUR WINDOWS, séparateurs
 # compris. Les deux séparateurs sont acceptés : Windows lit les deux, et un
@@ -130,4 +131,81 @@ def format_install_report(resultats: list[tuple[str, str]]) -> str:
     if echecs:
         lignes.append(f"  {len(echecs)} émulateur(s) non installé(s) : "
                       f"{', '.join(echecs)}")
+    return "\n".join(lignes)
+
+
+# CE QU'UNE MONTÉE DE VERSION VIENT D'EFFACER, ET QUE PERSONNE NE VOIT PARTIR.
+#
+# `acquire` supprime le dossier d'installation (shutil.rmtree) avant de
+# réextraire. Les configurations d'amorçage qui vivent SOUS ce dossier partent
+# avec lui — pour RPCS3, c'est le fichier sans lequel `cfg_player` vaut
+# `pad_handler::null`, c'est-à-dire aucune manette du tout.
+#
+# Le mécanisme les repose au lancement suivant : le régime « si-absent » voit
+# la cible disparue et la recrée. Ce n'est donc PAS une panne. Ce qui manquait
+# est le MESSAGE : entre la mise à jour et la partie suivante, la manette ne
+# répond pas, et une manette muette ne ressemble en rien à une mise à jour.
+# Sans cette phrase, le propriétaire cherche du côté du pad, des pilotes, de
+# Steam — partout sauf là où c'est.
+
+# Les deux états d'`acquire` qui ont effacé quelque chose. « à jour » n'a rien
+# touché : l'y ajouter ferait crier ce message à chaque `retro install`, y
+# compris ceux qui ne téléchargent rien, et un message qui crie tous les jours
+# ne se lit plus le jour où il est vrai.
+#
+# Le couplage est par CHAÎNE, et il est gardé par un test qui fait tourner une
+# vraie installation : le changer d'un seul côté rendrait ce rapport vide, sans
+# erreur ni symptôme.
+ETATS_EFFACANTS = ("installé", "réinstallé")
+
+
+def configurations_effacees(resultats, emulateurs, profils) -> list[tuple[str, str]]:
+    """(profil, cible) des amorçages disparus avec le dossier d'installation.
+
+    Seuls ceux dont la cible commence par le jeton du dossier d'installation :
+    un %USERPROFILE% survit à toutes les montées de version, et l'annoncer
+    effacé enverrait chercher une panne là où il n'y en a pas.
+
+    Le lien manifeste → profil est `emu.profile`, celui qu'`_install_dirs_pour`
+    emploie déjà. La clé du manifeste n'est PAS l'identifiant du profil, et les
+    confondre rendrait une liste vide — donc un silence, qui est très
+    exactement ce que cette fonction existe pour rompre.
+    """
+    effaces = []
+    for cle, etat in resultats:
+        if etat not in ETATS_EFFACANTS:
+            continue
+        emu = emulateurs.get(cle)
+        profil = profils.get(emu.profile) if emu else None
+        if profil is None:
+            continue
+        effaces += [(profil.id, b.target) for b in profil.bootstraps
+                    if b.target.startswith(profiles.JETON_INSTALL)]
+    return effaces
+
+
+def format_configurations_effacees(effacees: list[tuple[str, str]]) -> str:
+    """Le rapport de ce qui vient de partir, ou rien du tout s'il n'y a rien.
+
+    Rendre une phrase là où il n'y a rien à dire (« aucune configuration
+    effacée ») allongerait la sortie de chaque installation d'une ligne vraie
+    et inutile, jusqu'à ce que plus personne ne lise les lignes voisines.
+    """
+    lignes = []
+    for pid, cible in effacees:
+        # La cible est écrite TELLE QU'ELLE VIT dans le profil, jeton compris.
+        # Au moment de l'installation, le nom du dossier est connu, mais le
+        # chemin que la console verra ne l'est pas : inventer ici un chemin
+        # Windows en ferait un faux à copier-coller, et le propriétaire irait
+        # regarder un fichier qui n'existe pas.
+        lignes.append(textwrap.fill(
+            f"{pid} : sa configuration a été effacée avec son dossier "
+            f"({cible}). Elle sera reposée au prochain lancement d'un de ses "
+            "jeux — d'ici là, cet émulateur repart sur ses défauts : une "
+            "manette qui ne répond pas, une fenêtre que rien ne ferme.",
+            width=78, initial_indent="  · ", subsequent_indent="    ",
+            # La cible ne porte pas d'espace : elle ne peut pas être coupée en
+            # deux par le remplissage, et reste copiable d'un seul geste.
+            break_long_words=False, break_on_hyphens=False,
+        ))
     return "\n".join(lignes)

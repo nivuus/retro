@@ -22,27 +22,73 @@ schema = 1
 id  = "rpcs3"
 exe = 'rpcs3.exe'
 
-# Amorçage : pas de bloc [[bootstrap]]. Ce que RPCS3 doit recevoir pour
-# lancer un jeu au lieu de son assistant de première configuration reste À
-# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
-# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
-# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
-# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
-# « cet émulateur se débrouille » : voir
-# docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
-
-# `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
-# l'identifiant lui-même : un identifiant n'est pas une propriété du
-# périphérique, c'est une propriété de l'émulateur qui le nomme, et le seul
-# relevé valide est celui que l'émulateur écrit lui-même dans sa propre
-# configuration (plan des manettes, tâche 1 — quatre identifiants relevés pour
-# une seule manette physique, un seul bon).
+# AMORÇAGE — PREMIÈRE CIBLE : les huit modales du dossier de dialogue.
 #
-# « inconnu » : personne n'a vérifié, le pad en main, que la manette répond
-# dans cet émulateur. Ce n'est PAS « il se débrouille » — le plan des manettes
-# le supposait de DuckStation, et c'était faux (dette D3). Les deux seules
-# lignes mesurées de son tableau sont l'émulateur personnel et DuckStation ;
-# celle-ci n'en est pas. `retro status` le nomme sans l'accuser.
+# RPCS3 ouvre huit boîtes de dialogue qu'aucune manette ne ferme. Sur une
+# console sans clavier, une modale ne se distingue pas d'un jeu qui ne démarre
+# pas : `confirmationBoxBootGame` s'interpose à CHAQUE lancement de jeu, et
+# `infoBoxEnabledInstallPUP` est ce qui laissait RPCS3 ouvert après
+# l'installation du firmware, l'écran figé sur une fenêtre de succès.
+#
+# LA LISTE VIENT DE LA SOURCE, pas d'une phrase. Elle est relevée dans
+# rpcs3/rpcs3qt/gui_settings.h, où chaque modale est un `gui_save` du groupe
+# `main_window` — le nom de section est celui de la constante
+# `const QString main_window = "main_window";`, celui que QSettings écrit entre
+# crochets, et non le libellé de la fenêtre. Ce sont TOUTES les clés du groupe
+# dont le défaut est `true` : `infoBoxSkipVersion` est une chaîne et non un
+# booléen, `recentGamesFrozen` et `titleBarsVisible` sont déjà faux. Imposer
+# `false` sur une clé déjà fausse serait du bruit qui se lit comme un réglage.
+# La liste est gelée dans tests/test_donnees.py (RPCS3_MODALES) : l'allonger
+# ou la raccourcir est un acte qui se voit en revue.
+#
+# LA FORME DE LA VALEUR est celle que QSettings écrit pour un booléen faux —
+# `false`, en minuscules, sans guillemets — et c'est le même mécanisme Qt qui a
+# été VÉRIFIÉ PAR L'EFFET le 2026-08-29 sur Vita3K (`warnAdminPrivileges=false`,
+# la modale a disparu). Ce qui reste à faire sur la machine, et que ce profil
+# ne peut pas faire à sa place : rouvrir un CurrentSettings.ini que RPCS3 a
+# lui-même écrit après avoir décoché les cases, et confirmer la forme de là.
+#
+# IMPOSÉ, et pas « posé une fois » : chaque case se recoche d'un clic dans
+# l'interface, et sur une console déjà jouée le fichier existe — le régime
+# « si-absent » passerait son chemin sans un mot.
+[[bootstrap]]
+# Le jeton {install_dir} est substitué à l'écriture du plan (retro/launcher.py,
+# resoudre_cible). Écrire « RPCS3 » en clair ici réécrirait une seconde fois un
+# nom que le manifeste décide, et qu'une surcharge du manifeste du propriétaire
+# peut changer : la cible raterait EN SILENCE.
+target = '{install_dir}\GuiConfigs\CurrentSettings.ini'
+
+# L'en-tête distingue les TROIS catégories, et ce n'est pas une formule : le
+# propriétaire CROIT ce qu'il lit en tête d'un fichier de configuration et
+# règle son comportement dessus.
+#
+# Rien d'autre que l'en-tête : aucune préférence de RPCS3 n'a été mesurée, et
+# en inventer une la rendrait indiscernable d'un relevé.
+content = '''
+; Écrit par « retro », qui distingue trois choses :
+;   · ce qu'il IMPOSE et repose à CHAQUE lancement — les huit modales
+;     ci-dessous ; les recocher dans l'interface ne tiendrait pas ;
+;   · ce qu'il a posé UNE FOIS, à la création de ce fichier, et ne retouche
+;     plus jamais : vos réglages tiennent ;
+;   · tout le reste, qui est à vous et qu'il ne lit même pas.
+'''
+
+# Huit clés, dans l'ordre de leur déclaration dans gui_settings.h — une liste
+# gelée se relit contre sa source.
+enforced = '''
+[main_window]
+infoBoxEnabledInstallPKG=false
+infoBoxEnabledInstallPUP=false
+infoBoxEnabledWelcome=false
+confirmationBoxExitGame=false
+confirmationBoxBootGame=false
+confirmationObsoleteCfg=false
+confirmationSameButtons=false
+confirmationRestart=false
+'''
+
+# AMORÇAGE — SECONDE CIBLE : la manette, et la cause n'était pas une mauvaise
+# liaison. C'était l'ABSENCE TOTALE de gestionnaire.
 #
 # Vibration : l'ÉTAT vit désormais dans le champ `rumble` du bloc [input]
 # ci-dessous — « inconnu » ici, et `retro status` le nomme. Ce commentaire ne
@@ -63,10 +109,8 @@ exe = 'rpcs3.exe'
 # relever, sur la machine : ce que RPCS3 écrit de lui-même une fois la
 # vibration activée dans son interface — même méthode que pour l'identifiant
 # de manette (tâche 1 du sous-projet E), et pour la même raison.
-# LA MANETTE — RELEVÉE ET RÉGLÉE le 2026-08-29, et la cause n'était pas une
-# mauvaise liaison : c'était l'ABSENCE TOTALE de gestionnaire.
 #
-# Constaté sur LittleBigPlanet (BCES-00611) : le jeu tournait à 30 fps en
+# Constaté le 2026-08-29 sur LittleBigPlanet (BCES-00611) : le jeu tournait à 30 fps en
 # Vulkan et aucun bouton ne répondait. La cause est dans Emu/Io/pad_config.h :
 #
 #     cfg_player player1{ this, "Player 1 Input", pad_handler::null };
@@ -76,16 +120,10 @@ exe = 'rpcs3.exe'
 # son dossier — le joueur 1 n'a aucun gestionnaire. Pas une mappe fausse : pas
 # de manette du tout.
 #
-# CE QUI SUFFIT, et c'est trois lignes :
-#
-#     Player 1 Input:
-#       Handler: XInput
-#       Device: "XInput Pad #1"
-#
-# Pourquoi si peu, là où DuckStation a exigé vingt-sept liaisons écrites à la
-# main : xinput_pad_handler::init_config() renseigne les vingt-quatre `.def`
-# puis appelle from_default(). RPCS3 pose donc lui-même toute la mappe dès que
-# le gestionnaire est choisi. Le fichier fait 61 octets, et le propriétaire a
+# TROIS LIGNES SUFFISENT, là où DuckStation a exigé vingt-sept liaisons :
+# xinput_pad_handler::init_config() renseigne les vingt-quatre `.def` puis
+# appelle from_default(). RPCS3 pose donc lui-même toute la mappe dès que le
+# gestionnaire est choisi. Le fichier fait 61 octets, et le propriétaire a
 # confirmé que les contrôles répondent.
 #
 # ⚠ DEUX PIÈGES DE FORME, et chacun aurait donné un réglage d'apparence posé
@@ -96,16 +134,109 @@ exe = 'rpcs3.exe'
 #     `XInput Pad #1` non quoté devient `XInput Pad`, qui ne désigne rien. Le
 #     nom vient de xinput_pad_handler.cpp, `m_name_string = "XInput Pad #"`.
 #
-# ⚠ ET RIEN NE REPOSE CE FICHIER. Il vit sous la racine d'émulation, que
-# `target` ne sait pas désigner — c'est la dette D7, dont RPCS3 est le
-# troisième cas. Pire ici qu'ailleurs : `retro install` EFFACE le dossier
-# d'installation à chaque montée de version, donc une simple mise à jour de
-# RPCS3 rendrait la manette muette, sans qu'aucun message ne fasse le lien.
+# POSÉ EN BLOC, « si-absent », et JAMAIS imposé — trois raisons, et la
+# troisième est une autorisation qui manque :
+#   - « si-absent » COPIE DES OCTETS et ne lit jamais le contenu : le lanceur
+#     n'a pas à apprendre le YAML, et la fusion continue de ne parler qu'INI ;
+#   - la cible vit sous le dossier d'installation, que « retro install » efface
+#     à chaque montée de version : la cible disparaît, donc « si-absent »
+#     repose. C'est l'auto-réparation que la conception prévoyait ;
+#   - reposer ce fichier À CHAQUE lancement serait ÉCRASER, pas fusionner.
+#     RPCS3 réécrit lui-même ce fichier quand on configure un pad dans son
+#     interface : un remplacement intégral effacerait sans un mot toute
+#     liaison faite là. Le propriétaire a autorisé « seulement les clés que la
+#     console doit imposer » dans un INI qu'on fusionne, pas cela.
+#
+# ⚠ CE QUE « si-absent » NE RÉPARE PAS : si le fichier existe avec
+# `Handler: Null` — ce que produit un passage malheureux par la configuration
+# de pad de RPCS3 —, il n'est PAS remplacé. Le remède est le geste de sortie
+# ci-dessous, ou une montée de version de RPCS3, qui efface le dossier.
+#
+# ⚠ `Handler: XInput` EST UN ARBITRAGE, DATÉ ET RÉVERSIBLE — PAS UN FAIT
+# MESURÉ SUR L'ÉMULATEUR, et c'est la seule ligne de ce fichier dont ce soit
+# le cas. Rendu le 2026-08-29 par la conduite de projet, entre D7 qui
+# prescrivait XInput (vu fonctionner) et D4 qui a relevé dans la source que
+# `b_has_motion` reste faux sous XInput, quel que soit le pad — donc que ce
+# choix interdit le mouvement pour toujours. XInput l'emporte parce qu'il est
+# la seule des deux valeurs qu'on ait VUE fonctionner, parce que
+# xinput_pad_handler.cpp pose `b_has_rumble = true` (il ne coûte donc pas la
+# vibration, seulement le mouvement), et parce que basculer sans mesure
+# reviendrait à déboguer deux inconnues à la fois. `Handler: SDL` n'a JAMAIS
+# été essayé sur cette machine.
+#
+# ⚠ LE GESTE DE SORTIE, et il n'est pas facultatif. « si-absent » ne réécrit
+# jamais : le jour où D4 aura mesuré `Handler: SDL` — un bouton VU répondre,
+# rien de moins —, changer la valeur ci-dessous ne suffira PAS. Le fichier
+# existera déjà et rien ne le remplacera ; la bascule échouerait en silence.
+# Il faut, sur la console, dans cet ordre :
+#
+#   1. supprimer <dossier d'installation de RPCS3>\config\input_configs\
+#      global\Default.yml — c'est LE geste, et il n'y en a pas d'autre
+#      aujourd'hui : aucune option de « retro » ne force le régime
+#      « si-absent » à réécrire, et en ajouter une serait une autorisation
+#      d'ÉCRASER que le propriétaire n'a pas donnée ;
+#   2. lancer un jeu PS3 : le lanceur repose le fichier avec la valeur neuve ;
+#   3. voir un bouton répondre — sans quoi rien n'est prouvé.
+#
+# Une montée de version de RPCS3 fait le premier pas toute seule, puisqu'elle
+# efface le dossier d'installation, mais elle ne se commande pas : le geste
+# reste la suppression.
+[[bootstrap]]
+target = '{install_dir}\config\input_configs\global\Default.yml'
+
+# La marque est en commentaire YAML — « # » —, et pas en « ; » : un fichier de
+# configuration écrit par un outil doit dire qui l'a écrit DANS la syntaxe de
+# son propre format, sinon l'émulateur refuse de le lire et personne ne sait
+# pourquoi. C'est ce qui rend la garde de `_lire_bootstrap` vraie pour un
+# format qu'elle ne connaît pas.
+#
+# Rien n'est imposé ici — `enforced` est vide — donc l'en-tête n'a pas trois
+# catégories à distinguer : il n'y en a qu'une, et elle est dite.
+content = '''
+# Écrit par « retro ». Posé UNE FOIS, à la création de ce fichier, et jamais
+# retouché : les liaisons que vous ferez dans l'interface de RPCS3 tiennent.
+# Rien ici n'est imposé ni reposé au lancement.
+Player 1 Input:
+  Handler: XInput
+  Device: "XInput Pad #1"
+'''
+
+# `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
+# l'identifiant lui-même : un identifiant n'est pas une propriété du
+# périphérique, c'est une propriété de l'émulateur qui le nomme, et le seul
+# relevé valide est celui que l'émulateur écrit lui-même dans sa propre
+# configuration (plan des manettes, tâche 1 — quatre identifiants relevés pour
+# une seule manette physique, un seul bon).
+#
+# « releve » depuis le 2026-08-29, et il ne peut valoir rien d'autre. Le
+# relevé est fait — le gestionnaire est choisi dans le fichier posé par le
+# second bloc ci-dessus — et le propriétaire a confirmé que les contrôles
+# répondent. « auto » serait FAUX : sans ce fichier, RPCS3 ne trouve rien du
+# tout, c'est `pad_handler::null`. « a-relever » ferait annoncer à
+# `retro status` une manette muette sur un émulateur dont un bouton a été VU
+# répondre, et « inconnu » effacerait la mesure.
+#
+# Vibration : aucun réglage de rumble n'est posé ici, et ce n'est pas un
+# oubli. La manette ne vibre NULLE PART — ni dans cet émulateur, ni dans les
+# jeux Steam, ni depuis le client Moonlight — et aucun des trois maillons n'a
+# été mesuré : dette D1 de docs/dettes.md. Le rumble est un réglage de la
+# configuration d'entrée, pas de la ligne de commande : il ira dans le gabarit
+# d'entrée du sous-projet E, famille « dédiée ». Le dossier, lui, n'est plus
+# une hypothèse depuis le 2026-08-29 : c'est config\input_configs\global\, et
+# le second bloc ci-dessus y pose déjà un fichier. Ce que XInput coûte est
+# borné et connu — xinput_pad_handler.cpp pose `b_has_rumble = true`, donc le
+# gestionnaire choisi ne bloque PAS la vibration ; il ne coûte que le
+# mouvement. Le nom de la clé, lui, n'a été relevé dans AUCUN fichier que RPCS3
+# a lui-même écrit ; recopié d'une documentation, il serait ignoré en silence
+# et la manette resterait muette exactement comme aujourd'hui. Ce qui reste à
+# relever, sur la machine : ce que RPCS3 écrit de lui-même une fois la
+# vibration activée dans son interface — même méthode que pour l'identifiant
+# de manette (tâche 1 du sous-projet E), et pour la même raison.
 [input]
 steam_input = "required"
 mode        = "xinput"
 mapping       = "releve"
-mapping_where = 'RPCS3\config\input_configs\global\Default.yml (sous la racine emulation), section « Player 1 Input »'
+mapping_where = 'config\input_configs\global\Default.yml, sous le dossier d installation de RPCS3, section « Player 1 Input » — posé par le second bloc [[bootstrap]] de ce profil'
 rumble        = "inconnu"
 
 [exit]
