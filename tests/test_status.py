@@ -969,3 +969,62 @@ def test_un_arbre_source_n_est_pas_un_probleme():
         bios_status=[], bios_root=pathlib.Path("/BIOS"),
         paquet="0.1.0+source")
     assert not any("paquet" in p.what.lower() for p in r.problems)
+
+
+PROFIL_DEUX_CIBLES = """
+schema = 1
+id = "rpcs3"
+exe = 'rpcs3.exe'
+[[bootstrap]]
+target = '{install_dir}\\\\GuiConfigs\\\\CurrentSettings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé UNE FOIS, et le reste, qui est à vous.
+'''
+enforced = '''
+[main_window]
+confirmationBoxBootGame=false
+'''
+[[bootstrap]]
+target = '{install_dir}\\\\config\\\\input_configs\\\\global\\\\Default.yml'
+content = '''
+# Écrit par « retro ».
+Player 1 Input:
+  Handler: XInput
+'''
+[[system]]
+id = "ps3"
+name = "PlayStation 3"
+extensions = [".iso"]
+launch = '"{rom}"'
+"""
+
+
+@pytest.fixture
+def profil_a_deux_cibles(tmp_path):
+    p = tmp_path / "rpcs3.toml"
+    p.write_text(PROFIL_DEUX_CIBLES, encoding="utf-8")
+    return {"rpcs3": profiles.load_profile(p)}
+
+
+def test_deux_cibles_non_amorcees_ne_donnent_pas_deux_lignes_identiques(
+        profil_a_deux_cibles):
+    """RPCS3 est le premier profil livré à porter DEUX cibles, et le rapport
+    en imprimait deux lignes mot pour mot identiques.
+
+    Deux lignes identiques ne se lisent pas comme deux cibles : elles se
+    lisent comme un doublon d'affichage, donc comme un défaut du rapport. Or
+    l'une des deux porte huit clés imposées et l'autre aucune — les confondre,
+    c'est perdre l'information au moment précis où elle sert. Tant qu'aucun
+    jeu n'a été lancé, le témoin ne dit rien : la cible affichée est alors
+    celle que le PROFIL déclare, jeton compris.
+    """
+    lignes = status._lignes_amorcage(status.Report(
+        emulators=[], systems=[], bios=[], problems=[],
+        bios_root=pathlib.Path("/BIOS"),
+        amorcages=status.etat_amorcage(profil_a_deux_cibles, {})))
+    dites = [l for l in lignes if "pas encore amorcé" in l]
+    assert len(dites) == 2, lignes
+    assert dites[0] != dites[1], dites
+    assert "CurrentSettings.ini" in dites[0]
+    assert "Default.yml" in dites[1]
