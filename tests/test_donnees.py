@@ -1051,6 +1051,8 @@ def test_chaque_profil_livre_dit_ou_en_est_sa_vibration():
     for f in sorted(PROFILS.glob("*.toml")):
         if f.name in SANS_NOTE_DE_VIBRATION:
             continue
+        if profiles.load_profile(f).input_rumble in profiles.RUMBLES_MESURES:
+            continue
         commentaires = "\n".join(l for l in f.read_text(encoding="utf-8").splitlines()
                                  if l.lstrip().startswith("#")).lower()
         assert "vibration" in commentaires, (
@@ -1066,6 +1068,94 @@ def test_chaque_profil_livre_dit_ou_en_est_sa_vibration():
             "à mesurer — une clé de rumble recopiée d'une documentation est "
             "ignorée en silence, et la manette reste muette exactement comme "
             "si rien n'avait été écrit"
+        )
+
+
+# À quoi se reconnaît un réglage de vibration DANS un fragment de
+# configuration. Les quatre marques couvrent les formes qu'un émulateur emploie
+# pour nommer la chose — DuckStation écrit « LargeMotor » et « SmallMotor »,
+# d'autres écrivent « rumble » ou « vibration ».
+#
+# C'est délibérément une reconnaissance LARGE : son rôle n'est pas de valider
+# le nom d'une clé — ce nom, seul un relevé sur la machine peut le donner —
+# mais d'empêcher qu'un profil déclare un état posé sans rien poser du tout.
+MARQUES_DE_RUMBLE = ("motor", "rumble", "vibrat", "haptic")
+
+
+def _reglages_de_vibration(profil) -> list[str]:
+    """Les lignes d'amorçage de ce profil qui posent effectivement un rumble."""
+    return [l.strip()
+            for b in profil.bootstraps
+            for l in (b.content + "\n" + b.enforced).splitlines()
+            if any(m in l.lower() for m in MARQUES_DE_RUMBLE)]
+
+
+def profils_qui_declarent_un_rumble_sans_le_poser(profils: dict) -> list[str]:
+    """Ceux qui annoncent un réglage posé et n'en portent aucun.
+
+    C'est la garde structurelle que la tâche 4 du plan D1 exige, et celle qui
+    empêche `test_chaque_profil_livre_dit_ou_en_est_sa_vibration` de devenir
+    tautologique : sans elle, il suffirait d'écrire `rumble = "pose"` dans un
+    profil pour le dispenser de sa note d'aveu SANS avoir rien posé — le
+    rapport annoncerait alors un réglage là où il n'y en a pas, et le symptôme
+    au canapé serait rigoureusement le même qu'aujourd'hui.
+
+    `vu` y est soumis au même titre que `pose` : on ne peut pas avoir senti
+    vibrer ce que rien ne règle.
+    """
+    return [pid for pid, p in sorted(profils.items())
+            if p.input_rumble in (profiles.RUMBLE_POSE, profiles.RUMBLE_VU)
+            and not _reglages_de_vibration(p)]
+
+
+def test_un_profil_qui_declare_un_rumble_pose_en_porte_effectivement_un():
+    """La preuve MATÉRIELLE de l'état déclaré.
+
+    Pour DuckStation, ce sont ses deux liaisons `LargeMotor` et `SmallMotor`,
+    écrites par son propre assistant le 2026-08-29 et reposées à chaque
+    lancement. La garde des deux liaisons qui existait déjà cesse d'être une
+    vérification isolée : elle devient ce qui soutient le champ.
+    """
+    assert profils_qui_declarent_un_rumble_sans_le_poser(
+        profiles.load_profiles(PROFILS)) == []
+
+
+def test_declarer_un_rumble_pose_sans_rien_poser_rend_la_garde_rouge(tmp_path):
+    """Le désarmement vérifié par MUTATION, comme le plan D1 l'exige.
+
+    Un test qui ne casse pas sous cette mutation n'a rien gardé. On prend un
+    profil livré qui n'a rien posé, on le fait mentir dans son champ, et la
+    garde doit le nommer.
+    """
+    source = PROFILS / "cemu.toml"
+    assert profiles.load_profile(source).input_rumble != profiles.RUMBLE_POSE
+    menteur = tmp_path / "cemu.toml"
+    menteur.write_text(
+        source.read_text(encoding="utf-8").replace(
+            'rumble      = "inconnu"',
+            'rumble       = "pose"\n'
+            "rumble_where = 'controllerProfiles, un fichier par manette'"),
+        encoding="utf-8")
+    assert profils_qui_declarent_un_rumble_sans_le_poser(
+        {"cemu": profiles.load_profile(menteur)}) == ["cemu"], (
+        "un profil peut déclarer un réglage de vibration posé sans en porter "
+        "aucun : la garde ne garde rien"
+    )
+
+
+def test_aucun_profil_livre_ne_declare_une_vibration_vue_sans_temoin():
+    """« Un témoin humain, ou rien. » Le chargement le refuse déjà ; ce test
+    le dit sur les profils LIVRÉS, qui sont ce que la console reçoit.
+
+    Ce qui se vérifie mécaniquement se vérifie — un état, une date. Que le
+    témoignage nomme un jeu se lit : la formule est libre, l'absence ne l'est
+    pas.
+    """
+    for pid, p in sorted(profiles.load_profiles(PROFILS).items()):
+        if p.input_rumble != profiles.RUMBLE_VU:
+            continue
+        assert p.input_rumble_witness, (
+            f"{pid} : déclare avoir été VU vibrer sans nommer de témoin"
         )
 
 

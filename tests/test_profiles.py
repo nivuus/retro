@@ -1307,6 +1307,132 @@ def test_une_cle_inconnue_du_bloc_input_est_refusee(tmp_path):
             '[input]\nrumbl = "vu"\n')))
 
 
+
+# --- [input] rumble : où en est la VIBRATION de cet émulateur --------------
+#
+# Dette D1 : la manette ne vibre nulle part, et l'aveu vivait dans des
+# commentaires TOML qu'aucun code ne lit. Le champ suit le chemin déjà tracé
+# par `mapping` — un vocabulaire fermé qui dit où en est la MESURE, jamais un
+# nom de clé deviné. Cinq états, et il en faut cinq : chacun affirme une chose
+# que les quatre autres ne disent pas.
+
+
+def test_un_profil_muet_sur_sa_vibration_vaut_inconnu(tmp_path):
+    """Le défaut ne peut être aucun des quatre autres.
+
+    `vu` affirmerait qu'un témoin humain a senti la manette vibrer sur dix
+    émulateurs — la seule affirmation de ce vocabulaire qui ne se déduise
+    d'aucun fichier. `pose` affirmerait un réglage que personne n'a écrit.
+    `absent` affirmerait une lecture de la source que personne n'a faite.
+    `a-relever` accuserait dix émulateurs d'une panne constatée sur aucun.
+    """
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _SANS_INPUT))
+    assert p.input_rumble == profiles.RUMBLE_INCONNU
+
+
+def test_un_profil_declare_un_reglage_de_vibration_pose_mais_jamais_vu_agir(tmp_path):
+    """C'est l'état de DuckStation le 2026-08-29, et aucun autre ne le décrit.
+
+    Ses deux liaisons `LargeMotor` et `SmallMotor` ont été écrites par son
+    propre assistant, elles sont reposées à chaque lancement — et personne ne
+    les a vues faire vibrer quoi que ce soit. `vu` mentirait, `a-relever`
+    effacerait un relevé fait, `absent` serait faux, `inconnu` effacerait la
+    mesure.
+    """
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+        '[input]\nrumble = "pose"\n'
+        "rumble_where = '%USERPROFILE%\\\\Documents\\\\D\\\\settings.ini, "
+        "section [Pad1]'\n")))
+    assert p.input_rumble == profiles.RUMBLE_POSE
+    assert "[Pad1]" in p.input_rumble_where
+
+
+def test_un_etat_de_vibration_inconnu_du_code_est_refuse(tmp_path):
+    """« posé » pour « pose » retomberait sinon sur le défaut, et le rapport
+    dirait « jamais mesuré » du seul émulateur qui porte un réglage."""
+    with pytest.raises(profiles.ProfileError, match="attendu l'un de"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nrumble = "posé"\n')))
+
+
+def test_une_vibration_posee_sans_ou_est_refusee(tmp_path):
+    """Même exigence que `mapping_where`, et pour la même raison : un réglage
+    posé peut cesser d'agir sans un mot, et le rapport n'offrirait alors rien
+    à ouvrir."""
+    with pytest.raises(profiles.ProfileError, match="rumble_where"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nrumble = "pose"\n')))
+
+
+def test_une_vibration_a_relever_sans_ou_est_refusee(tmp_path):
+    """« un constat sans chemin ni action n'aide personne » : `retro status`
+    lèvera un problème pour cet état, et un problème sans fichier à ouvrir est
+    une accusation."""
+    with pytest.raises(profiles.ProfileError, match="rumble_where"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nrumble = "a-relever"\n')))
+
+
+def test_une_vibration_mesuree_absente_ne_nomme_aucun_fichier(tmp_path):
+    """`absent` existe pour la raison qui a fait naître `fill_absent` : « il
+    n'y a rien à régler, et c'est mesuré » n'est pas « personne n'a regardé ».
+    Un émulateur sans réglage de rumble n'a aucun fichier à faire ouvrir."""
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+        '[input]\nrumble = "absent"\n')))
+    assert p.input_rumble == profiles.RUMBLE_ABSENT
+    assert p.input_rumble_where == ""
+
+
+
+def test_une_vibration_vue_sans_temoin_est_refusee(tmp_path):
+    """« Un témoin humain, ou rien. »
+
+    `vu` est le seul état de ce vocabulaire qui ne se déduise d'AUCUN fichier :
+    aucune clé survivante, aucune ligne de journal ne prouve qu'une manette a
+    vibré. Sans témoin, cet état serait une affirmation que rien ne soutient —
+    et il ferait disparaître du rapport le seul émulateur qui resterait à
+    mesurer. Le profil est donc refusé au chargement, pas seulement signalé.
+    """
+    with pytest.raises(profiles.ProfileError, match="rumble_witness"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nrumble = "vu"\n'
+            "rumble_where = 'settings.ini, section [Pad1]'\n")))
+
+
+def test_un_temoin_de_vibration_sans_date_est_refuse(tmp_path):
+    """Un témoignage sans date ne se vérifie contre rien — ni contre une
+    révision d'émulateur épinglée au manifeste, ni contre un changement de type
+    de pad qui casserait la liaison le lendemain (dette D4)."""
+    with pytest.raises(profiles.ProfileError, match="date"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nrumble = "vu"\n'
+            "rumble_where = 'settings.ini, section [Pad1]'\n"
+            "rumble_witness = 'le propriétaire, sur Crash Team Racing'\n")))
+
+
+def test_un_temoin_date_qui_nomme_un_jeu_est_accepte(tmp_path):
+    """La forme exigée, et rien de plus : une date, et une formule libre. Ce
+    qui se vérifie mécaniquement se vérifie ; le reste se lit."""
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+        '[input]\nrumble = "vu"\n'
+        "rumble_where = 'settings.ini, section [Pad1]'\n"
+        "rumble_witness = 'le propriétaire, 2026-08-29, sur Crash Team "
+        "Racing'\n")))
+    assert p.input_rumble == profiles.RUMBLE_VU
+    assert "2026-08-29" in p.input_rumble_witness
+
+
+def test_un_temoin_sur_un_etat_autre_que_vu_est_refuse(tmp_path):
+    """Les deux se contredisent : un témoin dit que quelqu'un a SENTI la
+    manette vibrer, ce qui EST l'état `vu`. Le rapport suivrait le champ et
+    tairait le témoignage — ou l'inverse, et personne ne saurait lequel."""
+    with pytest.raises(profiles.ProfileError, match="contredisent"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nrumble = "pose"\n'
+            "rumble_where = 'settings.ini, section [Pad1]'\n"
+            "rumble_witness = 'le propriétaire, 2026-08-29, sur CTR'\n")))
+
+
 # --- un jeu qui est un DOSSIER ---------------------------------------------
 #
 # `extensions` dit ce qu'est un jeu quand un jeu est un fichier. Une

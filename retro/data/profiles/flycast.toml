@@ -46,7 +46,13 @@ exe = 'flycast.exe'
 # lignes mesurées de son tableau sont l'émulateur personnel et DuckStation ;
 # celle-ci n'en est pas. `retro status` le nomme sans l'accuser.
 #
-# Vibration : aucun réglage de rumble n'est posé ici, et ce n'est pas un
+# Vibration : l'ÉTAT vit désormais dans le champ `rumble` du bloc [input]
+# ci-dessous — « inconnu » ici, et `retro status` le nomme. Ce commentaire ne
+# porte plus l'aveu, il porte la PROVENANCE : pourquoi rien n'est posé, où ça
+# irait, et ce qui reste à relever. Le jour où un relevé aboutit, c'est le
+# CHAMP qui bascule et la cible supposée ci-dessous qui devient mesurée.
+#
+# Aucun réglage de rumble n'est posé ici, et ce n'est pas un
 # oubli. La manette ne vibre NULLE PART — ni dans cet émulateur, ni dans les
 # jeux Steam, ni depuis le client Moonlight — et aucun des trois maillons n'a
 # été mesuré : dette D1 de docs/dettes.md. Le rumble est un réglage de la
@@ -63,6 +69,7 @@ exe = 'flycast.exe'
 steam_input = "required"
 mode        = "xinput"
 mapping     = "inconnu"
+rumble      = "inconnu"
 
 [exit]
 # Vérifié dans core/sdl/sdl_gamepad.cpp (v2.7) : la mise en correspondance par

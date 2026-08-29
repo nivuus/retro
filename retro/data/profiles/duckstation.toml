@@ -204,7 +204,10 @@ target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
 #
 # LargeMotor et SmallMotor sont les deux liaisons de VIBRATION, et elles
 # étaient absentes jusqu'ici : c'est un maillon de la dette D1 qui devient
-# actionnable sans nouvelle mesure.
+# actionnable sans nouvelle mesure. Ce sont elles que « rumble = pose »
+# déclare plus bas, et tests/test_donnees.py refuse cet état à un profil qui
+# n'en porterait aucune : un état posé sans rien poser produirait exactement
+# le symptôme d'aujourd'hui en donnant l'impression du contraire.
 #
 # [Pad1] ForceAnalogOnReset — LA VINGT-HUITIÈME CLÉ, ET CE N'EST PAS UNE
 # LIAISON. Relevée dans src/core/analog_controller.cpp : booléen, DÉFAUT
@@ -378,6 +381,26 @@ steam_input = "required"
 mode        = "xinput"
 mapping       = "releve"
 mapping_where = '%USERPROFILE%\Documents\DuckStation\settings.ini, section [Pad1]'
+
+# Vibration : « pose », et aucun des quatre autres états ne le décrit.
+#
+# LargeMotor et SmallMotor sont dans `enforced`, reposées à chaque lancement.
+# DuckStation les a écrites LUI-MÊME, par son assistant, le 2026-08-29 — elles
+# n'ont été recopiées de nulle part. Et PERSONNE NE LES A VUES FAIRE VIBRER
+# quoi que ce soit : « vu » mentirait, et c'est le seul état de ce vocabulaire
+# qui exige un témoin humain, la manette en main, devant la télévision.
+# « a-relever » effacerait un relevé fait, « absent » serait faux, « inconnu »
+# effacerait la mesure.
+#
+# Ce que cet état N'AFFIRME PAS : que le maillon émulateur → SDL → ViGEmBus
+# fonctionne. Trois causes candidates au même silence restent ouvertes, et
+# aucune ne se départage depuis un fichier — le mode numérique imposé par
+# ForceAnalogOnReset = false, le type de manette par défaut que personne n'a lu
+# dans la source, et le client Moonlight lui-même (maillon (c), dette C1 de
+# nivuus/installer). Il suffit de jouer : c'est la mesure, et elle est
+# gratuite.
+rumble        = "pose"
+rumble_where  = '%USERPROFILE%\Documents\DuckStation\settings.ini, section [Pad1] — LargeMotor et SmallMotor'
 
 [exit]
 # DuckStation ne lie AUCUN bouton de manette par défaut à « Open Pause Menu » :
