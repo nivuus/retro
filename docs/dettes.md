@@ -270,12 +270,49 @@ produit aucun message, aucune ligne de journal, aucun symptôme distinct. La
 même leçon est écrite dans `docs/releve-manettes.md`, parce que c'est là qu'on
 la relit avant de recopier une valeur.
 
-#### `Scaling` est un filtre, pas un cadrage
+#### ~~`Scaling` est un filtre, pas un cadrage~~ — CETTE CONCLUSION ÉTAIT FAUSSE
 
-Mesuré le 2026-08-29 : **`Scaling = BilinearSmooth` a été posé, il a été
-reconnu, et il n'a rien changé à la géométrie de l'image.** Il ne fait donc
-**pas** partie du correctif, et le présenter comme tel ferait croire le cadrage
-réglé par lui.
+**Retiré le 2026-08-29 au soir. C'était un TROISIÈME faux oracle**, et il a
+tenu une demi-journée.
+
+Ce qui avait été écrit : « `Scaling = BilinearSmooth` a été posé, il a été
+reconnu, et il n'a rien changé à la géométrie de l'image ».
+
+Ce que dit la source, vérifié sur le tag épinglé :
+
+    static constexpr DisplayScalingMode DEFAULT_DISPLAY_SCALING =
+        DisplayScalingMode::BilinearSmooth;          // settings.h:242
+
+**`BilinearSmooth` EST le défaut.** Poser cette valeur-là, c'est reposer ce que
+DuckStation aurait fait sans elle. L'essai ne prouve donc **ni** que `Scaling`
+est un filtre, **ni** même que la clé a été lue : `.value_or` retombe
+silencieusement sur ce même défaut. Il ne prouve rien du tout.
+
+**Et le relevé dit l'inverse de la conclusion retirée.** `Scaling` porte bien
+l'axe du remplissage, et il agit sur la **géométrie** :
+`IsUsingIntegerDisplayScaling` (settings.h:217) → `video_presenter.cpp:610` →
+`GPU::CalculateDrawRect` (gpu.cpp:2250), qui applique un `std::floor(scale)` et
+centre le résidu. Les sept valeurs sont dans `s_display_crop_mode_names`'s
+voisin, `s_display_scaling_names` (settings.cpp:2218) :
+
+    Nearest, NearestInteger, BilinearSmooth, BilinearHybrid,
+    BilinearSharp, BilinearInteger, Lanczos
+
+**Ce que cela ne change pas :** aucune valeur n'est posée. `NearestInteger` et
+`BilinearInteger` n'ont toujours **jamais été vus agir** sur la machine, et
+c'est la mesure T3 du plan qui tranchera. Ce qui a changé, c'est qu'on ne croit
+plus savoir que la réponse est non.
+
+**La leçon, qui est la même que les deux fois précédentes, sous un troisième
+déguisement :** un essai dont la valeur posée est le défaut de l'émulateur ne
+peut rien conclure. Avant de mesurer une clé, il faut lire son **défaut** dans
+la source — sans quoi on mesure l'absence de changement et on l'appelle un
+résultat.
+
+**Ce qui reste vrai, et pour la raison inverse :** `CropMode = Borders` a bien
+fermé le cadrage, et cette mesure-là tient — `DEFAULT_DISPLAY_CROP_MODE` vaut
+`Overscan` (settings.h:237), donc la valeur posée **différait** du défaut, et
+la disparition des bandes est un vrai signal.
 
 Ce que cela déplace pour le **remplissage** : le couple section/clé n'est plus
 l'inconnue — c'est `[Display] Scaling`. Ce qui reste non mesuré, et qui interdit
