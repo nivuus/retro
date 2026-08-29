@@ -116,6 +116,14 @@ dans DuckStation, ni capteur de mouvement ni manette PlayStation, et aucun
 émulateur PS Vita. Les deux derniers débordent sur l'invité Windows, qui a son
 propre fichier dans `nivuus/installer` : `docs/console-dettes.md`.
 
+**Deux ont bougé le 2026-08-29.** La **manette muette dans DuckStation** est
+réglée : Crash Team Racing répond, confirmé par le propriétaire. Il a fallu
+deux clés, pas une — les vingt-sept liaisons relevées, **et**
+`ForceAnalogOnReset = false`, sans laquelle les liaisons étaient justes et le
+jeu restait muet. **Le cadrage de DuckStation** est réglé lui aussi
+(`CropMode = Borders`) ; le reste de cette dette-là est ouvert. Les entrées
+gardent l'histoire complète, y compris les deux tentatives qui ont échoué.
+
 ## Utilisation
 
 ```bash
