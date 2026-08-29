@@ -696,17 +696,42 @@ def test_chaque_mode_livre_tranche_sur_le_remplissage():
 #      sa manette depuis l'interface de DuckStation, puisque le lancement
 #      suivant repose ces liaisons.
 #
-# Les vingt-sept clés sont celles que l'assistant de DuckStation a ÉCRITES
+# Les vingt-sept LIAISONS sont celles que l'assistant de DuckStation a ÉCRITES
 # lui-même le 2026-08-29 — ni plus, ni moins. Aucune clé « Type » : DuckStation
 # n'en écrit pas, et la liste ne prétend pas mieux savoir.
+#
+# DEUX CLÉS ONT REJOINT L'ENSEMBLE IMPOSÉ le 2026-08-29 au soir, et cette garde
+# a échoué avant d'être mise à jour — c'est son rôle. Ni l'une ni l'autre n'est
+# une liaison, et ni l'une ni l'autre n'est une préférence :
+#
+#   · [Display] CropMode = Borders — sans elle, l'image porte des bandes que
+#     personne ne peut retirer du canapé. Confirmé par le propriétaire.
+#   · [Pad1] ForceAnalogOnReset = false — sans elle, Crash Team Racing ne
+#     répond à AUCUN bouton, les vingt-sept liaisons fussent-elles justes.
+#     Confirmé par le propriétaire : la manette répond dès le lancement.
+#
+# Le prix de la seconde est écrit dans le profil et il est réel : le réglage
+# est GLOBAL, donc les jeux qui veulent l'analogique (Gran Turismo, Ape Escape,
+# Metal Gear Solid) démarreront en mode numérique. La bascule reste mappée sur
+# `Analog = SDL-0/Guide`.
 DUCKSTATION_IMPOSE = (
     ("Main", "SetupWizardIncomplete"),
     ("Main", "StartFullscreen"),
     ("AutoUpdater", "CheckAtStartup"),
+    # Ajoutée le 2026-08-29, dette D2 : le cadrage. `Borders` vient de la
+    # SOURCE de DuckStation (src/core/settings.cpp, s_display_crop_mode_names)
+    # et non des chaînes du binaire, qui ne donnent que les libellés de
+    # l'interface — deux tentatives ont échoué là-dessus avant celle-ci.
+    ("Display", "CropMode"),
     ("Pad1", "Analog"),
     ("Pad1", "Circle"),
     ("Pad1", "Cross"),
     ("Pad1", "Down"),
+    # Ajoutée le 2026-08-29, dette D3, et ce n'est PAS une liaison : booléen,
+    # défaut `true` dans src/core/analog_controller.cpp. Crash Team Racing est
+    # un jeu d'avant l'analogique ; forcé en analogique il ne répond pas, les
+    # vingt-sept liaisons ci-dessous fussent-elles justes.
+    ("Pad1", "ForceAnalogOnReset"),
     ("Pad1", "L1"),
     ("Pad1", "L2"),
     ("Pad1", "L3"),
@@ -790,25 +815,31 @@ def test_chaque_profil_livre_dit_ce_qu_il_sait_de_sa_manette():
         )
 
 
-def test_duckstation_declare_sa_manette_a_relever():
-    """Dette D3, mesurée le 2026-08-28 : le jeu démarre, la manette ne répond
-    pas. Le plan des manettes rangeait pourtant DuckStation parmi les
-    émulateurs qui « détectent bien tout seuls » — le profil doit porter la
-    mesure, pas le souvenir.
+def test_duckstation_declare_son_releve_clos_sans_pretendre_a_l_automatique():
+    """Dette D3, close le 2026-08-29 — et le champ doit dire COMMENT.
 
-    Le champ RESTE « a-relever » après le relevé du 2026-08-29, et ce n'est pas
-    un oubli. Le relevé clôt deux des trois conditions de sa propre procédure —
-    la section existe, DuckStation l'a écrite lui-même — mais PAS la
-    troisième : personne n'a lancé un jeu depuis Steam pour voir la manette y
-    répondre. L'invité a d'ailleurs été restauré, il ne porte plus de [Pad1],
-    et rien n'a été joué. « auto » dirait que DuckStation trouve sa manette
-    seul, ce qui est faux — il ne la trouve que parce que la console lui impose
-    vingt-sept liaisons. Tant qu'aucun bouton n'a été VU répondre, l'état vrai
-    est celui d'une panne dont le relevé n'est pas clos, et `retro status` doit
-    continuer de renvoyer le propriétaire à l'étape 4 de la procédure.
+    L'histoire tient en trois dates. Le 2026-08-28 : le jeu démarre, la manette
+    ne répond pas, alors que le plan des manettes rangeait DuckStation parmi
+    les émulateurs qui « détectent bien tout seuls ». Le 2026-08-29 au matin :
+    les vingt-sept liaisons sont relevées, écrites par l'assistant de
+    DuckStation lui-même, mais personne n'a encore vu un bouton agir. Le
+    2026-08-29 : le propriétaire confirme que Crash Team Racing répond à la
+    manette. Les trois conditions de la procédure sont remplies.
+
+    LE CHAMP NE PEUT PAS VALOIR « auto », ET C'EST LE CŒUR DE CE TEST.
+    « auto » veut dire « cet émulateur trouve sa manette seul » — c'est très
+    exactement ce que D3 a réfuté. DuckStation ne la trouve que parce que la
+    console lui impose vingt-huit clés de [Pad1]. Le jour où quelqu'un
+    « simplifierait » ce champ en `auto`, plus rien dans le dépôt ne dirait
+    que retirer `enforced` rend la console muette.
+
+    Il ne peut pas valoir « a-relever » non plus : `retro status` annoncerait
+    une manette muette sur le seul émulateur dont un bouton ait été VU agir.
+    Ni « inconnu », qui effacerait la mesure. D'où le quatrième état.
     """
     profil = profiles.load_profile(PROFILS / "duckstation.toml")
-    assert profil.input_mapping == profiles.MAPPING_A_RELEVER
+    assert profil.input_mapping == profiles.MAPPING_RELEVE
+    assert profil.input_mapping != profiles.MAPPING_AUTO
     assert "Pad1" in profil.input_mapping_where
 
 
@@ -861,11 +892,21 @@ def test_les_liaisons_de_duckstation_sont_imposees_et_non_posees_une_fois():
     """
     b = profiles.load_profile(PROFILS / "duckstation.toml").bootstrap
     pad_impose = [c for s, c in _cles_ini(b.enforced) if s == "Pad1"]
-    assert len(pad_impose) == 27, (
+    liaisons = [c for c in pad_impose if c != "ForceAnalogOnReset"]
+    assert len(liaisons) == 27, (
         "duckstation.toml : `enforced` ne porte plus les vingt-sept liaisons "
-        f"relevées le 2026-08-29, mais {len(pad_impose)}. Elles ont été "
+        f"relevées le 2026-08-29, mais {len(liaisons)}. Elles ont été "
         "écrites par DuckStation lui-même ; en retirer une, c'est rendre un "
         "bouton muet sans qu'aucun message ne le dise."
+    )
+    # La vingt-huitième clé de [Pad1] n'est PAS une liaison, et elle est
+    # exigée à part : sans elle, les vingt-sept ci-dessus sont justes et Crash
+    # Team Racing ne répond à rien. Deux causes, un seul symptôme.
+    assert "ForceAnalogOnReset" in pad_impose, (
+        "duckstation.toml : [Pad1] n'impose plus ForceAnalogOnReset. Son "
+        "défaut est `true` (src/core/analog_controller.cpp) et un jeu d'avant "
+        "l'analogique ne répond alors à aucun bouton — la manette est muette "
+        "exactement comme si les liaisons manquaient."
     )
     pad_pose = [c for s, c in _cles_ini(b.content) if s == "Pad1"]
     assert pad_pose == [], (
@@ -926,10 +967,16 @@ def test_les_liaisons_de_duckstation_portent_la_forme_qu_il_a_ecrite():
     )
 
     # Les valeurs, relues dans le fragment : toutes SDL-0, aucune XInput.
+    #
+    # ForceAnalogOnReset est exclue NOMMÉMENT, et il faut que ce soit nommé :
+    # c'est la seule clé de [Pad1] qui ne soit pas une liaison — un booléen,
+    # pas un périphérique. L'exclure par un test de forme (« ce qui ne
+    # ressemble pas à une liaison ») rouvrirait la porte qu'on ferme ici : une
+    # liaison mal écrite s'exclurait elle-même du contrôle.
+    liaisons = {c for _, c in pad} - {"ForceAnalogOnReset"}
     valeurs = [l.split("=", 1)[1].strip()
                for l in b.enforced.splitlines()
-               if "=" in l and l.split("=", 1)[0].strip()
-               in {c for _, c in pad}]
+               if "=" in l and l.split("=", 1)[0].strip() in liaisons]
     hors = [v for v in valeurs if not v.startswith("SDL-0/")]
     assert hors == [], (
         "duckstation.toml : des liaisons de [Pad1] ne portent pas "
@@ -966,14 +1013,22 @@ def test_le_systeme_vita_couvre_les_deux_formes_de_bibliotheque():
     )
 
 
-# duckstation.toml est exclu de la garde ci-dessous, ICI et nulle part
-# ailleurs. Sa manette entière reste muette — aucun bouton ne répond, mesuré le
-# 2026-08-28 sur Crash Team Racing, dette D3 — et sur un émulateur qui ne voit
-# pas sa manette, la vibration n'est pas mesurable : il n'y a rien d'honnête à
-# écrire dans son profil avant que D3 soit close. Retirer ce nom le jour où
-# elle l'est rend le test rouge sur ce fichier, ce qui est exactement le rappel
-# voulu.
-SANS_NOTE_DE_VIBRATION = frozenset({"duckstation.toml"})
+# L'EXEMPTION EST VIDE DEPUIS LE 2026-08-29, et c'est le rappel qui a joué.
+#
+# duckstation.toml y figurait, ICI et nulle part ailleurs : sa manette entière
+# était muette — aucun bouton ne répondait, mesuré le 2026-08-28 sur Crash Team
+# Racing, dette D3 — et sur un émulateur qui ne voit pas sa manette, la
+# vibration n'est pas mesurable. L'exemption disait de retirer ce nom le jour
+# où D3 se clôt. D3 s'est close le 2026-08-29 (le propriétaire a vu la manette
+# répondre dans CTR), le nom est retiré, et le profil doit donc dire où en est
+# sa vibration comme les neuf autres.
+#
+# Ce qu'il en dit, et c'est tout ce qu'on en sait : LargeMotor et SmallMotor
+# ont été écrits par l'assistant de DuckStation, ils ont la bonne forme, et
+# PERSONNE NE LES A VUS FAIRE VIBRER quoi que ce soit. La garde n'exige pas
+# une vibration qui marche — elle exige que le profil ne laisse pas croire
+# qu'elle marche.
+SANS_NOTE_DE_VIBRATION: frozenset[str] = frozenset()
 
 
 def test_chaque_profil_livre_dit_ou_en_est_sa_vibration():
