@@ -1067,3 +1067,53 @@ def test_un_profil_qui_ne_tranche_pas_sur_le_remplissage_reste_valide(tmp_path):
                                      profil_rendu(RENDU_VALIDE)))
     assert p.systems[0].render.native.fill == ""
     assert p.systems[0].render.native.fill_absent == ""
+
+
+# --- la stratégie d'écriture de l'amorçage --------------------------------
+
+def _avec_strategie(valeur: str, entete: str = "") -> str:
+    """BOOTSTRAP_VALIDE, avec une stratégie déclarée.
+
+    L'en-tête par défaut DIT qu'il modifie : c'est ce que la fusion exige, et
+    le test qui vérifie ce refus le retire exprès.
+    """
+    texte = BOOTSTRAP_VALIDE.replace(
+        "[bootstrap]\n", f'[bootstrap]\nstrategy = "{valeur}"\n')
+    return texte.replace(
+        "; Écrit par « retro » au premier lancement, parce que ce fichier "
+        "était absent.",
+        entete or "; Écrit par « retro », qui MODIFIE ce fichier.")
+
+
+def test_la_strategie_par_defaut_reste_si_absent(tmp_path):
+    """Les huit autres profils ne changent pas de comportement du jour où une
+    seconde stratégie existe : ne rien déclarer, c'est ne toucher à rien."""
+    from retro import launcher
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", BOOTSTRAP_VALIDE))
+    assert p.bootstrap.strategy == launcher.SI_ABSENT
+
+
+def test_la_strategie_de_fusion_se_declare(tmp_path):
+    from retro import launcher
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml",
+                                     _avec_strategie("fusion")))
+    assert p.bootstrap.strategy == launcher.FUSION
+
+
+def test_une_strategie_inconnue_est_refusee(tmp_path):
+    """Le lanceur REFUSE une stratégie qu'il ne connaît pas, et il a raison :
+    mais il le fait sur la console, devant une télévision. La même faute doit
+    se voir ici, sur la machine qui pilote, où elle se corrige."""
+    with pytest.raises(profiles.ProfileError, match="stratégie d'amorçage"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml",
+                                     _avec_strategie("ecraser")))
+
+
+def test_la_fusion_exige_de_dire_qu_elle_modifie(tmp_path):
+    """L'en-tête d'un fichier posé PROMET quelque chose au propriétaire. Tant
+    que la stratégie était « si-absent », « vos réglages ne sont jamais
+    retouchés » était vrai. En fusion, c'est faux — et un fichier qui ment sur
+    ce qu'on lui fait est pire qu'un fichier sans en-tête."""
+    texte = _avec_strategie("fusion", entete="; Écrit par « retro ».")
+    with pytest.raises(profiles.ProfileError, match="ce qu'elle modifie"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", texte))

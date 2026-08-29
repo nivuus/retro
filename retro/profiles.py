@@ -60,9 +60,14 @@ class Bootstrap:
     `target` est un chemin WINDOWS, variables d'environnement comprises : la
     configuration d'un émulateur vit dans le profil de l'utilisateur Windows,
     que la machine qui pilote `retro` n'atteint pas. Le lanceur, lui, y est.
+
+    `strategy` dit COMMENT le fichier est écrit — voir `launcher.STRATEGIES`.
+    Le défaut reste « si-absent », de sorte qu'un profil qui ne déclare rien
+    ne change pas de comportement du jour où la fusion existe.
     """
     target: str
     content: str
+    strategy: str = ""
 
 
 def folder_key(nom: str) -> str:
@@ -411,7 +416,53 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
             "configuration écrit par un outil doit dire qui l'a écrit : sans "
             "cela, le propriétaire le prend pour le sien."
         )
-    return Bootstrap(target=target, content=content)
+    return Bootstrap(target=target, content=content,
+                     strategy=_lire_strategie(path, brut, content))
+
+
+def _lire_strategie(path: pathlib.Path, brut, content: str) -> str:
+    """Comment ce fichier est écrit, et ce que son en-tête doit alors dire.
+
+    Le défaut est « si-absent » : ne rien déclarer, c'est ne toucher à rien,
+    donc les profils écrits avant que la fusion existe gardent exactement leur
+    comportement.
+
+    Deux refus, et le second est le plus important :
+
+    - une stratégie inconnue. Le lanceur la refuse déjà, et il a raison — mais
+      il le fait SUR LA CONSOLE, après que le raccourci Steam a été cliqué.
+      La même faute doit se voir ici, où elle se corrige.
+    - un en-tête qui ne dit pas que le fichier est MODIFIÉ. Tant que la
+      stratégie était « si-absent », « une fois qu'il existe, vos réglages ne
+      sont jamais retouchés » était vrai, et c'est ce que les fichiers posés
+      promettent. En fusion, cette phrase devient un mensonge — et un fichier
+      qui ment sur ce qu'on lui fait est pire qu'un fichier sans en-tête,
+      parce qu'il est CRU. La garde est volontairement grossière (le mot doit
+      apparaître) : elle attrape le seul défaut qui compte, l'oubli.
+    """
+    from retro import launcher as launcher_mod
+
+    strategie = brut.get("strategy", launcher_mod.SI_ABSENT)
+    if not isinstance(strategie, str) or \
+            strategie not in launcher_mod.STRATEGIES:
+        raise ProfileError(
+            f"{path} [bootstrap] : stratégie d'amorçage inconnue : "
+            f"{strategie!r}. Les stratégies sont "
+            f"{', '.join(launcher_mod.STRATEGIES)}. Le lanceur refuse celle "
+            "qu'il ne connaît pas — mais il le fait sur la console, devant "
+            "une télévision, alors qu'ici elle se corrige."
+        )
+    if strategie == launcher_mod.FUSION and "modifi" not in content.lower():
+        raise ProfileError(
+            f"{path} [bootstrap] : la stratégie « {launcher_mod.FUSION} » "
+            "exige que 'content' dise en toutes lettres ce qu'elle modifie. "
+            "Un amorçage « si-absent » peut promettre que les réglages du "
+            "propriétaire ne sont jamais retouchés ; une fusion ne le peut "
+            "pas, puisqu'elle rouvre un fichier qui existe. Un en-tête qui "
+            "ment sur ce qu'on fait au fichier est pire qu'une absence "
+            "d'en-tête : il est cru."
+        )
+    return strategie
 
 
 # L'identifiant d'un profil n'est pas une étiquette : il NOMME un fichier et
