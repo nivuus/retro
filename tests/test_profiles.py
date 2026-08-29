@@ -1293,6 +1293,20 @@ def test_mapping_where_reste_facultatif_quand_rien_n_est_a_relever(tmp_path):
         assert p.input_mapping_where == ""
 
 
+def test_une_cle_inconnue_du_bloc_input_est_refusee(tmp_path):
+    """La fragilité que le plan D1 exige de fermer AVANT d'ajouter un champ.
+
+    `render` et `render.<mode>` refusent leurs clés inconnues depuis toujours ;
+    `[input]` ne refusait rien. Un « rumbl » mal orthographié retombait donc
+    en silence sur le défaut, et le rapport se taisait sur l'émulateur
+    précisément concerné — une valeur fausse se comportant exactement comme
+    l'absence de valeur, la règle de fond de ce dépôt.
+    """
+    with pytest.raises(profiles.ProfileError, match="inconnues"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nrumbl = "vu"\n')))
+
+
 # --- un jeu qui est un DOSSIER ---------------------------------------------
 #
 # `extensions` dit ce qu'est un jeu quand un jeu est un fichier. Une

@@ -657,6 +657,37 @@ def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
         )
 
 
+# Les clés que `[input]` accepte, et il n'en accepte AUCUNE autre.
+#
+# `render` et `render.<mode>` refusaient déjà leurs clés inconnues ; `[input]`
+# ne refusait rien, et c'est la fragilité que le plan D1 exige de fermer avant
+# d'y ajouter un champ. Une clé mal orthographiée — « rumbl » pour « rumble »,
+# « maping » pour « mapping » — n'était jamais lue : le champ retombait sur son
+# défaut, `retro status` annonçait « jamais mesuré », et rien nulle part ne
+# disait qu'une valeur avait pourtant été écrite. C'est exactement la règle de
+# fond de ce dépôt — une valeur fausse se comporte comme l'absence de valeur —
+# appliquée au fichier qui la porte.
+#
+# `mode` y figure bien qu'aucun code ne le lise : il est déclaré par la
+# conception (`docs/superpowers/specs/2026-08-26-retro-console-design.md`) et
+# par les dix profils livrés. Le retirer est une décision à part, qui n'est pas
+# celle de ce garde-fou.
+_CLES_INPUT = ("steam_input", "mode",
+               "mapping", "mapping_where")
+
+
+def _valider_cles_input(path: pathlib.Path, entree: dict) -> None:
+    inconnues = sorted(k for k in entree if k not in _CLES_INPUT)
+    if inconnues:
+        raise ProfileError(
+            f"{path} [input] : clés inconnues : {', '.join(inconnues)}. Les "
+            f"clés sont {', '.join(_CLES_INPUT)}. Une clé mal orthographiée "
+            "ne serait jamais lue : le champ retomberait sur son défaut, le "
+            "rapport annoncerait « jamais mesuré », et rien ne dirait qu'une "
+            "valeur a pourtant été écrite ici."
+        )
+
+
 def _lire_mapping(path: pathlib.Path, entree: dict) -> tuple[str, str]:
     """L'état du relevé de la manette, validé, et l'endroit où il se fait.
 
@@ -962,6 +993,7 @@ def load_profile(path: pathlib.Path) -> Profile:
 
     sortie = data.get("exit", {})
     entree = data.get("input", {})
+    _valider_cles_input(path, entree)
     mapping, mapping_ou = _lire_mapping(path, entree)
     return Profile(
         id=data["id"], exe=data["exe"], systems=tuple(systemes),
