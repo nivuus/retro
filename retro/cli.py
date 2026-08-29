@@ -511,6 +511,14 @@ def _cmd_status(args) -> int:
             # geste à faire est de le recompiler.
             lanceur_perime=launcher_mod.lanceur_perime(
                 pathlib.Path(args.emulation_root)),
+            # Ce que les fichiers d'amorçage POSÉS contiennent réellement,
+            # confronté à ce que les profils chargés ici décrivent. Seul
+            # « retro scan » les écrit : un `enforced` corrigé dans un profil
+            # restait sans le moindre effet tant que personne ne re-scannait,
+            # et le symptôme était le réglage d'origine — indiscernable, vu du
+            # canapé, d'un correctif qui serait faux.
+            fragments=launcher_mod.lire_fragments(
+                pathlib.Path(args.emulation_root)),
             # Quelle construction du paquet produit ce rapport. Le rapport le
             # CONSTATE et ne le reproche pas : il n'a aucune référence à
             # opposer, et c'est l'hôte qui a livré la roue qui sait laquelle

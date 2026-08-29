@@ -478,6 +478,77 @@ bios = []
     assert "duckstation" in out
 
 
+# --- D11 : `retro status` confronte le fragment déposé au profil -----------
+
+_PROFIL_IMPOSE_CLI = """
+schema = 1
+id = "r"
+exe = 'R-x64\\r.exe'
+[[bootstrap]]
+target = 'C:\\r\\settings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé UNE FOIS, et le reste, qui est à vous.
+[Main]
+ConfirmPowerOff = false
+'''
+enforced = '''
+[Main]
+SetupWizardIncomplete = false
+'''
+[[system]]
+id = "snes"
+name = "SNES"
+extensions = [".sfc"]
+launch = '-f "{rom}"'
+bios = []
+"""
+
+
+# Les deux fragments que « retro scan » déposerait pour ce profil, écrits ICI
+# en toutes lettres. Les faire produire par `fragments_attendus` rendrait le
+# test tautologique : il passerait quoi que cette fonction devienne.
+_BOOTSTRAP_DEPOSE = (
+    "; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et "
+    "repose\n; à chaque lancement, ce qu'il a posé UNE FOIS, et le reste, qui "
+    "est à vous.\n[Main]\nConfirmPowerOff = false\n")
+_IMPOSE_DEPOSE = "[Main]\nSetupWizardIncomplete = false\n"
+
+
+def _status_avec_impose(tmp_path, capsys, impose: str):
+    profils = tmp_path / "profiles"
+    profils.mkdir()
+    (profils / "p.toml").write_text(_PROFIL_IMPOSE_CLI, encoding="utf-8")
+    (tmp_path / "ROMs").mkdir()
+    (tmp_path / "bios").mkdir()
+    emulation = tmp_path / "Emulation"
+    plans = emulation / "_launcher" / "systems"
+    plans.mkdir(parents=True)
+    (plans / "r.bootstrap.1.ini").write_text(_BOOTSTRAP_DEPOSE,
+                                             encoding="utf-8")
+    (plans / "r.impose.1.ini").write_text(impose, encoding="utf-8")
+    code = cli.main(["status", "--roms", str(tmp_path / "ROMs"),
+                     "--profiles", str(profils),
+                     "--emulation-root", str(emulation),
+                     "--bios", str(tmp_path / "bios")])
+    assert code == 0
+    return capsys.readouterr().out
+
+
+def test_status_denonce_un_fragment_impose_perime(tmp_path, capsys):
+    """La dette D11, de bout en bout : le profil a changé, le fragment posé
+    sur la machine est resté celui d'avant, et rien ne faisait le lien."""
+    out = _status_avec_impose(
+        tmp_path, capsys, "[Main]\nSetupWizardIncomplete = true\n")
+    assert "r.impose.1.ini" in out
+    assert "retro scan" in out
+
+
+def test_status_se_tait_quand_le_fragment_impose_est_a_jour(tmp_path, capsys):
+    out = _status_avec_impose(tmp_path, capsys, _IMPOSE_DEPOSE)
+    assert "r.impose.1.ini" not in out
+
+
 # --- « 0 ROM répertoriée » doit dire POURQUOI ------------------------------
 
 _PROFIL_MIN = """

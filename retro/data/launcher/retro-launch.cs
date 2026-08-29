@@ -381,7 +381,11 @@ static class RetroLaunch
                 // Sans ce test, chaque lancement deposerait une sauvegarde de
                 // plus et retoucherait un fichier qui n'avait rien a changer
                 // — le contraire exact de ce que le proprietaire a autorise.
-                if (fusionne == existant)
+                //
+                // La conformite se juge SUR LES CLES, marques retirees des
+                // deux cotes. Voir SansMarques : la marque est un
+                // commentaire, et l'interface de l'emulateur les efface.
+                if (SansMarques(fusionne) == SansMarques(existant))
                 {
                     Noter("amorcage : " + cible + " deja conforme — aucune "
                           + "sauvegarde, aucune reecriture (" + FUSION + ")");
@@ -516,7 +520,12 @@ static class RetroLaunch
             string existant = LireTexte(cible, out bomCible);
             int posees;
             string fusionne = Fusionner(existant, apporte, out posees);
-            if (fusionne == existant)
+            // Le MEME juge que le chemin d'ecriture, et pas une seconde
+            // formule qui lui ressemble : --explain est la seule facon de
+            // verifier a distance ce que la fusion ferait, et deux juges
+            // divergents rendraient « rien ne sera reecrit » a un
+            // proprietaire dont le fichier est reecrit a chaque clic.
+            if (SansMarques(fusionne) == SansMarques(existant))
                 return "non (" + FUSION + " : la cible porte deja les cles "
                        + "imposees, rien ne sera reecrit)";
             return "oui (" + FUSION + " : " + posees + " cle(s) imposee(s) ; "
@@ -588,6 +597,38 @@ static class RetroLaunch
         // une SECONDE cle « scaling » a cote de « Scaling », dont l'emulateur
         // ne lirait qu'une — et pas forcement la notre.
         return section.ToLowerInvariant() + " " + cle.ToLowerInvariant();
+    }
+
+    // Le texte SANS les marques de retro, et sans ses fins de ligne : c'est
+    // sur cette forme que se juge « deja conforme ».
+    //
+    // POURQUOI, et c'est une MESURE, pas une precaution : l'emulateur reecrit
+    // son fichier de reglages a une fermeture propre depuis son interface, et
+    // il en EFFACE TOUS LES COMMENTAIRES — 2187 octets devenus 985, mesure du
+    // 2026-08-29. Les cles survivent ; les marques, qui SONT des commentaires,
+    // non. Comparer le texte brut faisait donc differer le fusionne de
+    // l'existant a TOUS les coups des lors que le proprietaire avait ouvert
+    // son interface une fois : une sauvegarde horodatee et une reecriture
+    // complete a chaque lancement, alors que pas une cle n'avait bouge.
+    //
+    // Ce que ce choix concede, et il faut le dire : les marques ne reviennent
+    // alors PAS d'elles-memes. Elles sont reposees quand une cle est
+    // reellement (re)posee, et pas avant. C'est delibere — les rendre
+    // permanentes demanderait de reecrire le fichier a chaque cycle, qui est
+    // exactement la panne qu'on ferme ici. Une marque est un CONFORT de
+    // lecture ; l'idempotence est une promesse faite au proprietaire.
+    //
+    // Ce qu'on n'a PAS fait, et pourquoi : poser la marque sous forme de CLE
+    // — que l'emulateur conserverait, puisqu'il preserve ce qu'il ne
+    // comprend pas. Le proprietaire a autorise a ecrire « seulement les cles
+    // que la console doit imposer » ; une cle de comptabilite que son
+    // emulateur ne reconnait pas sort de cette autorisation.
+    static string SansMarques(string texte)
+    {
+        var gardees = new List<string>();
+        foreach (string ligne in texte.Replace("\r\n", "\n").Split('\n'))
+            if (ligne.Trim() != MARQUE_FUSION) gardees.Add(ligne);
+        return string.Join("\n", gardees.ToArray());
     }
 
     static string Fusionner(string existant, string apporte, out int posees)

@@ -145,6 +145,58 @@ def bootstrap_name(profile_id: str, index: int, target: str) -> str:
     return f"{profile_id}.{BOOTSTRAP}.{index}{_suffixe(target)}"
 
 
+def fragments_attendus(profile_id: str, index: int,
+                       amorcage) -> list[tuple[str, str]]:
+    """Ce qu'une entrée d'amorçage FAIT DÉPOSER : (nom de fichier, texte).
+
+    UNE seule définition, employée par l'écriture ET par le contrôle. Deux
+    divergeraient au premier changement de convention, et le contrôle finirait
+    par accuser un fragment parfaitement à jour — ou, bien pire, par bénir un
+    fragment périmé, ce qui est exactement la panne qu'il existe pour attraper.
+
+    Le fichier des clés imposées n'est là que si l'entrée impose quelque
+    chose : un fragment vide déposé se lirait comme « rien n'est imposé »,
+    alors que le plan, lui, porterait déjà la ligne vide qui le dit.
+    """
+    fragments = [(bootstrap_name(profile_id, index, amorcage.target),
+                  amorcage.content)]
+    if amorcage.enforced:
+        # Le saut de ligne final fait partie du fichier déposé : la comparaison
+        # du contrôle est faite à l'octet près, et l'omettre ici ferait crier
+        # au loup à chaque passage sur un fragment tout neuf.
+        fragments.append((enforced_name(profile_id, index, amorcage.target),
+                          amorcage.enforced + "\n"))
+    return fragments
+
+
+def lire_fragments(emulation_root_local) -> dict[str, str] | None:
+    """Ce que le dossier des plans porte RÉELLEMENT : nom → texte.
+
+    `None` et `{}` ne disent pas la même chose, et les confondre serait la
+    faute : `None` veut dire que le dossier n'existe pas — « retro scan » n'a
+    jamais tourné sur cette machine, ou l'hôte consulte le rapport sans voir le
+    disque de la console —, et il n'y a alors rien à reprocher à personne. `{}`
+    veut dire qu'il a tourné et n'a rien eu à déposer.
+
+    Les erreurs de décodage ne sont pas rattrapées en silence vers un texte
+    « probablement correct » : un fragment illisible N'EST PAS conforme, et le
+    faire passer pour tel rendrait ce contrôle inutile précisément le jour où
+    il servirait.
+    """
+    dossier = local_dir(emulation_root_local) / PLAN
+    try:
+        fichiers = [p for p in dossier.iterdir() if p.is_file()]
+    except OSError:
+        return None
+    lus: dict[str, str] = {}
+    for fichier in fichiers:
+        try:
+            lus[fichier.name] = fichier.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            lus[fichier.name] = ""
+    return lus
+
+
 def resoudre_cible(target: str, install_dir_windows: str) -> str:
     """La cible, jetons substitués — comme {render_config}.
 
@@ -445,14 +497,12 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
         # numérotés dans l'ordre du profil — RPCS3 a deux fichiers à recevoir,
         # et un nom partagé ferait poser le contenu de l'un dans l'autre.
         for rang, amorcage in enumerate(profil.bootstraps, 1):
-            nom = bootstrap_name(pid, rang, amorcage.target)
-            (dossier / nom).write_text(amorcage.content, encoding="utf-8")
-            fichiers.add(nom)
-            if amorcage.enforced:
-                impose = enforced_name(pid, rang, amorcage.target)
-                (dossier / impose).write_text(
-                    amorcage.enforced + "\n", encoding="utf-8")
-                fichiers.add(impose)
+            # `fragments_attendus` dit ce qui doit être là ; c'est la MÊME
+            # fonction que `retro status` interroge pour constater qu'un
+            # fragment déposé n'est plus celui du profil.
+            for nom, texte in fragments_attendus(pid, rang, amorcage):
+                (dossier / nom).write_text(texte, encoding="utf-8")
+                fichiers.add(nom)
 
     # Tout fichier que ce passage n'a pas écrit s'en va : ce dossier
     # appartient entièrement à « retro scan », et un amorçage d'un format
