@@ -213,10 +213,33 @@ max_scale     = 12         # au-delà, l'émulateur refuse ou rame
 [system.render.native]
 args = '--config GFX.Settings.InternalResolution=1'
 crt  = '...'               # OU crt_absent = "pourquoi il n'y en a pas"
+fill = "entier"            # OU fill_absent = "cet émulateur n'en expose aucun"
 
 [system.render.full]
 args = '--config GFX.Settings.InternalResolution={scale}'
+fill = "ajuste"
 ```
+
+**Trois axes, et ils ne se remplacent pas.** La *résolution interne* dit
+combien de pixels l'émulateur calcule ; le *ratio d'époque* dit la forme de
+l'image — un 4:3 correctement rendu sur un 16:9 laisse des bandes noires sur
+les côtés, **c'est voulu, ce n'est pas de la déformation** ; le *remplissage*
+dit comment l'image produite est posée sur l'écran. C'est ce troisième axe, et
+lui seul, qui répond à « occuper le plus possible de l'écran **sans étirer
+l'image** ». Il n'a que deux valeurs, parce que ce sont les deux seules façons
+d'agrandir sans déformer :
+
+| `fill` | ce que ça fait |
+|---|---|
+| `entier` | multiple **entier** seulement : chaque pixel d'origine reste un carré de pixels identiques, le reste est de la bande noire |
+| `ajuste` | le plus grand agrandissement qui **tienne**, ratio conservé, au prix d'un facteur non entier |
+
+L'étirement n'est pas une troisième valeur qu'on n'aurait pas retenue : il
+n'est pas sur cet axe. La **politique** — `native` remplit `entier`, `full`
+remplit `ajuste` — est écrite dans `retro/render.py`, et `retro status` la
+cite. Un profil qui la contredit est refusé au chargement : la contradiction
+ne se verrait sinon que sur l'écran, sur une image floue qu'on croirait
+normale.
 
 Trois variables sont disponibles, substituées **au lancement** : `{width}` et
 `{height}`, la résolution de la session en cours, et `{scale}`, combien de fois

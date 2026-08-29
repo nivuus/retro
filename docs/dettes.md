@@ -74,6 +74,48 @@ ne fait pas aujourd'hui. À arbitrer avant d'écrire une ligne.
 neuf émulateurs configurés par neuf équipes différentes, ce n'est pas une
 console : c'est neuf comportements.
 
+### Où en est D2 — 2026-08-29
+
+**L'axe existe, avec sa politique.** `retro/render.py` porte maintenant le
+troisième axe, séparé des deux autres et nommé : deux valeurs, `entier` et
+`ajuste`, qui sont **les deux seules façons d'agrandir sans déformer** —
+l'étirement n'est pas une troisième valeur qu'on aurait écartée, il n'est pas
+sur cet axe. La politique est une table explicite, comme `_ARBITRAGE` :
+`native` remplit `entier` (la trame de la console est ce que le mode natif
+existe pour préserver ; seul un multiple entier l'agrandit sans la
+rééchantillonner), `full` remplit `ajuste` (la résolution interne est déjà
+montée à la session, il n'y a plus de trame à préserver). `auto` n'a pas de
+remplissage à lui : il hérite de celui du mode qu'il retient.
+
+**La décision reste explicable**, comme le reste du module : chaque mode rend
+son motif, `retro status` cite la politique en légende de sa section Rendu et
+donne le remplissage de chaque système. Un profil qui contredirait la
+politique est refusé au chargement — la contradiction ne se verrait sinon que
+sur l'écran, sur une image floue qu'on croirait normale.
+
+**Quatre états, jamais confondus** : réglé (`fill`), non réglable et c'est
+mesuré (`fill_absent`), rien à régler parce que le mode ne passe rien
+(déduit), et jamais mesuré — que `retro status` nomme dans un problème groupé.
+
+**Couvert :** les huit systèmes de RetroArch (`video_scale_integer`,
+`_axis = 0`, `_scaling = 0` en natif ; la mise à l'échelle entière éteinte
+explicitement en full, parce que RetroArch réécrit son `retroarch.cfg` en
+quittant). GameCube et Wii sont **déclarés non réglables** : la révision 2606a
+de Dolphin n'a aucune clé de mise à l'échelle entière.
+
+**Non couvert, et pourquoi :** PS2, PSP, Dreamcast, Xbox, PS3, Wii U n'ont
+**aucun bloc de rendu du tout**. Le troisième axe ne se greffe pas avant les
+deux premiers, et `retro status` les nomme déjà. C'est le travail du
+sous-projet D, pas celui-ci.
+
+**L'arbitrage DuckStation n'est pas tranché**, et c'est délibéré : il
+appartient au propriétaire. Il est posé en question fermée dans
+`retro/render.py`, au-dessus de la politique. En résumé : DuckStation *sait*
+remplir en entier (ses modes `NearestInteger` et `BilinearInteger` sont dans
+le binaire livré), mais seulement par son `settings.ini`, que l'amorçage ne
+pose **que s'il est absent** — donc sans effet sur une console déjà jouée, et
+l'y forcer serait réécrire un fichier du propriétaire.
+
 ---
 
 ## D3 — DuckStation : la manette reste muette sur Crash Team Racing
