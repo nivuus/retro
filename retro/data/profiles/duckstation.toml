@@ -72,13 +72,15 @@ exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 # DEUX RÉGIMES SUR CE FICHIER, arbitrés par le propriétaire le 2026-08-29.
 #
 # `enforced` — ce que la console IMPOSE, reposé à chaque lancement. Trois clés
-# de démarrage, et la section [Pad1] : sans elles, un jeu ne démarre pas sans
-# clavier, ou démarre sans qu'aucun bouton ne réponde. L'assistant de première
-# configuration s'ouvre par-dessus (SetupWizard), ou une fenêtre « Mise à jour
-# disponible » qu'aucune manette ne ferme (AutoUpdater), ou le jeu s'ouvre en
-# fenêtre sur la télévision (StartFullscreen), ou la manette reste muette
-# (Pad1). Ce sont les causes mesurées d'un lancement qui échoue, pas des
-# préférences.
+# de démarrage, le cadrage, et la section [Pad1] : sans elles, un jeu ne
+# démarre pas sans clavier, ou démarre sans qu'aucun bouton ne réponde.
+# L'assistant de première configuration s'ouvre par-dessus (SetupWizard), ou
+# une fenêtre « Mise à jour disponible » qu'aucune manette ne ferme
+# (AutoUpdater), ou le jeu s'ouvre en fenêtre sur la télévision
+# (StartFullscreen), ou l'image porte des bandes que personne ne peut retirer
+# du canapé (CropMode), ou la manette reste muette (Pad1, liaisons ET
+# ForceAnalogOnReset). Ce sont les causes mesurées d'un lancement qui échoue ou
+# d'une image fausse, pas des préférences.
 #
 # `content` — tout le reste, posé UNE FOIS parce que le fichier n'existait
 # pas, et plus jamais retouché. Ce sont des préférences : le propriétaire les
@@ -86,35 +88,67 @@ exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 # explicitement demandé — la console n'a pas à lui reprendre ConfirmPowerOff.
 #
 # Le reste du fichier — son [BIOS] SearchDirectory, ses réglages, ses
-# commentaires — n'est jamais touché : la fusion ne connaît que les clés
-# qu'elle apporte.
+# commentaires — n'est jamais touché PAR LA FUSION : elle ne connaît que les
+# clés qu'elle apporte.
 #
-# REMPLISSAGE (dette D2) — la clé de rendu rejoindra `enforced` DÈS QU'ELLE
-# SERA RELEVÉE, et elle ne l'est pas. Le binaire épinglé porte bien de quoi
-# remplir en entier — le type DisplayScalingMode, les valeurs NearestInteger
-# et BilinearInteger, étiquetées « Nearest-Neighbor (Integer) » et
-# « Bilinear (Integer) » — mais son couple section/clé n'apparaît nulle part
-# sous une forme lisible : ces littéraux sont assemblés dans le code. Or une
-# clé qui ne correspond à rien est ignorée EN SILENCE — mesuré sur cet
-# émulateur même (2026-08-28, une clé inventée survit à un aller-retour sans
-# rien faire). En écrire une plausible produirait exactement ce que la dette
-# D2 combat : un réglage qui a l'air posé et qui ne fait rien.
+# 🔴 MAIS DUCKSTATION, LUI, EFFACE TOUS LES COMMENTAIRES. Mesuré le
+# 2026-08-29 : à une fermeture propre depuis son interface, DuckStation
+# RÉÉCRIT son settings.ini et n'en garde AUCUN commentaire — le fichier est
+# passé de 2187 à 985 octets. Les clés ont survécu ([Pad1], [BIOS]
+# SearchDirectory, SetupWizardIncomplete) ; l'en-tête en trois catégories
+# ci-dessous, non.
 #
-# LE GESTE POUR LA RELEVER, et il revient au propriétaire : sous
-# « -batch -nogui » — le seul mode que la console emploie — DuckStation ne
-# réécrit JAMAIS son settings.ini. Il faut donc l'ouvrir UNE fois hors du
-# chemin de la console, changer le réglage de mise à l'échelle dans son
-# interface, quitter, puis lire la section [Display] du fichier qu'il vient
-# d'écrire.
+# Ce que cela veut dire pour le régime `content` : le mécanisme `enforced`
+# repose bien les clés au lancement suivant, mais RIEN ne repose l'explication
+# que le propriétaire est censé lire. Un premier lancement en interface suffit
+# à laisser un fichier de clés nues, sans un mot pour dire lesquelles
+# reviendront. Sous « -batch -nogui » — le seul mode que la console emploie —
+# la réécriture n'a pas lieu ; c'est le passage par l'interface qui l'efface.
+#
+# Ce n'est PAS corrigé ici : l'arbitrage appartient au propriétaire, et il est
+# posé en question fermée dans docs/dettes.md, D2.
+#
+# ⚠️ ET « LA CLÉ A SURVÉCU » NE PROUVE PAS « LA CLÉ EST RECONNUE ». La même
+# mesure l'a tranché : `DisplayCropMode`, une clé INVENTÉE, a survécu à cette
+# réécriture aussi. DuckStation conserve ce qu'il ne comprend pas. La survie
+# d'une clé est donc un FAUX ORACLE — la seule preuve reste l'effet observé.
+#
+# CADRAGE (dette D2) — RELEVÉ ET POSÉ le 2026-08-29 : `[Display] CropMode =
+# Borders`, dans `enforced`, confirmé par le propriétaire — plus aucune bande.
+# La façon dont il a été relevé, et les deux échecs qui l'ont précédé, sont
+# écrits juste au-dessus du champ `enforced`, avec la leçon qui vaut plus que
+# le réglage : les chaînes du binaire donnent les LIBELLÉS de l'interface, pas
+# les valeurs du fichier ; les valeurs sont dans la source.
+#
+# REMPLISSAGE (dette D2) — TOUJOURS PAS POSÉ, et l'état a changé sans être
+# clos. Le couple section/clé n'est plus l'inconnue : `[Display] Scaling` a été
+# posé le 2026-08-29 avec la valeur `BilinearSmooth`, et il a été RECONNU.
+# Ce qu'on en sait de plus, et c'est un fait négatif utile : `Scaling` est un
+# FILTRE, pas un cadrage — il n'a RIEN changé à la géométrie de l'image.
+#
+# CE QUI N'EST PAS MESURÉ, et interdit d'écrire une valeur ici : le binaire
+# épinglé porte bien de quoi remplir en entier — le type DisplayScalingMode,
+# les valeurs NearestInteger et BilinearInteger, étiquetées « Nearest-Neighbor
+# (Integer) » et « Bilinear (Integer) » — mais PERSONNE N'A VU l'une de ces
+# deux valeurs agir sur la machine. Or une valeur fausse se comporte exactement
+# comme l'absence de valeur : mesuré deux fois sur cet émulateur même — une clé
+# inventée survit à un aller-retour sans rien faire (2026-08-28), et deux
+# valeurs de CropMode recopiées des libellés de l'interface n'ont rien fait non
+# plus (2026-08-29). En écrire une plausible produirait exactement ce que la
+# dette D2 combat : un réglage qui a l'air posé et qui ne fait rien.
 #
 # CE QUI SE PASSE ALORS, et qu'il ne faut pas prendre pour un sabotage : ce
-# relevé — comme celui de la manette (D3), qui exige de repasser
+# relevé — comme celui de la manette (D3), qui a exigé de repasser
 # SetupWizardIncomplete à `true` — se fait DuckStation lancé hors de la
 # console. La console ne réaffirme rien pendant ce temps. Mais le PROCHAIN
 # lancement par la console remettra SetupWizardIncomplete à `false`, et c'est
 # VOULU : c'est précisément le rôle de `enforced`. Le relevé n'est pas perdu
 # pour autant — la clé relevée se recopie dans ce profil, où elle devient à
 # son tour une clé imposée.
+#
+# ET C'EST CE LANCEMENT-LÀ QUI EFFACE LES COMMENTAIRES (voir plus haut) : un
+# relevé fait en interface, fermé proprement, rend un settings.ini de clés
+# nues. Les clés reviennent au lancement suivant ; l'en-tête, non.
 
 [bootstrap]
 target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
@@ -171,6 +205,51 @@ target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
 # LargeMotor et SmallMotor sont les deux liaisons de VIBRATION, et elles
 # étaient absentes jusqu'ici : c'est un maillon de la dette D1 qui devient
 # actionnable sans nouvelle mesure.
+#
+# [Pad1] ForceAnalogOnReset — LA VINGT-HUITIÈME CLÉ, ET CE N'EST PAS UNE
+# LIAISON. Relevée dans src/core/analog_controller.cpp : booléen, DÉFAUT
+# `true`, décrit « Forces the controller to analog mode when the game is
+# started/restarted ». Elle est passée à `false` le 2026-08-29, et le
+# propriétaire a confirmé le résultat : la manette répond DÈS LE LANCEMENT,
+# sans bascule manuelle.
+#
+# Pourquoi elle est nécessaire, et pas une préférence : Crash Team Racing est
+# un jeu d'AVANT l'analogique. Forcé en mode analogique il ne répond pas — et
+# le message « passage manette 1 en mode numérique », affiché après une bascule
+# à la main, réparait exactement ce symptôme. Sans cette clé, les vingt-sept
+# liaisons ci-dessus sont justes et le jeu reste muet : c'est une seconde cause
+# du même symptôme, indiscernable de la première vue du canapé.
+#
+# L'ARBITRAGE, ET IL SE PAIE. C'est un réglage GLOBAL, pas par jeu. Les titres
+# qui veulent l'analogique — Gran Turismo, Ape Escape, Metal Gear Solid —
+# démarreront donc en mode NUMÉRIQUE. La bascule reste possible en jeu, et elle
+# est mappée : `Analog = SDL-0/Guide`, c'est-à-dire le bouton Guide du pad.
+# Deux clés voisines existent et n'ont PAS été retenues, faute d'avoir été
+# mesurées : `AnalogDPadInDigitalMode` (défaut `true`) et `AnalogSensitivity`
+# (défaut 1.33).
+#
+# [Display] CropMode — LE CADRAGE, relevé après DEUX échecs, et c'est l'échec
+# qui vaut d'être écrit. Confirmé par le propriétaire le 2026-08-29 : plus
+# aucune bande.
+#
+# LA LEÇON : les CHAÎNES du binaire donnent les LIBELLÉS DE L'INTERFACE
+# (« All Borders », « Auto (Game Native) »), PAS les valeurs du fichier de
+# configuration. Les deux tentatives précédentes ont échoué pour cette seule
+# raison. Les vraies valeurs sont dans la SOURCE, src/core/settings.cpp,
+# tableau `s_display_crop_mode_names` : None, Overscan, OverscanUncorrected,
+# Borders, BordersUncorrected.
+#
+# Ce que la même lecture a tranché sur AspectRatio : il n'a PAS de tableau
+# statique — ses valeurs sont en minuscules (`auto`, `stretch`, `PAR 1:1`) ou
+# un ratio littéral. `AspectRatio = Auto` est donc FAUX, et a été retiré.
+#
+# Ce que ces deux échecs confirment, et c'est la règle de ce fichier :
+# UNE VALEUR FAUSSE SE COMPORTE EXACTEMENT COMME L'ABSENCE DE VALEUR.
+#
+# `Scaling` N'EST PAS UN CADRAGE, c'est un FILTRE. Mesuré le 2026-08-29 :
+# `Scaling = BilinearSmooth` a été posé, il a été reconnu, et il n'a RIEN
+# changé à la géométrie de l'image. Il n'entre pas ici et ne fait pas partie
+# du correctif — l'y ranger ferait croire le cadrage réglé par lui.
 enforced = '''
 [Main]
 SetupWizardIncomplete = false
@@ -179,11 +258,15 @@ StartFullscreen = true
 [AutoUpdater]
 CheckAtStartup = false
 
+[Display]
+CropMode = Borders
+
 [Pad1]
 Analog = SDL-0/Guide
 Circle = SDL-0/B
 Cross = SDL-0/A
 Down = SDL-0/DPadDown
+ForceAnalogOnReset = false
 L1 = SDL-0/LeftShoulder
 L2 = SDL-0/+LeftTrigger
 L3 = SDL-0/LeftStick
@@ -243,41 +326,57 @@ InhibitScreensaver = true
 HideCursorInFullscreen = true
 '''
 
-# DETTE — la manette ne répond pas dans DuckStation, constaté le 2026-08-28,
-# APRÈS les correctifs de manette du même jour (le lanceur retire
+# D3 EST RÉGLÉE — la manette répond, confirmé par le propriétaire le
+# 2026-08-29 sur Crash Team Racing, le jeu qui était le défaut d'origine.
+#
+# L'HISTOIRE, parce qu'elle explique la forme de ce bloc. Constaté le
+# 2026-08-28, APRÈS les correctifs de manette du même jour (le lanceur retire
 # SDL_GAMECONTROLLER_IGNORE_DEVICES, la synchronisation éteint
-# UseSteamControllerConfig). Le jeu démarre — Crash Team Racing, c'était le
-# défaut d'origine, et il est réglé — mais aucun bouton ne fait rien.
+# UseSteamControllerConfig) : le jeu démarrait, et aucun bouton ne faisait
+# rien. Le plan des manettes rangeait pourtant DuckStation parmi les émulateurs
+# qui « détectent bien tout seuls » leur manette — c'était faux, et ça reste
+# faux : il ne trouve la sienne que parce que la console lui impose les
+# vingt-sept liaisons ci-dessus.
 #
-# Ce que cela contredit : le plan des manettes range DuckStation parmi les
-# émulateurs qui « détectent bien tout seuls » leur manette. C'est faux ici, ou
-# ne vaut que d'un pad physique — le pad d'Apollo n'existe que pendant la
-# session.
+# DEUX CAUSES, PAS UNE, et le symptôme des deux est le même — manette muette,
+# rien dans le journal :
+#   1. l'absence de [Pad1] : SetupWizardIncomplete = false saute la page
+#      « Controller Setup », donc le seul geste qui aurait écrit les liaisons ;
+#   2. ForceAnalogOnReset, défaut `true` : CTR est un jeu d'avant l'analogique
+#      et ne répond pas en mode analogique forcé. Les vingt-sept liaisons
+#      étaient JUSTES et le jeu restait muet.
+# Les deux sont dans `enforced`. Traiter la première seule ne se voyait pas.
 #
-# LES LIAISONS ONT ÉTÉ RELEVÉES le 2026-08-29, et elles sont dans `enforced`
-# ci-dessus : vingt-sept lignes écrites par l'assistant de DuckStation
-# lui-même. La procédure jouée, ses pièges et son coût sont dans
-# docs/releve-manettes.md.
+# `mapping` VAUT MAINTENANT « releve », ET AUCUN DES TROIS ÉTATS PRÉCÉDENTS
+# N'AURAIT ÉTÉ VRAI. « auto » dirait que DuckStation trouve sa manette seul :
+# c'est très exactement ce que D3 a réfuté. « a-relever » ferait annoncer par
+# « retro status » une manette muette sur le seul émulateur dont on ait VU un
+# bouton agir. « inconnu » effacerait la mesure. Le vocabulaire s'est donc
+# allongé d'un quatrième état plutôt que d'en tordre un — voir
+# retro/profiles.py, MAPPING_RELEVE.
 #
-# `mapping` RESTE « a-relever », et ce n'est pas un oubli. La procédure pose
-# trois conditions pour tenir un relevé pour bon : la section existe et porte
-# des clés qui n'y étaient pas (fait) ; ces lignes ont été écrites par
-# DuckStation et non à la main (fait) ; ET un jeu lancé depuis Steam répond à
-# la manette — CELLE-LÀ N'EST PAS VÉRIFIÉE. L'invité a été restauré après le
-# relevé, il ne porte plus de [Pad1], et rien n'a été joué depuis. « auto »
-# dirait que DuckStation trouve sa manette seul : c'est faux, il ne la trouve
-# que parce que la console lui impose ces vingt-sept liaisons. Tant qu'aucun
-# bouton n'a été VU répondre, l'état vrai reste celui d'une panne dont le
-# relevé n'est pas clos. Voir docs/dettes.md, D3.
+# LES TROIS CONDITIONS de docs/releve-manettes.md sont remplies, la troisième
+# le 2026-08-29 : [Pad1] existe et porte des clés qui n'y étaient pas ; ces
+# lignes ont été écrites par l'assistant de DuckStation et non à la main ; et
+# un jeu répond à la manette.
+#
+# CE QUE LA CLÔTURE NE DIT PAS. Elle ne dit rien de la vibration : LargeMotor
+# et SmallMotor ont la bonne forme, personne ne les a vus faire vibrer quoi que
+# ce soit (dette D1). Elle ne lève pas la FRAGILITÉ 1 ci-dessus — « SDL-0 » est
+# un index, et un pad de plus branché avant celui d'Apollo ramène le symptôme
+# d'origine, en silence. Et elle ne vaut que pour Crash Team Racing : un jeu
+# qui veut l'analogique démarrera en mode numérique, par le choix global
+# assumé plus haut.
 #
 # `mapping_where` n'est pas décoratif : c'est le « où » du problème que le
-# rapport énonce, et sans lui le propriétaire lirait « la manette restera
-# muette » sans savoir quel fichier ouvrir. C'est le fichier que l'amorçage
-# écrit, à l'endroit exact où DuckStation le lira.
+# rapport énonce. Il reste exigé après la clôture, et pour la raison inverse
+# d'avant — c'est le seul endroit où vérifier que les liaisons imposées sont
+# encore là. C'est le fichier que l'amorçage écrit, à l'endroit exact où
+# DuckStation le lira.
 [input]
 steam_input = "required"
 mode        = "xinput"
-mapping       = "a-relever"
+mapping       = "releve"
 mapping_where = '%USERPROFILE%\Documents\DuckStation\settings.ini, section [Pad1]'
 
 [exit]
