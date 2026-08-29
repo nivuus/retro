@@ -964,3 +964,45 @@ def test_le_systeme_vita_couvre_les_deux_formes_de_bibliotheque():
         "le système Vita ne déclare pas .vpk : les jeux non installés "
         "resteraient invisibles"
     )
+
+
+# duckstation.toml est exclu de la garde ci-dessous, ICI et nulle part
+# ailleurs. Sa manette entière reste muette — aucun bouton ne répond, mesuré le
+# 2026-08-28 sur Crash Team Racing, dette D3 — et sur un émulateur qui ne voit
+# pas sa manette, la vibration n'est pas mesurable : il n'y a rien d'honnête à
+# écrire dans son profil avant que D3 soit close. Retirer ce nom le jour où
+# elle l'est rend le test rouge sur ce fichier, ce qui est exactement le rappel
+# voulu.
+SANS_NOTE_DE_VIBRATION = frozenset({"duckstation.toml"})
+
+
+def test_chaque_profil_livre_dit_ou_en_est_sa_vibration():
+    """Même raison que pour l'amorçage : un réglage absent sans explication ne
+    se distingue pas d'un réglage oublié.
+
+    La dette D1 constate que la manette ne vibre NULLE PART, et qu'aucun profil
+    ne pose de réglage de rumble. Tant que ce réglage n'est pas mesuré, le
+    profil doit au moins dire qu'il manque, où il ira, et pourquoi rien n'y est
+    écrit — sans quoi le prochain lecteur conclura que ces émulateurs vibrent
+    tout seuls, exactement l'erreur que le plan des manettes a payée sur
+    `steam_input`.
+    """
+    for f in sorted(PROFILS.glob("*.toml")):
+        if f.name in SANS_NOTE_DE_VIBRATION:
+            continue
+        commentaires = "\n".join(l for l in f.read_text(encoding="utf-8").splitlines()
+                                 if l.lstrip().startswith("#")).lower()
+        assert "vibration" in commentaires, (
+            f"{f.name} : aucun commentaire ne dit où en est la vibration "
+            "sur cet émulateur (dette D1)"
+        )
+        assert "d1" in commentaires, (
+            f"{f.name} : la note de vibration ne renvoie pas à la dette D1, "
+            "seul endroit où les trois maillons sont écrits"
+        )
+        assert "mesur" in commentaires, (
+            f"{f.name} : la note de vibration ne dit pas que le réglage reste "
+            "à mesurer — une clé de rumble recopiée d'une documentation est "
+            "ignorée en silence, et la manette reste muette exactement comme "
+            "si rien n'avait été écrit"
+        )

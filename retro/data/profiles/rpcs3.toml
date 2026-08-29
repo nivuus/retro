@@ -43,6 +43,20 @@ exe = 'rpcs3.exe'
 # le supposait de DuckStation, et c'était faux (dette D3). Les deux seules
 # lignes mesurées de son tableau sont l'émulateur personnel et DuckStation ;
 # celle-ci n'en est pas. `retro status` le nomme sans l'accuser.
+#
+# Vibration : aucun réglage de rumble n'est posé ici, et ce n'est pas un
+# oubli. La manette ne vibre NULLE PART — ni dans cet émulateur, ni dans les
+# jeux Steam, ni depuis le client Moonlight — et aucun des trois maillons n'a
+# été mesuré : dette D1 de docs/dettes.md. Le rumble est un réglage de la
+# configuration d'entrée, pas de la ligne de commande : il ira dans le gabarit
+# d'entrée du sous-projet E, famille « dédiée », dont la cible SUPPOSÉE pour
+# RPCS3 est config\input_configs\ — hypothèse du plan des manettes, jamais
+# mesurée. Le nom de la clé, lui, n'a été relevé dans AUCUN fichier que RPCS3
+# a lui-même écrit ; recopié d'une documentation, il serait ignoré en silence
+# et la manette resterait muette exactement comme aujourd'hui. Ce qui reste à
+# relever, sur la machine : ce que RPCS3 écrit de lui-même une fois la
+# vibration activée dans son interface — même méthode que pour l'identifiant
+# de manette (tâche 1 du sous-projet E), et pour la même raison.
 [input]
 steam_input = "required"
 mode        = "xinput"

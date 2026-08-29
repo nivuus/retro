@@ -72,6 +72,20 @@ exe = 'Vita3K.exe'
 # n'est PAS « il se debrouille » : le plan des manettes le supposait de
 # DuckStation, et c'etait faux (dette D3). `retro status` le nomme sans
 # l'accuser.
+#
+# Vibration : aucun réglage de rumble n'est posé ici, et ce n'est pas un
+# oubli. La manette ne vibre NULLE PART — ni dans les émulateurs, ni dans les
+# jeux Steam, ni depuis le client Moonlight — et aucun des trois maillons n'a
+# été mesuré : dette D1 de docs/dettes.md. Le rumble est un réglage de la
+# configuration d'entrée, pas de la ligne de commande : il ira dans le
+# gabarit d'entrée du sous-projet E. Ici la question est même en amont des
+# autres profils : Vita3K ne s'installe pas depuis ce manifeste, aucun
+# `target` écrivable ne désigne encore son config.yml (voir la note
+# d'amorçage ci-dessus), et le nom de la clé n'a été relevé dans AUCUN
+# fichier que Vita3K a lui-même écrit. Recopié d'une documentation, il serait
+# ignoré en silence et la manette resterait muette exactement comme
+# aujourd'hui. Ce qui reste à mesurer, sur la machine : ce que Vita3K écrit
+# de lui-même une fois la vibration activée dans son interface.
 [input]
 steam_input = "required"
 mode        = "xinput"

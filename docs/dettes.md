@@ -65,6 +65,50 @@ qu'il ne fait pas — il parlait du réglage d'intensité. L'absence **totale** 
 vibration est autre chose, et n'a jamais été mesurée maillon par maillon comme
 l'a été le masquage Steam Input.
 
+**Ce qui a été posé le 2026-08-29, et ce qui ne l'a pas été.** Aucun réglage de
+rumble n'a pu être posé, et c'est la conclusion, pas un abandon : le nom de la
+clé dépend, émulateur par émulateur, d'un relevé sur la machine que personne
+n'a fait. Une clé recopiée d'une documentation est ignorée **en silence** —
+c'est déjà ce qui a coûté quatre identifiants faux pour une seule manette au
+sous-projet E. Ce qui est posé, c'est l'aveu, profil par profil : les neuf
+profils livrés hors DuckStation portent désormais, dans leur bloc `[input]`,
+une note qui dit qu'aucun rumble n'y est réglé, où il ira, et ce qu'il reste à
+relever. `tests/test_donnees.py::test_chaque_profil_livre_dit_ou_en_est_sa_vibration`
+l'exige, sur le modèle exact de la garde qui existe déjà pour l'amorçage.
+
+| Profil | Famille | Cible supposée du gabarit d'entrée | Clé de rumble |
+|---|---|---|---|
+| Cemu | dédiée | `controllerProfiles\` | non relevée |
+| Dolphin | dédiée | `User\Config\GCPadNew.ini` | non relevée |
+| Flycast | générale | `emu.cfg` | non relevée |
+| PCSX2 | générale | `inis\PCSX2.ini` | non relevée |
+| PPSSPP | dédiée | `controls.ini` | non relevée |
+| RetroArch | dédiée | `autoconfig\*.cfg` | non relevée |
+| RPCS3 | dédiée | `config\input_configs\` | non relevée |
+| Xemu | générale | `xemu.toml` | non relevée |
+| Vita3K | générale | `config.yml` | non relevée, et hors de portée tant que D5 dure |
+| DuckStation | générale | `settings.ini`, section `[Pad1]` | non relevée, et non mesurable tant que D3 dure |
+
+**Aucune case de ce tableau n'est une mesure**, hors la dernière ligne : les
+colonnes « famille » et « cible » reprennent le tableau de la tâche 6 du plan
+des manettes, qui les donne lui-même pour des hypothèses de travail — « les
+deux seules lignes mesurées sont l'émulateur personnel et DuckStation ». S'y
+appuyer sans les vérifier, c'est refaire l'erreur que ce tableau annonce. La
+ligne Vita3K est en outre en amont de toutes les autres : l'émulateur ne
+s'installe pas (D5), aucune cible écrivable ne désigne encore son
+`config.yml`, et rien n'y sera mesurable avant que ce point soit levé.
+
+DuckStation est délibérément sans note dans son profil : sa manette entière est
+muette (D3), et sur un émulateur dont aucun bouton ne répond, la vibration
+n'est pas mesurable. Le test l'exempte nommément, et retirer cette exemption le
+jour où D3 se clôt le rend rouge — c'est le rappel voulu.
+
+**Le maillon Apollo → client, et la procédure de mesure que le propriétaire
+joue au canapé**, vivent dans `nivuus/installer`, `docs/console-dettes.md`,
+C1. L'ordre y est imposé et il n'est pas négociable : le réglage du client
+Moonlight d'abord, parce que c'est le seul des trois qui se teste **sans rien
+modifier**.
+
 ---
 
 ## D2 — Rien ne garantit une image maximale sans déformation
