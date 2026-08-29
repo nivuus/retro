@@ -964,3 +964,106 @@ def test_l_exemple_de_bootstrap_de_la_specification_se_charge(tmp_path):
     for bloc in exemple:
         assert profiles._lire_bootstrap(
             spec, tomllib.loads(bloc)["bootstrap"]) is not None
+
+
+# --- le troisième axe : le remplissage -----------------------------------
+
+REMPLI = """
+[system.render.native]
+args = "-scale=1 -integer=yes"
+crt_absent = "aucun shader"
+fill = "entier"
+[system.render.full]
+args = "-scale=4 -integer=no"
+fill = "ajuste"
+"""
+
+
+def test_un_remplissage_declare_se_charge(tmp_path):
+    from retro import render
+    p = profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu(REMPLI)))
+    assert p.systems[0].render.native.fill == render.ENTIER
+    assert p.systems[0].render.full.fill == render.AJUSTE
+
+
+def test_un_emulateur_sans_reglage_de_remplissage_le_declare(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun shader"
+fill_absent = "aucune clé de mise à l'échelle entière dans cette révision"
+[system.render.full]
+args = "-scale=4"
+fill_absent = "aucune clé de mise à l'échelle entière dans cette révision"
+""")))
+    assert "entière" in p.systems[0].render.full.fill_absent
+
+
+def test_un_remplissage_inconnu_est_refuse(tmp_path):
+    """« integer », « ajusté », « fit » : une valeur qu'aucune politique ne
+    connaît ne serait comparée à rien, et le mode partirait sans son
+    troisième axe sans qu'un mot le dise."""
+    with pytest.raises(profiles.ProfileError, match="remplissage inconnu"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun"
+fill = "integer"
+[system.render.full]
+args = "-y"
+fill = "ajuste"
+""")))
+
+
+def test_un_remplissage_contraire_a_la_politique_est_refuse(tmp_path):
+    """Un mode natif qui remplirait « au plus grand » rééchantillonnerait la
+    trame que le mode natif existe pour préserver — et la contradiction ne se
+    verrait que sur l'écran, sur une image floue qu'on croirait normale."""
+    with pytest.raises(profiles.ProfileError, match="la politique de remplissage"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun"
+fill = "ajuste"
+[system.render.full]
+args = "-y"
+fill = "ajuste"
+""")))
+
+
+def test_le_remplissage_et_son_absence_a_la_fois_sont_refuses(tmp_path):
+    with pytest.raises(profiles.ProfileError, match="SOIT 'fill'"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun"
+fill = "entier"
+fill_absent = "rien à régler"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_un_remplissage_declare_sur_un_mode_vide_est_refuse(tmp_path):
+    """Un mode sans le moindre argument ne passe RIEN à l'émulateur : y
+    déclarer un remplissage serait un réglage que rien n'appliquerait."""
+    with pytest.raises(profiles.ProfileError, match="Rien ne l'appliquerait"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = ""
+note = "aucun réglage en ligne de commande"
+crt_absent = "aucun"
+fill = "entier"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_un_profil_qui_ne_tranche_pas_sur_le_remplissage_reste_valide(tmp_path):
+    """Le troisième axe se remplit émulateur par émulateur, comme les deux
+    autres. Ce qui est interdit, c'est qu'un profil muet ait l'air tranché :
+    c'est `retro status` qui nomme ceux qui ne le sont pas."""
+    p = profiles.load_profile(ecrire(tmp_path, "e.toml",
+                                     profil_rendu(RENDU_VALIDE)))
+    assert p.systems[0].render.native.fill == ""
+    assert p.systems[0].render.native.fill_absent == ""

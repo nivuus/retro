@@ -160,7 +160,8 @@ def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
 # chemin d'un fichier ne dépend pas de la résolution.
 _VARIABLES = ("width", "height", "scale", "render_config")
 _CLES_RENDER = ("native", "full", "native_height", "max_scale")
-_CLES_MODE = ("args", "note", "crt", "crt_absent", "config")
+_CLES_MODE = ("args", "note", "crt", "crt_absent", "config",
+              "fill", "fill_absent")
 
 
 def _valider_variables(path, sid, quoi: str, gabarit: str) -> None:
@@ -254,8 +255,66 @@ def _lire_mode(path, sid, nom: str, brut) -> RenderMode:
             "'crt_absent'. Le shader CRT n'a de sens qu'en mode natif — "
             "déclaré ici, il ne serait jamais appliqué."
         )
+    fill, fill_absent = _lire_remplissage(path, sid, nom, brut, args, config)
     return RenderMode(args=args, note=note, crt=crt, crt_absent=crt_absent,
-                      config=config)
+                      config=config, fill=fill, fill_absent=fill_absent)
+
+
+def _lire_remplissage(path, sid, nom: str, brut, args: str,
+                      config: str) -> tuple[str, str]:
+    """Le TROISIÈME axe de ce mode : `fill`, `fill_absent`, ou ni l'un ni
+    l'autre.
+
+    Ni l'un ni l'autre est PERMIS — le troisième axe se remplit émulateur par
+    émulateur, comme les deux autres, et un profil qui ne l'a pas encore
+    mesuré doit continuer de lancer ses jeux. C'est `retro status` qui nomme
+    ces systèmes, comme il nomme ceux qui n'ont aucun mode.
+
+    Les trois refus ci-dessous portent chacun sur une faute qui ne se verrait
+    que sur la télévision, sur une image dont rien ne dirait qu'elle est celle
+    qu'on a demandée.
+    """
+    fill = brut.get("fill", "").strip()
+    fill_absent = brut.get("fill_absent", "").strip()
+    if fill and fill_absent:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}' déclare SOIT 'fill' — le "
+            "remplissage que ses arguments produisent — SOIT 'fill_absent', "
+            "qui dit que cet émulateur n'expose aucun réglage de cet axe. Les "
+            "deux à la fois ne veulent rien dire."
+        )
+    if not fill:
+        return "", fill_absent
+    if fill not in render_mod.REMPLISSAGES:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}.fill' vaut {fill!r} — "
+            f"remplissage inconnu. Les remplissages sont "
+            f"{', '.join(render_mod.REMPLISSAGES)} : ce sont les deux seules "
+            "façons d'agrandir une image SANS la déformer, et l'étirement "
+            "n'est pas une troisième valeur qu'on aurait omise. Une valeur "
+            "inconnue ne serait comparée à rien et le mode partirait sans son "
+            "troisième axe, sans qu'un mot le dise."
+        )
+    if not args and not config.strip():
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}' déclare un remplissage alors "
+            "qu'il ne passe RIEN à l'émulateur — ni argument, ni fichier de "
+            "réglages. Rien ne l'appliquerait. Un mode vide n'a aucun axe à "
+            "régler, celui-ci compris : sa 'note' le dit déjà, et `retro "
+            "status` la répète."
+        )
+    attendu = render_mod.remplissage_attendu(nom)
+    if fill != attendu:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}.fill' vaut {fill!r}, mais la "
+            f"politique de remplissage retient {attendu!r} pour le mode "
+            f"{nom} — {render_mod.motif_remplissage(nom)}. Un profil qui la "
+            "contredit ne serait démenti par rien : la contradiction ne se "
+            "verrait que sur l'écran. Corriger le profil, ou changer la "
+            "politique dans retro/render.py — où elle est écrite en clair, et "
+            "citée par le rapport."
+        )
+    return fill, ""
 
 
 def _lire_render(path, sid, brut, launch: str) -> Render:
