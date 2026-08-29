@@ -109,3 +109,55 @@ def test_la_version_gravee_est_celle_de_la_metadonnee_de_la_roue(tmp_path):
                 if l.startswith("Version: ")]
     assert versions == [attendue]
     assert any(n.endswith("retro/_identite.py") for n in z.namelist())
+
+
+def _copie_du_depot(tmp_path):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    """Une copie de l'arbre, SANS le module gravé — l'état d'un dépôt frais."""
+    import shutil
+    racine = pathlib.Path(__file__).resolve().parents[1]
+    copie = tmp_path / "src"
+    copie.mkdir()
+    for nom in ("retro", "outils"):
+        shutil.copytree(racine / nom, copie / nom)
+    shutil.copy2(racine / "pyproject.toml", copie / "pyproject.toml")
+    (copie / "retro" / "_identite.py").unlink(missing_ok=True)
+    return copie
+
+
+def _appeler_hook(copie, nom):
+    """Appelle un hook PEP 517 dans un processus à part, comme pip le fait."""
+    outils = str(pathlib.Path(__file__).resolve().parents[1] / "outils")
+    r = subprocess.run(
+        [sys.executable, "-c",
+         f"import sys; sys.path.insert(0, {outils!r});"
+         f"import identite_build; identite_build.{nom}()"],
+        cwd=copie, capture_output=True, text=True)
+    assert r.returncode == 0, f"{nom} a échoué :\n{r.stderr[-1500:]}"
+
+
+def test_le_tout_premier_hook_grave_lui_aussi(tmp_path):
+    """`get_requires_for_build_wheel` est le PREMIER hook que pip appelle, et
+    setuptools y lit déjà la version dynamique.
+
+    Les trois `get_requires_*` étaient réexportés tels quels : sous isolation
+    de construction — c'est-à-dire sur le chemin de PRODUCTION, celui que
+    `fetch_payload.py` emprunte — la construction mourait en
+    `ModuleNotFoundError: retro._identite`, alors que `--no-build-isolation`
+    passait. Mesuré le 2026-08-29 en fabriquant le wheelhouse de la console.
+    """
+    copie = _copie_du_depot(tmp_path)
+    _appeler_hook(copie, "get_requires_for_build_wheel")
+    assert (copie / "retro" / "_identite.py").is_file(), (
+        "le premier hook n'a pas gravé l'identité : setuptools lira une "
+        "version dynamique dont le module n'existe pas")
+
+
+def test_les_trois_get_requires_gravent(tmp_path):
+    """La même omission sur l'un des trois suffirait : sdist et editable
+    passent par leur propre hook, et l'oubli ne se verrait qu'à l'usage."""
+    for hook in ("get_requires_for_build_wheel", "get_requires_for_build_sdist",
+                 "get_requires_for_build_editable"):
+        copie = _copie_du_depot(tmp_path / hook)
+        _appeler_hook(copie, hook)
+        assert (copie / "retro" / "_identite.py").is_file(), hook

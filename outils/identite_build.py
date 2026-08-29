@@ -159,6 +159,26 @@ def prepare_metadata_for_build_editable(metadata_directory, config_settings=None
         metadata_directory, config_settings)
 
 
-get_requires_for_build_wheel = _setuptools.get_requires_for_build_wheel
-get_requires_for_build_sdist = _setuptools.get_requires_for_build_sdist
-get_requires_for_build_editable = _setuptools.get_requires_for_build_editable
+# Ces trois-là étaient réexportés TELS QUELS, et c'était un défaut mesuré le
+# 2026-08-29 en fabriquant le wheelhouse de la console : pip appelle
+# `get_requires_for_build_wheel` AVANT tout autre hook, setuptools y lit déjà
+# la version dynamique, et le module gravé n'existait pas encore. La
+# construction mourait donc en `ModuleNotFoundError: retro._identite` — sous
+# isolation, c'est-à-dire sur le chemin de PRODUCTION, alors que
+# `--no-build-isolation` passait. Un correctif qui ne se construit que dans le
+# harnais qui l'a écrit est exactement ce que la dette D6 existe pour attraper.
+
+
+def get_requires_for_build_wheel(config_settings=None):
+    graver(pathlib.Path.cwd())
+    return _setuptools.get_requires_for_build_wheel(config_settings)
+
+
+def get_requires_for_build_sdist(config_settings=None):
+    graver(pathlib.Path.cwd())
+    return _setuptools.get_requires_for_build_sdist(config_settings)
+
+
+def get_requires_for_build_editable(config_settings=None):
+    graver(pathlib.Path.cwd())
+    return _setuptools.get_requires_for_build_editable(config_settings)
