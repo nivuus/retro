@@ -1,19 +1,35 @@
 # Vita3K — PlayStation Vita.
 #
-# ⚠ CET ÉMULATEUR NE S'INSTALLE PAS EN L'ÉTAT. Son entrée au manifeste ne
-# porte pas d'empreinte (voir core.toml, [emulator.vita3k]) : « retro install »
-# la refuse avant de télécharger quoi que ce soit, et « retro scan » ignore
-# puis SIGNALE le système Vita, faute d'émulateur installé. Ce profil est donc
-# écrit pour être VRAI le jour où l'empreinte sera relevée, pas pour faire
-# croire que la PS Vita est couverte.
+# ✅ CET ÉMULATEUR S'INSTALLE ET TOURNE, depuis le 2026-08-29. Ce qui suit
+# décrit COMMENT, parce que le chemin n'est pas celui des neuf autres profils.
+#
+# L'entrée du manifeste NOYAU (core.toml, [emulator.vita3k]) porte toujours une
+# version et une empreinte VIDES, et cela ne changera pas : Vita3K ne publie
+# qu'une étiquette roulante « continuous », dont l'archive est réécrite à
+# chaque construction, et ce dépôt public refuse les étiquettes roulantes —
+# une empreinte qui vieillit d'un jour ferait échouer l'installation sur la
+# console sans que rien ne l'explique.
+#
+# L'entrée qui FONCTIONNE vit donc dans le manifeste du PROPRIÉTAIRE,
+# G:\retro\emulators.toml, hors dépôt, où une empreinte peut être re-relevée
+# quand elle périme. C'est la sortie que la dette D5 désignait elle-même, et
+# `load_manifest` la rend possible sans rien changer ici : le manifeste
+# utilisateur SURCHARGE le noyau par clé (`brut.update`).
+#
+# ⚠ CE PROFIL RESTE DONC INERTE POUR QUI N'A QUE LE PAQUET. Sans entrée dans
+# un manifeste utilisateur, « retro install » refuse toujours (acquire.py, sur
+# l'empreinte vide) et « retro scan » ignore puis SIGNALE le système Vita. Ce
+# n'est pas une régression : c'est le refus délibéré, et il tient.
 #
 # Ce qui vient d'une source sûre, et laquelle :
 #
-# - les options de ligne de commande sont lues dans vita3k/config/src/config.cpp
-#   du dépôt du projet, consulté le 2026-08-29. C'est une source plus faible
-#   que celle des neuf autres profils, dont les options sont lues DANS
-#   l'exécutable épinglé : il n'y a ici aucun exécutable épinglé à lire. À
-#   reprendre sur l'archive le jour du relevé.
+# - les options de ligne de commande ont d'abord été lues dans
+#   vita3k/config/src/config.cpp du dépôt du projet — une source plus faible
+#   que celle des neuf autres profils. ELLES SONT DEPUIS CONFIRMÉES SUR
+#   L'EXÉCUTABLE ÉPINGLÉ : « Vita3K.exe --help » a été relevé sur l'invité le
+#   2026-08-29, et rend bien `content-path` en positionnel, `--fullscreen`,
+#   `--firmware`, `--installed-path` et `--config-location`. La faiblesse de
+#   source est levée ; les libellés ci-dessous sont ceux du binaire.
 #     content-path  (positionnel) « Path to the app with a .vpk/.zip extension
 #                   or folder of content to install & run » — c'est lui qui
 #                   reçoit {rom}, et il accepte les DEUX formes d'une
@@ -28,10 +44,14 @@
 #     -c, --config-location « Default loaded: <Vita3K>/config.yml » : la
 #                   configuration de Vita3K vit À CÔTÉ de son exécutable.
 #
-# - ce qui reste À MESURER, et que rien ici n'invente : le nom de
-#   l'exécutable dans l'archive et un éventuel dossier racine (les neuf autres
-#   profils le savent parce que leur archive a été LISTÉE ; celle-ci ne l'a
-#   pas été), la liste complète des extensions acceptées, et la forme d'une
+# - L'ARCHIVE A ÉTÉ LISTÉE le 2026-08-29, et `exe` n'est plus une supposition :
+#   133 entrées, 20 éléments à la racine, et « Vita3K.exe » EST à la racine, à
+#   plat, sans dossier englobant — comme DuckStation, contrairement à
+#   RetroArch, Dolphin et Cemu. Empreinte de l'archive relevée le même jour en
+#   la téléchargeant, jamais recopiée d'une page.
+#
+# - ce qui reste À MESURER, et que rien ici n'invente :
+#   la liste complète des extensions acceptées, et la forme d'une
 #   bibliothèque Vita réelle — le propriétaire n'en a aucune aujourd'hui. Lu
 #   le 2026-08-29 sur le PARTAGE lui-même, celui que le scan parcourt : un
 #   dossier par constructeur puis par système, aucun dossier PS Vita. C'est
@@ -42,29 +62,96 @@ schema = 1
 id  = "vita3k"
 exe = 'Vita3K.exe'
 
-# Amorçage : pas de bloc [bootstrap], et deux raisons plutôt qu'une.
+# DEUX RACINES, PAS UNE, et les confondre fait chercher un firmware au mauvais
+# endroit. Mesuré le 2026-08-29, après installation réelle :
 #
-# La première est celle des autres profils : ce que Vita3K doit recevoir pour
-# lancer un jeu au lieu de son assistant de première configuration reste À
-# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir été
+#   la CONFIGURATION est à côté de l'exécutable — D:\Emulation\Vita3K\config.yml
+#   existe bel et bien, ce que « --config-location » annonce ;
+#   les DONNÉES, elles, vont dans %APPDATA%\Vita3K\Vita3K\ — c'est là que
+#   l'installation du firmware a déposé os0\ (69 fichiers) et vs0\ (1473).
+#
+# Rien dans l'aide ne le dit ; c'est le journal d'installation qui l'a montré
+# (« Extracting … to C:\Users\…\AppData\Roaming\Vita3K\Vita3K\PUP_DEC »).
+
+# AMORÇAGE — un bloc, et il ferme une modale mesurée le 2026-08-29.
+#
+# 🔴 LA PANNE : Vita3K avertit à CHAQUE lancement qu'il tourne avec des
+# privilèges élevés — une boîte modale qu'aucune manette ne ferme, exactement
+# comme la fenêtre de mise à jour de DuckStation. Toute la console tourne sous
+# le compte super-utilisateur, donc elle revient à chaque partie. (Le message
+# anglais n'est pas recopié : il contient une chaîne que le garde-fou du dépôt
+# confond avec un nom d'émulateur interdit — voir docs/dettes.md, D7.)
+#
+# LA CLÉ, ET SA SOURCE — relevée dans le CODE de Vita3K, jamais dans une page
+# de documentation ni dans les chaînes du binaire, qui donnent les libellés de
+# l'interface et non les valeurs du fichier (leçon D2) :
+#
+#     gui_settings.h        gui::mw_warnAdminPrivileges — le nom de la clé et
+#                           son groupe, « MainWindow »
+#     main_window.cpp       prompt_admin_privileges_warning_if_needed, gardée
+#                           par cette même clé
+#
+# VÉRIFIÉE PAR L'EFFET le 2026-08-29, et c'est la seule preuve qui vaille : la
+# ligne « |W| prompt_admin_privileges_warning_if_needed » a disparu du journal,
+# et la modale de l'écran — capture à l'appui, soixante-dix secondes après le
+# lancement alors qu'elle sortait à quatorze secondes auparavant.
+#
+# LE FICHIER : <installation>\gui-configs\CurrentSettings.ini, un QSettings au
+# format INI (gui::Settings = "CurrentSettings", écrit dans
+# emuenv.config_path / "gui-configs"). C'est donc un fichier que la fusion de
+# ce projet SAIT traiter — elle ne connaît que l'INI.
+#
+# ⚠ LA CIBLE VIT SOUS LE DOSSIER D'INSTALLATION, et cela a UNE conséquence
+# qu'il faut lire avant de crier à la panne : « retro install » SUPPRIME ce
+# dossier à chaque montée de version, donc le fichier disparaît avec lui. Le
+# régime « si-absent » le repose au lancement suivant, et les clés imposées y
+# reviennent. Ce n'est pas une régression : c'est l'auto-réparation que la
+# conception avait prévue pour RetroArch et Cemu, et elle joue ici en notre
+# faveur.
+#
+# POURQUOI `enforced` ET NON `content`. La case se recoche d'un clic dans
+# l'interface de Vita3K, et « si-absent » ne rouvrirait jamais un fichier qui
+# existe : la modale reviendrait pour de bon, sur une console déjà jouée, sans
+# qu'aucun message ne fasse le lien. C'est très exactement le cas pour lequel
+# les deux régimes ont été séparés.
+#
+# CE QUI RESTE À MESURER, et que ce bloc n'invente pas : tout le reste de la
+# première configuration de Vita3K. Aucune autre clé n'entre ici sans avoir été
 # relevée dans un fichier que l'émulateur a lui-même écrit — une clé recopiée
 # d'une documentation est ignorée en silence, et le jeu ne démarre toujours
 # pas. Voir docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
+
+[[bootstrap]]
+# Le jeton {install_dir} est substitué à l'écriture du plan (retro/launcher.py,
+# resoudre_cible). Il vaut la racine d'émulation suivie du dossier
+# d'installation TEL QUE LE MANIFESTE le nomme : écrire « Vita3K » en clair ici
+# réécrirait ce nom une seconde fois, et une surcharge du manifeste du
+# propriétaire ferait rater la cible en silence.
+target = '{install_dir}\gui-configs\CurrentSettings.ini'
+
+# L'en-tête distingue les TROIS catégories, et ce n'est pas une formule : le
+# propriétaire CROIT ce qu'il lit en tête d'un fichier de configuration et
+# règle son comportement dessus. Une promesse qui survivrait au régime qui la
+# rendait vraie serait pire qu'une absence d'en-tête.
 #
-# La seconde est propre à Vita3K et ne se lèvera pas par la seule mesure :
-# `target` est un chemin Windows ABSOLU, ou qui commence par une variable
-# d'environnement (profiles._lire_bootstrap). Or la configuration de Vita3K
-# est son config.yml, chargé par défaut depuis <Vita3K>\config.yml, c'est-à-
-# dire depuis son dossier d'INSTALLATION — dont l'emplacement est la racine
-# d'émulation, un paramètre de « retro scan », pas une constante. Aucun
-# `target` écrivable aujourd'hui ne le désigne. Il lui faudra un jeton
-# substitué à la synchronisation, sur le modèle de {render_config} dans
-# retro/launcher.py.
-#
-# Et une conséquence, la même que pour Cemu : une configuration qui vit sous
-# le dossier d'installation est supprimée à chaque montée de version par
-# « retro install ». L'amorçage devra donc se rejouer après chaque mise à
-# jour, la cible ayant disparu avec le dossier.
+# Rien d'autre que l'en-tête : aucune préférence de Vita3K n'a été mesurée à ce
+# jour, et en inventer une la rendrait indiscernable d'un relevé.
+content = '''
+; Écrit par « retro », qui distingue trois choses :
+;   · ce qu'il IMPOSE et repose à CHAQUE lancement — voir la section ci-dessous
+;     du fichier des clés imposées ; la changer ici ne tiendrait pas ;
+;   · ce qu'il a posé UNE FOIS, à la création de ce fichier, et ne retouche
+;     plus jamais : vos réglages tiennent ;
+;   · tout le reste, qui est à vous et qu'il ne lit même pas.
+'''
+
+# Une seule clé imposée, et une seule modale fermée. L'élargir, c'est reprendre
+# au propriétaire un réglage qu'il croyait sien : il ne s'en apercevrait qu'en
+# le voyant revenir après l'avoir changé.
+enforced = '''
+[MainWindow]
+warnAdminPrivileges=false
+'''
 
 # Manette : « inconnu », et il ne peut rien y avoir d'autre aujourd'hui.
 # Vita3K ne s'installe pas depuis ce manifeste — son empreinte est vide —
@@ -128,6 +215,15 @@ extensions = [".vpk"]
 # marqueur, « savedata » deviendrait une entrée de la bibliothèque. À
 # CONFIRMER sur une bibliothèque réelle : personne ici n'en a encore vu une.
 app_dir_marker = "eboot.bin"
+# ⚠ LA FORME LONGUE EST OBLIGATOIRE ICI, et c'est un piège que seul le relevé
+# sur le binaire révèle : la forme courte du plein écran est « -F » MAJUSCULE.
+# « -f » minuscule est « --load-config », qui charge un fichier de
+# configuration. Abréger `--fullscreen` en `-f` par réflexe — c'est la forme
+# courte du plein écran chez Cemu et chez RetroArch, deux profils voisins —
+# chargerait donc une configuration au lieu de passer en plein écran, et se
+# comporterait exactement comme un drapeau ignoré : le jeu s'ouvrirait en
+# fenêtre, sans un mot. C'est la même classe d'erreur que les valeurs de
+# CropMode recopiées des libellés dans duckstation.toml.
 launch     = '--fullscreen "{rom}"'
 # Le titre affiché sera le NOM DU DOSSIER. Si le propriétaire garde les
 # identifiants de titre de la console (« PCSE00123 »), sa bibliothèque Steam
@@ -156,8 +252,29 @@ launch     = '--fullscreen "{rom}"'
 #
 # Ce que Vita3K a de plus que RPCS3, et qui rend la suite faisable sans
 # souris : « --firmware <chemin.pup> » installe le firmware depuis la ligne de
-# commande. Un amorçage pourra donc le poser, une fois tranché où le PUP est
-# rangé et comment on constate qu'il est déjà installé.
+# commande. CE N'EST PLUS UNE PROMESSE — c'est fait, mesuré le 2026-08-29 :
+#
+#   Installing firmware file G:\retro\bios\PSVUPDAT.PUP
+#   extract_pup_files: PUP Version: 0x2
+#   extract_pup_files: Firmware Version: 0x3740000        (soit la 3.74)
+#   Firmware installation progress: 10% … 100%
+#
+# Le PUP vient du serveur de Sony, dont l'URL est publiée par la page de
+# support PlayStation elle-même — c'est une distribution officielle, au même
+# titre que le PS3UPDAT.PUP de RPCS3, et rien n'a été pris ailleurs.
+#
+# CE QUI RESTE OUVERT, et qui empêche encore d'en faire un amorçage
+# automatique : le PUP a été déposé dans G:\retro\bios\ alors que le
+# raisonnement ci-dessus rangeait les firmwares HORS de bios\. Le rangement
+# n'est donc pas tranché, il est seulement constaté. Et rien ne sait encore
+# CONSTATER qu'un firmware est déjà installé — le réinstaller à chaque
+# lancement coûterait sept secondes par jeu.
+#
+# NON MESURÉ, et à surveiller au premier jeu : Vita3K distingue le firmware
+# principal du PAQUET DE POLICES, et écrit lui-même qu'il ne publie pas l'URL
+# de ce dernier. Il n'a donc PAS été installé. Si du texte manque en jeu,
+# c'est là qu'il faut regarder — le symptôme serait du texte absent, pas un
+# refus de démarrer.
 bios       = []
 
 # Modes de rendu : aucun bloc, et c'est une réponse, pas un oubli. Des options

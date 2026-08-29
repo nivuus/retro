@@ -66,6 +66,32 @@ class System:
 MARQUE_BOOTSTRAP = "Écrit par « retro »"
 
 
+# LES JETONS DE CHEMIN D'UNE CIBLE D'AMORÇAGE.
+#
+# Trois des quatre configurations mesurées le 2026-08-29 ne vivent NI dans le
+# profil de l'utilisateur Windows, NI à un endroit absolu : elles vivent sous
+# le dossier d'INSTALLATION de leur émulateur, dont le nom n'est connu qu'à
+# l'écriture du plan.
+#
+# Le jeton est celui du dossier d'installation, PAS celui de la racine
+# d'émulation, et ce choix se défend : `install_dir` est SURCHARGEABLE par le
+# manifeste du propriétaire (`_install_dirs_pour` garde le jour où
+# `install_dir = "DuckStation-v0.1"` a fait pointer tout l'inventaire sur un
+# dossier inexistant). Écrire `{emulation_root}\Vita3K\…` réécrirait ce nom
+# une seconde fois, dans le profil, et une surcharge ferait rater la cible EN
+# SILENCE — l'émulateur repartirait sur ses défauts sans un mot.
+#
+# Publics parce que `launcher.py` les relit : la convention de nommage ne se
+# décide qu'à un endroit.
+JETON_INSTALL = "{install_dir}"
+JETONS_CIBLE = (JETON_INSTALL,)
+
+# Tout ce qui ressemble à un jeton, connu ou non. Sert au REFUS : sans lui,
+# « {emulation_roo}\x.ini » tombait dans le message « chemin absolu », qui
+# envoie corriger la mauvaise chose.
+_JETON_CIBLE = re.compile(r"\{[^}]*\}")
+
+
 # L'état du RELEVÉ d'une manette, et jamais l'identifiant lui-même.
 #
 # Un identifiant de périphérique n'est pas une propriété du périphérique :
@@ -175,10 +201,12 @@ class Profile:
     # une accusation, pas un diagnostic.
     input_mapping: str = MAPPING_INCONNU
     input_mapping_where: str = ""
-    # Facultatif : un émulateur qui démarre nu n'a rien à recevoir. Le profil
-    # doit alors DIRE pourquoi il n'a pas de bloc — sans quoi rien ne
-    # distingue « cet émulateur se débrouille » d'un bloc oublié.
-    bootstrap: Bootstrap | None = None
+    # Facultatif, et PLURIEL : un émulateur qui démarre nu n'a rien à recevoir,
+    # et le profil doit alors DIRE pourquoi il n'a pas de bloc — sans quoi rien
+    # ne distingue « cet émulateur se débrouille » d'un bloc oublié. Plusieurs,
+    # parce que RPCS3 a deux fichiers à recevoir, dans deux formats : un profil
+    # qui n'en portait qu'un rendait le second inexprimable.
+    bootstraps: tuple[Bootstrap, ...] = ()
 
 
 def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
@@ -449,8 +477,50 @@ def _lire_render(path, sid, brut, launch: str) -> Render:
                   max_scale=brut.get("max_scale", 0))
 
 
+def _lire_bootstraps(path: pathlib.Path, brut) -> tuple[Bootstrap, ...]:
+    """Les blocs [[bootstrap]] d'un profil, validés, dans l'ordre du fichier.
+
+    PLUSIEURS, parce qu'un émulateur peut avoir plusieurs fichiers à recevoir :
+    RPCS3 en a deux — ses modales dans un INI, son gestionnaire de manette dans
+    un YAML — et un profil qui n'en portait qu'un rendait le second
+    inexprimable. L'ordre est celui du fichier : c'est le seul que le lecteur
+    du profil voie, et les fichiers déposés en portent l'indice.
+
+    UNE SEULE FORME est acceptée, le tableau de tables. Garder aussi
+    `[bootstrap]` ferait deux façons d'écrire la même chose, et le jour où
+    quelqu'un mélangerait les deux, rien ne dirait laquelle gagne : le profil
+    se chargerait, à moitié appliqué, sans un mot.
+    """
+    if brut is None:
+        return ()
+    if not isinstance(brut, list):
+        raise ProfileError(
+            f"{path} : l'amorçage s'écrit « [[bootstrap]] », un tableau de "
+            "tables, et non « [bootstrap] ». Un profil peut porter PLUSIEURS "
+            "cibles — RPCS3 en a deux — et une seule forme est acceptée : "
+            "garder les deux ferait deux façons d'écrire la même chose, dont "
+            "rien ne dirait laquelle gagne. Doubler les crochets suffit ; le "
+            "contenu du bloc ne change pas."
+        )
+    entrees = []
+    for rang, entree in enumerate(brut, 1):
+        # Une entrée VIDE n'est pas « pas d'amorçage » : c'est un
+        # « [[bootstrap]] » qu'on a écrit puis oublié de remplir. La laisser
+        # passer ferait un trou dans la numérotation des fichiers déposés, et
+        # le lanceur lirait une cible vide au milieu d'une boucle.
+        lue = _lire_bootstrap(path, entree)
+        if lue is None:
+            raise ProfileError(
+                f"{path} : le [[bootstrap]] n°{rang} est vide. Un bloc "
+                "d'amorçage sans cible ni contenu n'amorce rien, et se lit "
+                "pourtant comme un profil complet — le retirer, ou le remplir."
+            )
+        entrees.append(lue)
+    return tuple(entrees)
+
+
 def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
-    """Le bloc [bootstrap], validé, ou None s'il n'y en a pas.
+    """UNE entrée [[bootstrap]], validée, ou None si elle est vide.
 
     Les trois refus ci-dessous portent chacun sur une faute MUETTE : un bloc
     à moitié écrit, un chemin qui vise un dossier au hasard, un fichier qui
@@ -465,22 +535,39 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     for nom, valeur in (("target", target), ("content", content)):
         if not isinstance(valeur, str) or not valeur.strip():
             raise ProfileError(
-                f"{path} [bootstrap] : champ '{nom}' manquant ou vide. La "
+                f"{path} [[bootstrap]] : champ '{nom}' manquant ou vide. La "
                 "moitié d'un amorçage n'amorce rien, et se lit pourtant comme "
                 "un profil complet."
             )
-    if not (target.startswith("%")
+    # Le jeton se teste AVANT le chemin absolu, et il se refuse en se
+    # NOMMANT. Un jeton mal orthographié n'est pas un chemin relatif : le dire
+    # « relatif » enverrait corriger la mauvaise chose, et le profil repartirait
+    # avec un chemin absolu inventé.
+    jeton = _JETON_CIBLE.match(target)
+    if jeton and jeton.group(0) not in JETONS_CIBLE:
+        raise ProfileError(
+            f"{path} [[bootstrap]] : 'target' commence par le jeton "
+            f"{jeton.group(0)}, que ce projet ne connaît pas — reçu "
+            f"{target!r}. Les jetons connus sont : "
+            f"{', '.join(JETONS_CIBLE)}. Un jeton non substitué arriverait tel "
+            "quel dans un chemin Windows, qui créerait un dossier portant "
+            "littéralement ce nom : l'émulateur n'y lirait jamais rien, et "
+            "rien ne le dirait."
+        )
+    if not (jeton
+            or target.startswith("%")
             or pathlib.PureWindowsPath(target).is_absolute()):
         raise ProfileError(
-            f"{path} [bootstrap] : 'target' doit être un chemin Windows "
-            f"absolu ou commencer par une variable d'environnement — reçu "
+            f"{path} [[bootstrap]] : 'target' doit être un chemin Windows "
+            f"absolu, commencer par une variable d'environnement, ou par l'un "
+            f"des jetons {', '.join(JETONS_CIBLE)} — reçu "
             f"{target!r}. Un chemin relatif s'écrirait dans le dossier de "
             "travail de l'émulateur, et le fichier posé ne serait lu par "
             "personne."
         )
     if MARQUE_BOOTSTRAP not in content:
         raise ProfileError(
-            f"{path} [bootstrap] : 'content' ne porte pas « "
+            f"{path} [[bootstrap]] : 'content' ne porte pas « "
             f"{MARQUE_BOOTSTRAP} » en commentaire. Un fichier de "
             "configuration écrit par un outil doit dire qui l'a écrit : sans "
             "cela, le propriétaire le prend pour le sien."
@@ -488,7 +575,7 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     enforced = brut.get("enforced", "")
     if not isinstance(enforced, str):
         raise ProfileError(
-            f"{path} [bootstrap] : 'enforced' doit être du texte — le "
+            f"{path} [[bootstrap]] : 'enforced' doit être du texte — le "
             "fragment de configuration que la console REPOSE à chaque "
             "lancement."
         )
@@ -548,7 +635,7 @@ def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
     if deux:
         noms = ", ".join(f"[{s}] {c}" for s, c in deux)
         raise ProfileError(
-            f"{path} [bootstrap] : {noms} — déclaré dans les DEUX régimes, "
+            f"{path} [[bootstrap]] : {noms} — déclaré dans les DEUX régimes, "
             "'content' et 'enforced'. Le réglage serait décidé à deux "
             "endroits : l'imposé l'emporterait toujours, la préférence "
             "posée ne tiendrait jamais, et rien dans le profil ne dirait "
@@ -558,7 +645,7 @@ def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
     minuscules = content.lower()
     if not ("impos" in minuscules and "une fois" in minuscules):
         raise ProfileError(
-            f"{path} [bootstrap] : ce profil IMPOSE des clés, mais son "
+            f"{path} [[bootstrap]] : ce profil IMPOSE des clés, mais son "
             "'content' ne distingue pas les TROIS catégories que le fichier "
             "porte désormais : ce que la console impose et repose à chaque "
             "lancement, ce qu'elle a posé UNE FOIS et ne retouche plus, et "
@@ -883,7 +970,7 @@ def load_profile(path: pathlib.Path) -> Profile:
         steam_input=entree.get("steam_input", "required"),
         input_mapping=mapping,
         input_mapping_where=mapping_ou,
-        bootstrap=_lire_bootstrap(path, data.get("bootstrap")),
+        bootstraps=_lire_bootstraps(path, data.get("bootstrap")),
     )
 
 

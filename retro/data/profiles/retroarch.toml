@@ -15,7 +15,7 @@ schema = 1
 id  = "retroarch"
 exe = 'RetroArch-Win64\retroarch.exe'
 
-# Amorçage : pas de bloc [bootstrap]. Ce que RetroArch doit recevoir pour
+# Amorçage : pas de bloc [[bootstrap]]. Ce que RetroArch doit recevoir pour
 # lancer un jeu au lieu de son assistant de première configuration reste À
 # MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
 # été relevée dans un fichier que l'émulateur a lui-même écrit — une clé

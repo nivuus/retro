@@ -22,7 +22,7 @@ schema = 1
 id  = "cemu"
 exe = 'Cemu_2.6\Cemu.exe'
 
-# Amorçage : pas de bloc [bootstrap]. Ce que Cemu doit recevoir pour
+# Amorçage : pas de bloc [[bootstrap]]. Ce que Cemu doit recevoir pour
 # lancer un jeu au lieu de son assistant de première configuration reste À
 # MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
 # été relevée dans un fichier que l'émulateur a lui-même écrit — une clé

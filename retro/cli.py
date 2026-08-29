@@ -9,7 +9,7 @@ import sys
 
 from retro import launcher as launcher_mod
 from retro import render as render_mod
-from retro import bios, install as install_mod
+from retro import bios, identite, install as install_mod
 from retro import manifest, profiles, scan, status
 from retro.steam import accounts, artwork, entry, steam_input, sync, vdf_io, writer
 
@@ -289,6 +289,10 @@ def _signaler_ignores(ignores: list[scan.IgnoredSystem],
 
 
 def _cmd_scan(args) -> int:
+    # En PREMIÈRE ligne, avant tout le reste et même avant un échec : deux
+    # exécutions de `scan` ont rendu deux inventaires différents le
+    # 2026-08-29, et rien ne disait qu'elles ne venaient pas du même paquet.
+    print(f"paquet : {identite.VERSION}")
     # Deux chemins pour la racine d'émulation, comme --roms et --roms-windows :
     # --emulation-root est ce que la CONSOLE lira dans shortcuts.vdf,
     # --emulation-root-local est le chemin par lequel CETTE machine atteint les
@@ -385,6 +389,20 @@ def _cmd_scan(args) -> int:
         print(f"{len(ignores)} système(s) ignoré(s), leur émulateur n'étant "
               f"pas utilisable ({noms}) : {perdus} ROM(s) non "
               "répertoriée(s) — détail ci-dessus")
+    return 0
+
+
+def _cmd_identite(args) -> int:
+    """Quelle construction du paquet tourne ICI.
+
+    Une ligne, la version seule : c'est l'hôte qui la lit, à travers WinRM,
+    pour la comparer à la roue qu'il a livrée. La prose est dans `status`.
+
+    Aucune option, aucun argument : elle doit se lancer sur une machine où
+    rien n'est monté, rien n'est configuré — c'est justement quand plus rien
+    ne marche qu'on demande quel code tourne.
+    """
+    print(identite.VERSION)
     return 0
 
 
@@ -493,6 +511,11 @@ def _cmd_status(args) -> int:
             # geste à faire est de le recompiler.
             lanceur_perime=launcher_mod.lanceur_perime(
                 pathlib.Path(args.emulation_root)),
+            # Quelle construction du paquet produit ce rapport. Le rapport le
+            # CONSTATE et ne le reproche pas : il n'a aucune référence à
+            # opposer, et c'est l'hôte qui a livré la roue qui sait laquelle
+            # devrait être là.
+            paquet=identite.VERSION,
         )
         texte = status.format_report(rapport)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
@@ -678,6 +701,16 @@ def _build_parser() -> argparse.ArgumentParser:
     ren.add_argument("--mode", choices=render_mod.MODES, default=None,
                      help="sans --mode, affiche le mode courant")
     ren.set_defaults(func=_cmd_render)
+
+    # Sans aucune option, et c'est le contrat : sur une console d'où l'on ne
+    # sait plus quel code tourne, exiger --roms ou --emulation-root ferait
+    # échouer la seule commande capable de répondre. Sur un paquet ANTÉRIEUR à
+    # celle-ci, argparse rend 2 — ce n'est pas une panne, c'est le premier
+    # constat, et l'hôte le lit comme tel.
+    idt = sous.add_parser(
+        "identite",
+        help="dit quelle construction du paquet tourne ici (une ligne)")
+    idt.set_defaults(func=_cmd_identite)
 
     st = sous.add_parser(
         "status", help="rapport lisible : émulateurs, jeux, BIOS, problèmes"

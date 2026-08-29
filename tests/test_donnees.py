@@ -264,6 +264,12 @@ def test_le_garde_fou_ne_se_raccourcit_pas():
         "docs/superpowers/specs/2026-08-26-retro-console-design.md",
         "docs/superpowers/plans/2026-08-26-emulateurs-sous-projet-a.md",
     }
+    # Dette D10 : cette quatrieme liste exempte un profil de dire ou en est sa
+    # vibration. Elle etait la seule des quatre a ne pas etre gelee, et le
+    # raisonnement de la docstring ci-dessus valait pourtant mot pour mot :
+    # mesure le 2026-08-29, y reinscrire un profil laissait la suite ENTIEREMENT
+    # verte. Elle est vide, et le redevenir doit rester un acte explicite.
+    assert SANS_NOTE_DE_VIBRATION == frozenset()
 
 
 def test_aucun_emulateur_au_statut_conteste():
@@ -313,7 +319,8 @@ def test_les_identifiants_de_systeme_sont_uniques_entre_profils():
 # --- Le dépôt est public : une promesse fausse est un échec déguisé --------
 
 README = RACINE / "README.md"
-NOMBRES = {1: "une", 2: "deux", 3: "trois", 4: "quatre", 5: "cinq", 6: "six"}
+NOMBRES = {1: "une", 2: "deux", 3: "trois", 4: "quatre", 5: "cinq",
+           6: "six", 7: "sept", 8: "huit"}
 
 
 def _commandes() -> set[str]:
@@ -593,13 +600,13 @@ def test_chaque_profil_livre_dit_ou_en_est_son_amorcage():
     rien à expliquer.
     """
     for f in sorted(PROFILS.glob("*.toml")):
-        if profiles.load_profile(f).bootstrap is not None:
+        if profiles.load_profile(f).bootstraps:
             continue
         commentaires = "\n".join(l for l in f.read_text(encoding="utf-8").splitlines()
                                  if l.lstrip().startswith("#"))
         assert "[bootstrap]" in commentaires, (
             f"{f.name} : aucun commentaire ne dit pourquoi ce profil n'a pas "
-            "de bloc [bootstrap]"
+            "de bloc [[bootstrap]]"
         )
         assert "mesur" in commentaires.lower(), (
             f"{f.name} : le commentaire ne dit pas que l'amorçage reste à "
@@ -776,7 +783,7 @@ def test_duckstation_n_impose_que_ce_que_le_proprietaire_a_approuve():
     """Élargir ce que la console impose, c'est reprendre au propriétaire un
     réglage qu'il croyait sien — et il ne s'en apercevrait qu'en le voyant
     revenir après l'avoir changé. L'ajout doit se voir en revue."""
-    b = profiles.load_profiles(PROFILS)["duckstation"].bootstrap
+    b, = profiles.load_profiles(PROFILS)["duckstation"].bootstraps
     assert tuple(_cles_ini(b.enforced)) == DUCKSTATION_IMPOSE
 
 
@@ -785,12 +792,12 @@ def test_aucune_preference_livree_n_est_reposee_a_chaque_lancement():
     aucune clé ne doit être à la fois posée une fois et imposée."""
     fautifs = []
     for pid, p in sorted(profiles.load_profiles(PROFILS).items()):
-        b = getattr(p, "bootstrap", None)
-        if b is None or not b.enforced:
-            continue
-        deux = set(_cles_ini(b.content)) & set(_cles_ini(b.enforced))
-        if deux:
-            fautifs.append((pid, sorted(deux)))
+        for b in p.bootstraps:
+            if not b.enforced:
+                continue
+            deux = set(_cles_ini(b.content)) & set(_cles_ini(b.enforced))
+            if deux:
+                fautifs.append((pid, b.target, sorted(deux)))
     assert fautifs == [], f"clés dans les deux régimes : {fautifs}"
 
 
@@ -862,18 +869,17 @@ def test_aucun_profil_livre_ne_pose_de_liaison_de_manette():
     """
     for f in sorted(PROFILS.glob("*.toml")):
         profil = profiles.load_profile(f)
-        if profil.bootstrap is None:
-            continue
         if profil.input_mapping == profiles.MAPPING_AUTO:
             continue
-        actives = [l.strip() for l in profil.bootstrap.content.splitlines()
-                   if l.strip() and not l.lstrip().startswith((";", "#"))]
-        fautives = [l for l in actives if l.lower().startswith("bindings/")]
-        assert fautives == [], (
-            f"{f.name} : le bloc [bootstrap] pose des liaisons de manette "
-            f"alors que son [input] mapping vaut « {profil.input_mapping} » : "
-            + " | ".join(fautives)
-        )
+        for b in profil.bootstraps:
+            actives = [l.strip() for l in b.content.splitlines()
+                       if l.strip() and not l.lstrip().startswith((";", "#"))]
+            fautives = [l for l in actives if l.lower().startswith("bindings/")]
+            assert fautives == [], (
+                f"{f.name} : le bloc [[bootstrap]] visant {b.target} pose des "
+                "liaisons de manette alors que son [input] mapping vaut "
+                f"« {profil.input_mapping} » : " + " | ".join(fautives)
+            )
 
 
 def test_les_liaisons_de_duckstation_sont_imposees_et_non_posees_une_fois():
@@ -890,7 +896,7 @@ def test_les_liaisons_de_duckstation_sont_imposees_et_non_posees_une_fois():
     jamais réparer la manette. Les deux moitiés de ce test disent la même
     chose : [Pad1] est dans `enforced`, et NULLE PART dans `content`.
     """
-    b = profiles.load_profile(PROFILS / "duckstation.toml").bootstrap
+    b, = profiles.load_profile(PROFILS / "duckstation.toml").bootstraps
     pad_impose = [c for s, c in _cles_ini(b.enforced) if s == "Pad1"]
     liaisons = [c for c in pad_impose if c != "ForceAnalogOnReset"]
     assert len(liaisons) == 27, (
@@ -950,7 +956,7 @@ def test_les_liaisons_de_duckstation_portent_la_forme_qu_il_a_ecrite():
     ignorée sans un mot, et la manette reste muette comme si la section était
     vide. Aucune de ces fautes ne se verrait autrement qu'ici.
     """
-    b = profiles.load_profile(PROFILS / "duckstation.toml").bootstrap
+    b, = profiles.load_profile(PROFILS / "duckstation.toml").bootstraps
     impose = dict(_cles_ini(b.enforced))
     pad = [(s, c) for s, c in _cles_ini(b.enforced) if s == "Pad1"]
 
@@ -1061,3 +1067,84 @@ def test_chaque_profil_livre_dit_ou_en_est_sa_vibration():
             "ignorée en silence, et la manette reste muette exactement comme "
             "si rien n'avait été écrit"
         )
+
+
+# --- Vita3K : la modale de privilèges, et le jeton qui la rend reposable ---
+
+def test_vita3k_impose_la_modale_de_privileges():
+    """Mesuré le 2026-08-29 : Vita3K ouvre à CHAQUE lancement un avertissement
+    de privilèges élevés qu'aucune manette ne ferme, et toute la console tourne
+    sous le compte super-utilisateur — la modale revient donc à chaque partie.
+
+    IMPOSÉE et non posée une fois : la cible vit sous le dossier
+    d'installation, que « retro install » efface à chaque montée de version, et
+    la case se recoche d'un clic dans l'interface. Une préférence « posée une
+    fois » ne la reposerait jamais sur une console déjà jouée.
+    """
+    b, = profiles.load_profiles(PROFILS)["vita3k"].bootstraps
+    assert b.target.startswith(profiles.JETON_INSTALL), b.target
+    assert b.target.endswith("gui-configs\\CurrentSettings.ini"), b.target
+    assert ("MainWindow", "warnAdminPrivileges") in _cles_ini(b.enforced)
+    # Et NULLE PART dans le régime « posé une fois » : le réglage serait
+    # décidé à deux endroits, et rien ne dirait lequel gagne.
+    assert ("MainWindow", "warnAdminPrivileges") not in _cles_ini(b.content)
+
+
+def test_aucun_profil_livre_ne_porte_de_jeton_inconnu():
+    """Un jeton non reconnu n'est pas substitué : il arrive TEL QUEL dans un
+    chemin Windows, où il crée un dossier littéralement nommé « {…} ».
+    L'émulateur n'y lit jamais rien, et rien ne le dit — la panne muette
+    exemplaire. Le validateur refuse un jeton inconnu en tête de cible ; ce
+    test regarde la cible ENTIÈRE, où le validateur ne va pas."""
+    fautifs = []
+    for pid, p in sorted(profiles.load_profiles(PROFILS).items()):
+        for b in p.bootstraps:
+            for jeton in re.findall(r"\{[^}]*\}", b.target):
+                if jeton not in profiles.JETONS_CIBLE:
+                    fautifs.append((pid, jeton, b.target))
+    assert fautifs == [], (
+        "jetons de cible inconnus (les jetons connus sont "
+        f"{', '.join(profiles.JETONS_CIBLE)}) : {fautifs}")
+
+
+# --- le lanceur C# lit-il ce que le plan écrit ? ---------------------------
+#
+# Ce dépôt n'a AUCUN cadre de test C#. La seule chose vérifiable depuis ici est
+# donc mécanique — mais c'est la vérification qui compte : un lanceur qui ne
+# lit pas une clé du plan ne PROTESTE PAS, il l'ignore. Les lignes d'amorçage
+# d'un plan tout neuf ne produisent alors aucun amorçage, aucune erreur, et
+# `retro status` annonce « pas encore amorcé » après cinquante lancements.
+# C'est très exactement l'état du jour de la livraison.
+
+def _cles_de_plan(bootstraps) -> list[str]:
+    """Les noms de clé qu'un plan porte, l'indice réduit à son préfixe."""
+    from retro import launcher
+    profil = profiles.load_profiles(PROFILS)["duckstation"]
+    texte = launcher.plan_systeme(
+        "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
+        "D:\\E\\_launcher\\systems", bootstraps=bootstraps)
+    noms = []
+    for ligne in texte.splitlines():
+        if ligne.startswith("#") or "=" not in ligne:
+            continue
+        cle = ligne.split("=", 1)[0]
+        noms.append(cle[:cle.rindex(".") + 1] if re.search(r"\.\d+$", cle)
+                    else cle)
+    return sorted(set(noms))
+
+
+def test_le_lanceur_lit_chaque_cle_d_amorcage_que_le_plan_ecrit():
+    """Une clé écrite et jamais lue est une fonctionnalité inerte, SANS UN MOT.
+    Le contrat entre `plan_systeme` et `retro-launch.cs` n'a pas d'autre
+    gardien : les deux moitiés vivent dans deux langages, et seule celle-ci est
+    testable."""
+    from retro import launcher
+    source = (launcher.SOURCES / launcher.SOURCE).read_text(
+        encoding="utf-8-sig")
+    deux = profiles.load_profiles(PROFILS)["duckstation"].bootstraps * 2
+    manquantes = [c for c in _cles_de_plan(deux)
+                  if c.startswith("bootstrap") and f'"{c}' not in source]
+    assert manquantes == [], (
+        "retro-launch.cs ne lit pas ces clés que le plan écrit — elles seraient "
+        f"ignorées en silence, à chaque lancement : {manquantes}"
+    )

@@ -14,3 +14,8 @@ venv/
 # Ils vivent sur G:\retro\ côté VM.
 emulators.toml
 secrets.toml
+
+# Gravé à la construction par outils/identite_build.py : sa valeur décrit UNE
+# roue, pas un état du dépôt. Versionné, il ferait mentir toute construction
+# qui ne le régénère pas.
+retro/_identite.py

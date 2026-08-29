@@ -11,7 +11,7 @@ PROFIL_AMORCE_CLI = """
 schema = 1
 id = "duckstation"
 exe = 'duckstation-qt.exe'
-[bootstrap]
+[[bootstrap]]
 target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
 content = '''
 ; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
@@ -522,6 +522,16 @@ def _scan_sur(tmp_path, arborescence):
     ])
 
 
+def test_scan_annonce_le_paquet_en_premiere_ligne(tmp_path, capsys):
+    """`scan` est la commande dont deux exécutions ont rendu deux résultats
+    différents le 2026-08-29. Qui compare deux scans doit voir d'un coup
+    d'œil qu'ils ne viennent pas du même paquet — donc en PREMIÈRE ligne."""
+    from retro import identite as identite_mod
+    assert _scan_sur(tmp_path, ["Snes/Zelda.sfc"]) == 0
+    premiere = capsys.readouterr().out.splitlines()[0]
+    assert premiere == f"paquet : {identite_mod.VERSION}"
+
+
 def test_scan_vide_explique_ce_qu_il_a_vu_et_attendu(tmp_path, capsys):
     """« 0 ROM répertoriée » est vrai et inutile : la bibliothèque est-elle
     vide, mal montée, ou rangée sous d'autres noms ? Mesuré sur une
@@ -661,3 +671,15 @@ def test_launcher_dit_qu_un_binaire_perime_est_a_recompiler(tmp_path, capsys):
     assert "plus ancien que sa source" in sortie.err
     assert "compiler.cmd" in sortie.err
     assert "compilé et en place" not in sortie.out
+
+
+# --- L'identité du paquet ---------------------------------------------------
+
+def test_identite_rend_une_seule_ligne(capsys):
+    """Une seule ligne, la version nue : c'est l'hôte qui la lit à travers
+    WinRM pour la comparer à la roue qu'il a livrée, et une deuxième ligne
+    « pour le confort » serait un piège d'analyse payé une fois, tard."""
+    from retro import identite as identite_mod
+    assert cli.main(["identite"]) == 0
+    lignes = capsys.readouterr().out.splitlines()
+    assert lignes == [identite_mod.VERSION]

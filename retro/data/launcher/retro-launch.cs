@@ -204,6 +204,20 @@ static class RetroLaunch
         }
     }
 
+    // L'INDICE D'UNE ENTREE, EN CHIFFRES INVARIANTS.
+    //
+    // « "bootstrap_target." + n » passe par int.ToString() DE LA CULTURE : sous
+    // une culture a chiffres natifs, la cle composee ne serait plus celle que
+    // « retro scan » a ecrite. Cote plan, Valeur() protesterait — une cle
+    // absente est une faute du plan. Cote rapport --explain, en revanche, rien
+    // ne protesterait : l'hote decoupe « cle=valeur » ligne a ligne et ne
+    // reconnaitrait tout simplement plus « amorcage_cible.1 ». Meme precaution
+    // que l'horodatage du temoin, et pour la meme raison.
+    static string Indice(string prefixe, int n)
+    {
+        return prefixe + n.ToString(CultureInfo.InvariantCulture);
+    }
+
     // L'amorçage : poser la configuration d'un émulateur qui n'en a jamais eu.
     //
     // Mesuré le 2026-08-28 : sans son settings.ini, DuckStation tient
@@ -212,15 +226,19 @@ static class RetroLaunch
     // comme personne ne termine un assistant depuis un canapé, rien n'est
     // jamais ecrit : le lancement suivant recommence a l'identique.
     //
-    // Ce qui est pose, et quand, est decide par « retro scan » : cette
-    // methode lit trois lignes du plan et n'en invente aucune.
+    // PLUSIEURS CIBLES PAR PROFIL. Le plan porte « bootstrap_count » puis des
+    // lignes indicees de 1 a N : RPCS3 a deux fichiers a recevoir — ses modales
+    // dans un INI, son gestionnaire de manette dans un YAML — et une seule
+    // cible par profil rendait le second inexprimable. Le lanceur boucle et
+    // n'invente rien : ce qui est pose, et quand, est decide par « retro scan ».
     static void Amorcer(Dictionary<string, string> p, string profil)
     {
-        string cible = Valeur(p, "bootstrap_target");
-        if (cible.Length == 0)
+        int nombre = int.Parse(Valeur(p, "bootstrap_count"),
+                               CultureInfo.InvariantCulture);
+        if (nombre == 0)
         {
             // Cet emulateur n'a rien a recevoir — mais un ordre de
-            // reamorcage a pu etre pose AVANT que le bloc [bootstrap]
+            // reamorcage a pu etre pose AVANT que le bloc [[bootstrap]]
             // disparaisse du profil. Sortir sans le consommer le laisserait
             // dans reamorcer.txt pour toujours : invisible tant que le bloc
             // manque, et surprenant le jour ou il revient — ce jour-la, un
@@ -236,12 +254,56 @@ static class RetroLaunch
             return;
         }
 
+        // L'ordre de reamorcage vaut pour TOUTES les entrees du profil, et il
+        // est lu UNE FOIS, avant la boucle. Le relire a chaque tour serait sans
+        // effet aujourd'hui ; le CONSOMMER dans la boucle, en revanche, ne
+        // reposerait que la premiere cible et laisserait les suivantes intactes
+        // — un « --reamorcer » a moitie execute, sans un mot.
+        bool force = OrdreDeReamorcage(profil);
+        bool quelqueChosePose = false;
+
+        for (int n = 1; n <= nombre; n++)
+        {
+            if (AmorcerUne(p, profil, n, force)) quelqueChosePose = true;
+        }
+
+        if (force) ConsommerOrdre(profil, quelqueChosePose);
+    }
+
+    // UNE entree du plan, les deux regimes dans l'ordre. Rend vrai si quelque
+    // chose a ete ecrit — c'est ce qui decide d'inscrire le temoin.
+    static bool AmorcerUne(Dictionary<string, string> p, string profil,
+                           int n, bool force)
+    {
+        string cible = Valeur(p, Indice("bootstrap_target.", n));
+
+        // LE JETON NON SUBSTITUE. « retro scan » resout {install_dir} a
+        // l'ecriture du plan ; s'il en reste un ici, c'est que le plan a ete
+        // ecrit par une version qui ne connaissait pas ce jeton, ou que la
+        // substitution a rate. Sans ce garde, Windows creerait un dossier
+        // portant LITTERALEMENT « {install_dir} », le fichier y serait pose, et
+        // l'emulateur n'y lirait jamais rien : une panne parfaitement muette,
+        // qui ressemble a un reglage qui « ne prend pas ».
+        //
+        // Il leve plutot que d'ecrire a cote : ecrire au mauvais endroit est la
+        // seule issue dont personne ne se remet sans savoir ou regarder.
+        if (cible.IndexOf('{') >= 0)
+            throw new Exception(
+                "La cible d'amorçage n°"
+                + n.ToString(CultureInfo.InvariantCulture)
+                + " porte encore un jeton non "
+                + "substitué :\n\n" + cible + "\n\nAucun fichier n'a été "
+                + "écrit : un dossier portant littéralement ce nom serait créé, "
+                + "et l'émulateur n'y lirait jamais rien.\n\n"
+                + "Relancer « retro scan » depuis l'hôte pour réécrire les "
+                + "plans.");
+
         // « bootstrap_when » ne gouverne QUE le fichier « posé une fois ». Le
         // second regime, celui des cles imposees, se reconnait a la presence
         // de « bootstrap_enforced » : le profil le distingue par STRUCTURE,
         // pas par un mode qu'on pourrait mettre en contradiction avec ce
         // qu'il contient.
-        string quand = Valeur(p, "bootstrap_when");
+        string quand = Valeur(p, Indice("bootstrap_when.", n));
         if (quand.Length > 0 && quand != SI_ABSENT)
             throw new Exception(
                 "Le plan demande une stratégie d'amorçage inconnue : « " + quand
@@ -252,10 +314,9 @@ static class RetroLaunch
                 + "« retro scan ».");
 
         cible = Environment.ExpandEnvironmentVariables(cible);
-        bool force = OrdreDeReamorcage(profil);
-        string impose = Valeur(p, "bootstrap_enforced");
+        string impose = Valeur(p, Indice("bootstrap_enforced.", n));
 
-        // GetDirectoryName rend null pour une racine ("C:\") : tester
+        // GetDirectoryName rend null pour une racine ("C:\"): tester
         // parent.Length sans ce garde leverait une NullReferenceException,
         // dont le message « Object reference not set to an instance of an
         // object » ne nomme rien — la politique de ce depot l'interdit. Une
@@ -284,7 +345,7 @@ static class RetroLaunch
 
         if (!File.Exists(cible) || force)
         {
-            string source = Valeur(p, "bootstrap_source");
+            string source = Valeur(p, Indice("bootstrap_source.", n));
             if (source.Length > 0)
             {
                 if (!File.Exists(source))
@@ -350,8 +411,10 @@ static class RetroLaunch
             }
         }
 
+        // Le temoin porte la CIBLE, pas seulement le profil : un profil a deux
+        // cibles en ecrit deux lignes, et l'hote les relit toutes.
         if (ecrit) InscrireTemoin(profil, cible);
-        if (force) ConsommerOrdre(profil, true);
+        return ecrit;
     }
 
     // Une copie horodatee de la cible, avant toute ecriture. Rien n'ecrase
@@ -727,9 +790,17 @@ static class RetroLaunch
         {
             string fichier = Path.Combine(dossier, "bootstrap.txt");
             var lignes = new List<string>();
+            // La ligne REMPLACEE est celle qui porte le profil ET la cible.
+            // Dedupliquer sur le seul profil effacerait la premiere cible
+            // chaque fois que la seconde est posee : le rapport n'en montrerait
+            // jamais qu'une, et la disparue passerait pour « pas encore
+            // amorcee » alors qu'elle est en place.
+            string prefixe = profil + "\t";
+            string suffixe = "\t" + cible;
             if (File.Exists(fichier))
                 foreach (string l in File.ReadAllLines(fichier, Encoding.UTF8))
-                    if (l.Length > 0 && !l.StartsWith(profil + "\t"))
+                    if (l.Length > 0
+                        && !(l.StartsWith(prefixe) && l.EndsWith(suffixe)))
                         lignes.Add(l);
             // InvariantCulture : dans un format personnalise, « : » est le
             // separateur d'heure DE LA CULTURE (pas un litteral) et l'annee
@@ -860,13 +931,8 @@ static class RetroLaunch
             rapport.AppendLine("resolution=" + largeur + "x" + hauteur);
             rapport.AppendLine("emulateur=" + emulateur);
             rapport.AppendLine("commande=" + commande);
-            string cibleAmorcage = Valeur(p, "bootstrap_target");
-            rapport.AppendLine("amorcage_cible=" + cibleAmorcage);
-            // Combien de cles la console impose dans ce fichier, et non
-            // seulement qu'elle en impose : « 3 cles » et « tout le fichier »
-            // n'appellent pas la meme reaction.
-            rapport.AppendLine("amorcage_impose="
-                + (Valeur(p, "bootstrap_enforced").Length > 0 ? "oui" : "non"));
+            // UN ORDRE DE REAMORCAGE EST LU UNE FOIS, POUR TOUT LE PROFIL.
+            //
             // Un ordre en attente CHANGE la reponse, et le taire faisait
             // mentir le seul controle verifiable a distance : --explain
             // rendait « non (la cible existe) » alors que le lancement
@@ -906,34 +972,59 @@ static class RetroLaunch
             else
                 rapport.AppendLine("amorcage_ordre="
                     + (ordre ? "en attente" : "aucun"));
-            string aPoser;
-            if (cibleAmorcage.Length == 0)
-                aPoser = ordre
+
+            // UNE LIGNE PAR ENTREE, indicee comme le plan. Une seule ligne
+            // pour un profil a deux cibles ferait disparaitre la seconde du
+            // seul controle lisible sans rien lancer.
+            int compte = int.Parse(Valeur(p, "bootstrap_count"),
+                                   CultureInfo.InvariantCulture);
+            rapport.AppendLine("amorcage_count="
+                + compte.ToString(CultureInfo.InvariantCulture));
+            for (int n = 1; n <= compte; n++)
+            {
+                string cibleAmorcage = Valeur(p, Indice("bootstrap_target.", n));
+                rapport.AppendLine(Indice("amorcage_cible.", n) + "=" + cibleAmorcage);
+                // Combien de cles la console impose dans ce fichier, et non
+                // seulement qu'elle en impose : « 3 cles » et « tout le
+                // fichier » n'appellent pas la meme reaction.
+                string imposeN = Valeur(p, Indice("bootstrap_enforced.", n));
+                rapport.AppendLine(Indice("amorcage_impose.", n) + "="
+                    + (imposeN.Length > 0 ? "oui" : "non"));
+                string aPoser;
+                if (cibleAmorcage.IndexOf('{') >= 0)
+                    // Le garde d'Amorcer(), rendu SANS lever : --explain doit
+                    // rester lisible en session 0, et c'est justement le
+                    // controle qui doit montrer ce plan-la avant qu'un jeu ne
+                    // le rencontre.
+                    aPoser = "non (jeton non substitue dans la cible : "
+                        + "relancer « retro scan »)";
+                else if (ordreIllisible.Length > 0)
+                    // Ni « oui » ni « non » : avec un ordre qu'on n'a pas pu
+                    // lire, on ne sait pas si la cible sera reecrite. Trancher
+                    // ici rendrait faux le seul controle a distance.
+                    aPoser = "inconnu (l'ordre de reamorcage n'a pas pu etre lu)";
+                else if (ordre)
+                    aPoser = "oui (ordre de reamorcage : la cible sera "
+                        + "sauvegardee puis reecrite)";
+                else if (File.Exists(Environment.ExpandEnvironmentVariables(
+                             cibleAmorcage)))
+                    // « si-absent » s'arrete la ; les cles IMPOSEES, elles,
+                    // rouvrent ce fichier a chaque lancement. Repondre « non
+                    // (la cible existe) » quand il y en a mentirait sur le seul
+                    // controle verifiable a distance — et c'est precisement le
+                    // fichier du proprietaire qui est en jeu.
+                    aPoser = imposeN.Length > 0
+                        ? FusionAPoser(cibleAmorcage, imposeN)
+                        : "non (la cible existe)";
+                else
+                    aPoser = "oui";
+                rapport.AppendLine(Indice("amorcage_a_poser.", n) + "=" + aPoser);
+            }
+            if (compte == 0)
+                rapport.AppendLine("amorcage_a_poser=" + (ordre
                     ? "rien (ordre sans objet : il sera retire au prochain "
                       + "lancement)"
-                    : "rien";
-            else if (ordreIllisible.Length > 0)
-                // Ni « oui » ni « non » : avec un ordre qu'on n'a pas pu
-                // lire, on ne sait pas si la cible sera reecrite. Trancher
-                // ici rendrait faux le seul controle a distance.
-                aPoser = "inconnu (l'ordre de reamorcage n'a pas pu etre lu)";
-            else if (ordre)
-                aPoser = "oui (ordre de reamorcage : la cible sera sauvegardee "
-                    + "puis reecrite)";
-            else if (File.Exists(Environment.ExpandEnvironmentVariables(
-                         cibleAmorcage)))
-                // « si-absent » s'arrete la ; les cles IMPOSEES, elles,
-                // rouvrent ce fichier a chaque lancement. Repondre « non (la
-                // cible existe) » quand il y en a mentirait sur le seul
-                // controle verifiable a distance — et c'est precisement le
-                // fichier du proprietaire qui est en jeu.
-                aPoser = Valeur(p, "bootstrap_enforced").Length > 0
-                    ? FusionAPoser(cibleAmorcage,
-                                   Valeur(p, "bootstrap_enforced"))
-                    : "non (la cible existe)";
-            else
-                aPoser = "oui";
-            rapport.AppendLine("amorcage_a_poser=" + aPoser);
+                    : "rien"));
             Console.Out.Write(rapport.ToString());
             Console.Out.Flush();
             File.WriteAllText(Path.Combine(dossier, "explain.txt"),

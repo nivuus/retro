@@ -22,7 +22,7 @@ schema = 1
 id  = "rpcs3"
 exe = 'rpcs3.exe'
 
-# Amorçage : pas de bloc [bootstrap]. Ce que RPCS3 doit recevoir pour
+# Amorçage : pas de bloc [[bootstrap]]. Ce que RPCS3 doit recevoir pour
 # lancer un jeu au lieu de son assistant de première configuration reste À
 # MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
 # été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
@@ -57,10 +57,49 @@ exe = 'rpcs3.exe'
 # relever, sur la machine : ce que RPCS3 écrit de lui-même une fois la
 # vibration activée dans son interface — même méthode que pour l'identifiant
 # de manette (tâche 1 du sous-projet E), et pour la même raison.
+# LA MANETTE — RELEVÉE ET RÉGLÉE le 2026-08-29, et la cause n'était pas une
+# mauvaise liaison : c'était l'ABSENCE TOTALE de gestionnaire.
+#
+# Constaté sur LittleBigPlanet (BCES-00611) : le jeu tournait à 30 fps en
+# Vulkan et aucun bouton ne répondait. La cause est dans Emu/Io/pad_config.h :
+#
+#     cfg_player player1{ this, "Player 1 Input", pad_handler::null };
+#
+# `pad_handler::null` est le DÉFAUT. Sans le fichier
+# config\input_configs\global\Default.yml — qui n'existait pas, non plus que
+# son dossier — le joueur 1 n'a aucun gestionnaire. Pas une mappe fausse : pas
+# de manette du tout.
+#
+# CE QUI SUFFIT, et c'est trois lignes :
+#
+#     Player 1 Input:
+#       Handler: XInput
+#       Device: "XInput Pad #1"
+#
+# Pourquoi si peu, là où DuckStation a exigé vingt-sept liaisons écrites à la
+# main : xinput_pad_handler::init_config() renseigne les vingt-quatre `.def`
+# puis appelle from_default(). RPCS3 pose donc lui-même toute la mappe dès que
+# le gestionnaire est choisi. Le fichier fait 61 octets, et le propriétaire a
+# confirmé que les contrôles répondent.
+#
+# ⚠ DEUX PIÈGES DE FORME, et chacun aurait donné un réglage d'apparence posé
+# qui ne fait rien :
+#   - la valeur est « XInput », avec ses deux majuscules. Relevée dans
+#     pad_config_types.cpp : `case pad_handler::xinput: return "XInput";`.
+#   - « Device » DOIT être cité : en YAML, « # » ouvre un commentaire, donc
+#     `XInput Pad #1` non quoté devient `XInput Pad`, qui ne désigne rien. Le
+#     nom vient de xinput_pad_handler.cpp, `m_name_string = "XInput Pad #"`.
+#
+# ⚠ ET RIEN NE REPOSE CE FICHIER. Il vit sous la racine d'émulation, que
+# `target` ne sait pas désigner — c'est la dette D7, dont RPCS3 est le
+# troisième cas. Pire ici qu'ailleurs : `retro install` EFFACE le dossier
+# d'installation à chaque montée de version, donc une simple mise à jour de
+# RPCS3 rendrait la manette muette, sans qu'aucun message ne fasse le lien.
 [input]
 steam_input = "required"
 mode        = "xinput"
-mapping     = "inconnu"
+mapping       = "releve"
+mapping_where = 'RPCS3\config\input_configs\global\Default.yml (sous la racine emulation), section « Player 1 Input »'
 
 [exit]
 # L'exécutable livré porte « Open Home Menu », « PS Button », « Exit Game? » et

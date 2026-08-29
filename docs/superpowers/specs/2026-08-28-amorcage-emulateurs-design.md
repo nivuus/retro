@@ -83,7 +83,7 @@ le plan ; le lanceur exécute.
 | Que contient l'amorçage ? | Ce qui rend l'émulateur utilisable à la manette depuis un canapé — pas le strict minimum. Chaque clé **relevée sur la machine**. |
 | Le mode portable ? | **Exclu.** `acquire.acquire` fait `shutil.rmtree` du dossier d'installation à chaque montée de version : une configuration posée à côté de l'exécutable, cartes mémoire et sauvegardes comprises, disparaîtrait à la première mise à jour. |
 | Quels émulateurs ? | Les neuf, un par un, chacun mesuré. |
-| Nom du bloc | `[bootstrap]` — les clés TOML du dépôt sont en anglais, seuls commentaires et messages sont en français. |
+| Nom du bloc | `[[bootstrap]]`, un tableau de tables — les clés TOML du dépôt sont en anglais, seuls commentaires et messages sont en français. |
 
 ---
 
@@ -118,7 +118,10 @@ selon la console qu'il émule. Même raison que pour le gabarit d'entrée de la
 tâche 3 du sous-projet E.
 
 ```toml
-[bootstrap]
+# Un TABLEAU de tables : un profil peut porter PLUSIEURS cibles — RPCS3 en a
+# deux, ses modales dans un INI et son gestionnaire de manette dans un YAML.
+# Une seule forme est acceptée ; « [bootstrap] » au singulier est refusé.
+[[bootstrap]]
 # Pourquoi ce bloc existe, et ce que chaque clé fait là — en commentaire, comme
 # partout ailleurs dans ce dépôt.
 target = '%USERPROFILE%\Documents\DuckStation\settings.ini'

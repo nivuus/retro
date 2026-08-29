@@ -29,6 +29,7 @@ import importlib.resources
 import pathlib
 import shutil
 
+from retro import profiles as profiles_mod
 from retro import render as render_mod
 
 # Sous la racine d'émulation, et pas ailleurs : la propriété d'une entrée
@@ -108,31 +109,60 @@ STRATEGIES = (SI_ABSENT, FUSION)
 IMPOSE = "impose"
 
 
-def enforced_name(profile_id: str, target: str) -> str:
+def _suffixe(target: str) -> str:
+    """L'extension de la CIBLE, ou « .txt » si elle n'en a pas.
+
+    Elle se prend sur la cible BRUTE, jetons compris : c'est son extension qui
+    compte, et la substitution ne la change pas. Un `.yml` déposé sous un nom
+    en `.ini` se lirait comme un fichier d'un autre format, et le premier
+    lecteur du dossier n'aurait aucun moyen de savoir ce qu'il regarde.
+    """
+    return pathlib.PureWindowsPath(target).suffix or ".txt"
+
+
+def enforced_name(profile_id: str, index: int, target: str) -> str:
     """Le nom du fragment des clés IMPOSÉES, déposé à côté des plans.
 
     Un fichier SÉPARÉ de celui de l'amorçage, et non un second bloc dans le
     même : les deux ont des durées de vie différentes — l'un n'est lu qu'une
     fois, l'autre à chaque lancement — et le lanceur doit pouvoir prendre le
     second sans rouvrir le premier.
+
+    `index` est le rang de l'entrée dans le profil, 1-based. Sans lui, les deux
+    cibles d'un même profil se disputeraient un nom de fichier, et le contenu
+    de l'une serait posé dans l'autre — un YAML dans un INI, sans un mot.
     """
-    suffixe = pathlib.PureWindowsPath(target).suffix or ".txt"
-    return f"{profile_id}.{IMPOSE}{suffixe}"
+    return f"{profile_id}.{IMPOSE}.{index}{_suffixe(target)}"
 
 
-def bootstrap_name(profile_id: str, target: str) -> str:
+def bootstrap_name(profile_id: str, index: int, target: str) -> str:
     """Le nom du fichier d'amorçage déposé à côté des plans.
 
-    L'extension est celle de la CIBLE : un `.toml` déposé sous un nom en
-    `.ini` se lirait comme un fichier d'un autre format, et le premier
-    lecteur du dossier n'aurait aucun moyen de savoir ce qu'il regarde.
+    `profils_amorcables` retrouve l'identifiant du profil en coupant ce nom sur
+    « .bootstrap » : l'indice se place APRÈS, jamais avant, sinon plus aucun
+    profil ne serait ré-amorçable.
     """
-    suffixe = pathlib.PureWindowsPath(target).suffix or ".txt"
-    return f"{profile_id}.{BOOTSTRAP}{suffixe}"
+    return f"{profile_id}.{BOOTSTRAP}.{index}{_suffixe(target)}"
+
+
+def resoudre_cible(target: str, install_dir_windows: str) -> str:
+    """La cible, jetons substitués — comme {render_config}.
+
+    ICI et non dans le lanceur, pour la raison exacte qui a fait résoudre
+    {render_config} ici : le chemin ne dépend pas de la session, et le laisser
+    au lanceur lui ferait reconstruire une convention de nommage. Elle ne se
+    décide qu'à un endroit — sinon deux, qui divergeraient au premier
+    changement, et rien ne dirait laquelle s'applique.
+
+    `install_dir_windows` est le `workdir` du plan : la racine d'émulation
+    suivie du dossier d'installation TEL QUE LE MANIFESTE le nomme, surcharge
+    du propriétaire comprise. Le profil n'a donc jamais à réécrire ce nom.
+    """
+    return target.replace(profiles_mod.JETON_INSTALL, install_dir_windows)
 
 
 def plan_systeme(profile_id: str, systeme, emulator_exe: str,
-                 workdir: str, plan_dir: str = "", bootstrap=None) -> str:
+                 workdir: str, plan_dir: str = "", bootstraps=()) -> str:
     """Tout ce que le lanceur doit savoir de CE système, table d'arbitrage
     comprise.
 
@@ -180,29 +210,35 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
     for nom, vram, coeurs in render_mod.SEUILS:
         lignes.append(f"threshold_{nom}={vram},{coeurs}")
 
-    # L'amorçage, s'il y en a un. Les trois lignes sont TOUJOURS écrites :
-    # `Valeur()` traite une clé absente comme une faute du plan, et c'est
-    # cette propriété qui a déjà attrapé des plans écrits par une version
-    # antérieure. Vides, elles disent « cet émulateur n'a rien à recevoir ».
-    source = (f"{plan_dir}\\{bootstrap_name(profile_id, bootstrap.target)}"
-              if bootstrap else "")
-    # Le fragment des clés imposées, s'il y en a. Vide sinon : c'est ce qui
-    # distingue un profil qui n'impose rien — les huit autres — de celui qui
-    # impose, sans que le lanceur ait à ouvrir quoi que ce soit pour le
-    # savoir.
-    impose = (f"{plan_dir}\\{enforced_name(profile_id, bootstrap.target)}"
-              if bootstrap and bootstrap.enforced else "")
-    lignes += [
-        f"bootstrap_target={bootstrap.target if bootstrap else ''}",
-        f"bootstrap_source={source}",
-        f"bootstrap_when={SI_ABSENT if bootstrap else ''}",
-        # Les DEUX régimes visent la même cible, et le lanceur les applique
-        # dans cet ordre : poser le fichier s'il est absent, puis y refondre
-        # les clés imposées. L'ordre compte — sur une console neuve, la
-        # seconde étape doit trouver le fichier que la première vient de
-        # poser.
-        f"bootstrap_enforced={impose}",
-    ]
+    # L'AMORÇAGE : un COMPTE, toujours écrit, puis une ligne indicée par
+    # entrée. Le compte est ce que `Valeur()` protège — une clé absente est une
+    # faute du plan, et c'est cette propriété qui a déjà attrapé des plans
+    # écrits par une version antérieure. `bootstrap_count=0` dit « cet
+    # émulateur n'a rien à recevoir », et AUCUNE ligne indicée ne suit : le
+    # compte suffit désormais à porter cette propriété, et écrire des lignes
+    # vides ferait boucler le lanceur sur du rien.
+    lignes.append(f"bootstrap_count={len(bootstraps)}")
+    for rang, amorcage in enumerate(bootstraps, 1):
+        # La cible est SUBSTITUÉE ; le nom du fichier déposé, lui, suit la
+        # cible BRUTE — c'est son extension qui compte, et elle ne change pas.
+        source = f"{plan_dir}\\{bootstrap_name(profile_id, rang, amorcage.target)}"
+        # Le fragment des clés imposées, s'il y en a. Vide sinon : c'est ce qui
+        # distingue une entrée qui n'impose rien de celle qui impose, sans que
+        # le lanceur ait à ouvrir quoi que ce soit pour le savoir.
+        impose = (f"{plan_dir}\\{enforced_name(profile_id, rang, amorcage.target)}"
+                  if amorcage.enforced else "")
+        lignes += [
+            f"bootstrap_target.{rang}="
+            f"{resoudre_cible(amorcage.target, workdir)}",
+            f"bootstrap_source.{rang}={source}",
+            f"bootstrap_when.{rang}={SI_ABSENT}",
+            # Les DEUX régimes visent la même cible, et le lanceur les applique
+            # dans cet ordre : poser le fichier s'il est absent, puis y
+            # refondre les clés imposées. L'ordre compte — sur une console
+            # neuve, la seconde étape doit trouver le fichier que la première
+            # vient de poser.
+            f"bootstrap_enforced.{rang}={impose}",
+        ]
     return "\n".join(lignes) + "\n"
 
 
@@ -261,8 +297,13 @@ def ordonner_reamorcage(emulation_root_local, profile_id: str) -> pathlib.Path:
 TEMOIN_BOOTSTRAP = "bootstrap.txt"
 
 
-def lire_amorcages(emulation_root_local) -> dict[str, tuple[str, str]]:
-    """Ce que le lanceur a posé : profil → (date, cible).
+def lire_amorcages(emulation_root_local) -> dict[str, list[tuple[str, str]]]:
+    """Ce que le lanceur a posé : profil → [(date, cible), …].
+
+    UNE LISTE par profil, parce que le témoin porte désormais une ligne par
+    CIBLE : un profil à deux cibles en écrit deux, et n'en garder qu'une ferait
+    disparaître la seconde du rapport sans que rien ne le dise. Le format de
+    ligne — profil \t date \t cible — n'a pas changé.
 
     Une TRACE, pas une source de vérité : c'est la cible sur le disque de la
     console qui décide, et le lanceur ne consulte jamais ce fichier pour
@@ -274,11 +315,12 @@ def lire_amorcages(emulation_root_local) -> dict[str, tuple[str, str]]:
         texte = fichier.read_text(encoding="utf-8")
     except OSError:
         return {}
-    amorces = {}
+    amorces: dict[str, list[tuple[str, str]]] = {}
     for ligne in texte.splitlines():
         parts = ligne.split("\t")
         if len(parts) == 3 and parts[0].strip():
-            amorces[parts[0].strip()] = (parts[1].strip(), parts[2].strip())
+            amorces.setdefault(parts[0].strip(), []).append(
+                (parts[1].strip(), parts[2].strip()))
     return amorces
 
 
@@ -383,7 +425,7 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
             cle = system_key(pid, systeme.id)
             (dossier / f"{cle}.ini").write_text(
                 plan_systeme(pid, systeme, exe, workdir, plan_dir,
-                             bootstrap=profil.bootstrap),
+                             bootstraps=profil.bootstraps),
                 encoding="utf-8")
             fichiers.add(f"{cle}.ini")
             ecrits.append(cle)
@@ -398,17 +440,18 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
                         mode.config, encoding="utf-8")
                     fichiers.add(config_name(cle, nom))
 
-        # Un seul fichier par PROFIL : la configuration d'un émulateur ne
-        # change pas selon la console qu'il émule.
-        if profil.bootstrap:
-            nom = bootstrap_name(pid, profil.bootstrap.target)
-            (dossier / nom).write_text(profil.bootstrap.content,
-                                       encoding="utf-8")
+        # Par PROFIL et non par système : la configuration d'un émulateur ne
+        # change pas selon la console qu'il émule. Mais PLUSIEURS par profil,
+        # numérotés dans l'ordre du profil — RPCS3 a deux fichiers à recevoir,
+        # et un nom partagé ferait poser le contenu de l'un dans l'autre.
+        for rang, amorcage in enumerate(profil.bootstraps, 1):
+            nom = bootstrap_name(pid, rang, amorcage.target)
+            (dossier / nom).write_text(amorcage.content, encoding="utf-8")
             fichiers.add(nom)
-            if profil.bootstrap.enforced:
-                impose = enforced_name(pid, profil.bootstrap.target)
+            if amorcage.enforced:
+                impose = enforced_name(pid, rang, amorcage.target)
                 (dossier / impose).write_text(
-                    profil.bootstrap.enforced + "\n", encoding="utf-8")
+                    amorcage.enforced + "\n", encoding="utf-8")
                 fichiers.add(impose)
 
     # Tout fichier que ce passage n'a pas écrit s'en va : ce dossier

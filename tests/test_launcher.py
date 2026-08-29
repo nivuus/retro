@@ -262,7 +262,7 @@ def test_un_fichier_de_reglages_perime_est_retire(tmp_path, profils_config):
 # de TOML, qui n'interprète aucun échappement. C'est ce qu'il faut pour un
 # fichier de configuration Windows, plein d'antislashs.
 PROFIL_AMORCE = PROFIL + """
-[bootstrap]
+[[bootstrap]]
 target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
 content = '''
 ; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
@@ -279,39 +279,43 @@ def profils_amorces(tmp_path):
     return {"duckstation": profiles.load_profile(p)}
 
 
-def test_le_plan_porte_les_trois_lignes_d_amorcage(profils_amorces):
+def test_le_plan_porte_les_lignes_d_un_amorcage(profils_amorces):
     """Le lanceur ne reconstruit ni le chemin de la source ni la stratégie :
-    les deux sont décidées ici."""
+    les deux sont décidées ici. Une seule entrée, mais elle est INDICÉE comme
+    les autres — un format qui changerait avec le nombre d'entrées ferait deux
+    lecteurs dans le lanceur."""
     systeme = profils_amorces["duckstation"].systems[0]
     texte = launcher.plan_systeme(
         "duckstation", systeme, "D:\\Emulation\\DS\\duckstation-qt.exe",
         "D:\\Emulation\\DS", "D:\\Emulation\\_launcher\\systems",
-        bootstrap=profils_amorces["duckstation"].bootstrap)
+        bootstraps=profils_amorces["duckstation"].bootstraps)
     l = lignes(texte)
-    assert l["bootstrap_target"] == (
+    assert l["bootstrap_count"] == "1"
+    assert l["bootstrap_target.1"] == (
         "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
-    assert l["bootstrap_source"] == (
-        "D:\\Emulation\\_launcher\\systems\\duckstation.bootstrap.ini")
-    assert l["bootstrap_when"] == launcher.SI_ABSENT
+    assert l["bootstrap_source.1"] == (
+        "D:\\Emulation\\_launcher\\systems\\duckstation.bootstrap.1.ini")
+    assert l["bootstrap_when.1"] == launcher.SI_ABSENT
 
 
-def test_un_profil_sans_amorcage_porte_les_lignes_vides(profils):
-    """Vides, jamais absentes : le lanceur traite une clé manquante comme une
-    faute du plan, et c'est une propriété qu'on garde."""
+def test_un_profil_sans_amorcage_ne_porte_aucune_ligne_indicee(profils):
+    """Le COMPTE est toujours écrit — le lanceur traite une clé manquante comme
+    une faute du plan, et c'est cette propriété qu'on garde. Les lignes
+    indicées, elles, n'existent pas : le compte les remplace toutes."""
     l = lignes(plan(profils))
-    assert l["bootstrap_target"] == ""
-    assert l["bootstrap_source"] == ""
-    assert l["bootstrap_when"] == ""
+    assert l["bootstrap_count"] == "0"
+    assert [c for c in l if c.startswith("bootstrap_")] == ["bootstrap_count"]
 
 
 def test_le_nom_du_fichier_suit_l_extension_de_la_cible():
     """Un émulateur dont la configuration est un .toml ne reçoit pas un .ini :
     le nom du fichier déposé porte l'extension de sa cible."""
     assert launcher.bootstrap_name(
-        "duckstation", "%USERPROFILE%\\Documents\\DuckStation\\settings.ini"
-    ) == "duckstation.bootstrap.ini"
+        "duckstation", 1,
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini"
+    ) == "duckstation.bootstrap.1.ini"
     assert launcher.bootstrap_name(
-        "xemu", "%APPDATA%\\xemu\\xemu.toml") == "xemu.bootstrap.toml"
+        "xemu", 1, "%APPDATA%\\xemu\\xemu.toml") == "xemu.bootstrap.1.toml"
 
 
 def test_le_fichier_d_amorcage_est_ecrit(tmp_path, profils_amorces):
@@ -320,7 +324,7 @@ def test_le_fichier_d_amorcage_est_ecrit(tmp_path, profils_amorces):
     launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
                          {"duckstation": "DS"})
     depose = (tmp_path / launcher.DIR / launcher.PLAN
-              / "duckstation.bootstrap.ini")
+              / "duckstation.bootstrap.1.ini")
     assert "SetupWizardIncomplete = false" in depose.read_text(encoding="utf-8")
 
 
@@ -330,11 +334,11 @@ def test_un_amorcage_perime_est_retire(tmp_path, profils_amorces):
     launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
                          {"duckstation": "DS"})
     dossier = tmp_path / launcher.DIR / launcher.PLAN
-    (dossier / "ancien.bootstrap.toml").write_text("x", encoding="utf-8")
+    (dossier / "ancien.bootstrap.1.toml").write_text("x", encoding="utf-8")
     launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
                          {"duckstation": "DS"})
-    assert not (dossier / "ancien.bootstrap.toml").exists()
-    assert (dossier / "duckstation.bootstrap.ini").exists()
+    assert not (dossier / "ancien.bootstrap.1.toml").exists()
+    assert (dossier / "duckstation.bootstrap.1.ini").exists()
 
 
 # --- l'ordre de ré-amorçage ----------------------------------------------
@@ -380,7 +384,7 @@ def test_le_temoin_d_amorcage_est_relu(tmp_path):
         "duckstation\t2026-08-28 10:27:26\tC:\\Users\\A\\settings.ini\n",
         encoding="utf-8")
     assert launcher.lire_amorcages(tmp_path) == {
-        "duckstation": ("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini")}
+        "duckstation": [("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini")]}
 
 
 def test_un_temoin_absent_ne_fait_pas_echouer(tmp_path):
@@ -450,7 +454,7 @@ def test_un_lanceur_sans_source_deposee_n_est_pas_dit_perime(tmp_path):
 # --- les clés imposées : le second régime ---------------------------------
 
 PROFIL_IMPOSE = PROFIL + """
-[bootstrap]
+[[bootstrap]]
 target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
 content = '''
 ; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
@@ -478,36 +482,237 @@ def test_le_plan_porte_le_fichier_des_cles_imposees(profils_imposes):
     profil = profils_imposes["duckstation"]
     l = lignes(launcher.plan_systeme(
         "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
-        "D:\\E\\_launcher\\systems", bootstrap=profil.bootstrap))
-    assert l["bootstrap_source"] == (
-        "D:\\E\\_launcher\\systems\\duckstation.bootstrap.ini")
-    assert l["bootstrap_enforced"] == (
-        "D:\\E\\_launcher\\systems\\duckstation.impose.ini")
-    assert l["bootstrap_when"] == launcher.SI_ABSENT
+        "D:\\E\\_launcher\\systems", bootstraps=profil.bootstraps))
+    assert l["bootstrap_source.1"] == (
+        "D:\\E\\_launcher\\systems\\duckstation.bootstrap.1.ini")
+    assert l["bootstrap_enforced.1"] == (
+        "D:\\E\\_launcher\\systems\\duckstation.impose.1.ini")
+    assert l["bootstrap_when.1"] == launcher.SI_ABSENT
 
 
-def test_un_profil_qui_n_impose_rien_porte_la_ligne_vide(profils_amorces):
-    """Vide, jamais absente : une clé manquante est une faute du plan, et
-    c'est cette propriété qui attrape les plans d'une version antérieure."""
+def test_un_amorcage_qui_n_impose_rien_porte_la_ligne_vide(profils_amorces):
+    """Vide, jamais absente : c'est ce qui distingue une entrée qui n'impose
+    rien de celle qui impose, sans que le lanceur ait à ouvrir un fichier."""
     profil = profils_amorces["duckstation"]
     l = lignes(launcher.plan_systeme(
         "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
-        "D:\\E\\_launcher\\systems", bootstrap=profil.bootstrap))
-    assert l["bootstrap_enforced"] == ""
+        "D:\\E\\_launcher\\systems", bootstraps=profil.bootstraps))
+    assert l["bootstrap_enforced.1"] == ""
 
 
 def test_le_fichier_des_cles_imposees_est_depose(tmp_path, profils_imposes):
     dossier = launcher.local_dir(tmp_path) / launcher.PLAN
     launcher.ecrire_plan(tmp_path, "D:\\E", profils_imposes,
                          {"duckstation": "DS"})
-    impose = dossier / "duckstation.impose.ini"
+    impose = dossier / "duckstation.impose.1.ini"
     assert impose.is_file()
     assert "SetupWizardIncomplete" in impose.read_text(encoding="utf-8")
     # Et le fichier « posé une fois » reste à côté, distinct.
     assert "ConfirmPowerOff" in (
-        dossier / "duckstation.bootstrap.ini").read_text(encoding="utf-8")
+        dossier / "duckstation.bootstrap.1.ini").read_text(encoding="utf-8")
 
 
-def test_les_deux_fichiers_d_un_profil_ne_se_confondent_pas():
-    assert launcher.enforced_name("duckstation", "x.ini") \
-        != launcher.bootstrap_name("duckstation", "x.ini")
+def test_les_deux_fichiers_d_une_entree_ne_se_confondent_pas():
+    assert launcher.enforced_name("duckstation", 1, "x.ini") \
+        != launcher.bootstrap_name("duckstation", 1, "x.ini")
+
+
+# --- le jeton du dossier d'installation -----------------------------------
+
+# Le dossier d'installation porte un nom réel, et la cible des ANTISLASHS
+# INTERNES : une fixture à nom plat masquerait une substitution qui perd le
+# reste du chemin. C'est le défaut qui a déjà coûté une bibliothèque entière.
+PROFIL_JETON = PROFIL.replace('id = "duckstation"', 'id = "vita3k"') + """
+[[bootstrap]]
+target = '{install_dir}\\gui-configs\\CurrentSettings.ini'
+content = '''
+; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+[MainWindow]
+warnAdminPrivileges=false
+'''
+"""
+
+
+@pytest.fixture
+def profils_jeton(tmp_path):
+    p = tmp_path / "vita3k-jeton.toml"
+    p.write_text(PROFIL_JETON, encoding="utf-8")
+    return {"vita3k": profiles.load_profile(p)}
+
+
+def test_le_plan_substitue_le_dossier_d_installation(profils_jeton):
+    """Le jeton est résolu À L'ÉCRITURE DU PLAN, comme {render_config} : le
+    lanceur ne reconstruit aucune convention de nommage, et un jeton qui lui
+    arriverait tel quel ferait créer un dossier « {install_dir} »."""
+    profil = profils_jeton["vita3k"]
+    l = lignes(launcher.plan_systeme(
+        "vita3k", profil.systems[0], "D:\\Emulation\\Vita3K\\Vita3K.exe",
+        "D:\\Emulation\\Vita3K", "D:\\Emulation\\_launcher\\systems",
+        bootstraps=profil.bootstraps))
+    assert l["bootstrap_target.1"] == (
+        "D:\\Emulation\\Vita3K\\gui-configs\\CurrentSettings.ini")
+
+
+def test_le_nom_du_fichier_depose_suit_la_cible_brute(tmp_path, profils_jeton):
+    """Le fichier déposé, et la ligne du plan qui le nomme, dérivent de la
+    cible BRUTE — son extension, qui ne change pas à la substitution. Les deux
+    doivent s'accorder : un plan qui nomme une source que « retro scan » n'a
+    pas écrite fait échouer l'amorçage devant la télévision.
+
+    La cible, elle, est substituée dans le même plan. Les deux propriétés se
+    tiennent ensemble, et c'est pourquoi ce test les regarde ensemble."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_jeton,
+                         {"vita3k": "Vita3K"})
+    dossier = launcher.local_dir(tmp_path) / launcher.PLAN
+    depose = dossier / "vita3k.bootstrap.1.ini"
+    assert depose.is_file(), sorted(p.name for p in dossier.iterdir())
+    l = lignes((dossier / "vita3k.psx.ini").read_text(encoding="utf-8"))
+    assert l["bootstrap_source.1"].endswith("\\vita3k.bootstrap.1.ini")
+    assert l["bootstrap_target.1"] == (
+        "D:\\Emulation\\Vita3K\\gui-configs\\CurrentSettings.ini")
+
+
+# --- plusieurs amorçages dans un même plan --------------------------------
+
+# Deux cibles, deux formats, et des ANTISLASHS INTERNES dans les deux : c'est
+# la forme réelle de RPCS3, dont le second fichier est du YAML que la fusion ne
+# connaît pas — elle n'a pas à le connaître, « si-absent » copie des octets.
+PROFIL_DEUX = PROFIL.replace('id = "duckstation"', 'id = "rpcs3"') + """
+[[bootstrap]]
+target = '{install_dir}\\GuiConfigs\\CurrentSettings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé UNE FOIS, et le reste, qui est à vous.
+[main_window]
+infoBoxEnabledInstallPUP=false
+'''
+enforced = '''
+[main_window]
+confirmationBoxBootGame=false
+'''
+[[bootstrap]]
+target = '{install_dir}\\config\\input_configs\\global\\Default.yml'
+content = '''
+# Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+Player 1 Input:
+  Handler: XInput
+  Device: "XInput Pad #1"
+'''
+"""
+
+
+@pytest.fixture
+def profils_deux(tmp_path):
+    p = tmp_path / "rpcs3-deux.toml"
+    p.write_text(PROFIL_DEUX, encoding="utf-8")
+    return {"rpcs3": profiles.load_profile(p)}
+
+
+def test_le_plan_porte_une_ligne_par_amorcage(profils_deux):
+    """Un compte, puis des lignes indicées : le lanceur boucle de 1 à N et
+    n'invente rien. Sans l'indice, deux cibles se disputeraient une clé et la
+    seconde disparaîtrait du plan sans un mot."""
+    profil = profils_deux["rpcs3"]
+    l = lignes(launcher.plan_systeme(
+        "rpcs3", profil.systems[0], "D:\\Emulation\\RPCS3\\rpcs3.exe",
+        "D:\\Emulation\\RPCS3", "D:\\Emulation\\_launcher\\systems",
+        bootstraps=profil.bootstraps))
+    assert l["bootstrap_count"] == "2"
+    assert l["bootstrap_target.1"] == (
+        "D:\\Emulation\\RPCS3\\GuiConfigs\\CurrentSettings.ini")
+    assert l["bootstrap_source.1"] == (
+        "D:\\Emulation\\_launcher\\systems\\rpcs3.bootstrap.1.ini")
+    assert l["bootstrap_when.1"] == launcher.SI_ABSENT
+    assert l["bootstrap_enforced.1"] == (
+        "D:\\Emulation\\_launcher\\systems\\rpcs3.impose.1.ini")
+    assert l["bootstrap_target.2"] == (
+        "D:\\Emulation\\RPCS3\\config\\input_configs\\global\\Default.yml")
+    assert l["bootstrap_source.2"] == (
+        "D:\\Emulation\\_launcher\\systems\\rpcs3.bootstrap.2.yml")
+    assert l["bootstrap_when.2"] == launcher.SI_ABSENT
+    assert l["bootstrap_enforced.2"] == ""
+
+
+def test_un_profil_sans_amorcage_porte_un_compte_nul(profils):
+    """Le compte suffit désormais à porter « cet émulateur n'a rien à
+    recevoir » : les lignes indicées sont ABSENTES, et `Valeur()` continue de
+    traiter une clé absente comme une faute du plan."""
+    l = lignes(plan(profils))
+    assert l["bootstrap_count"] == "0"
+    assert "bootstrap_target.1" not in l
+
+
+def test_les_deux_amorcages_d_un_profil_ne_se_confondent_pas(tmp_path,
+                                                             profils_deux):
+    """Quatre fichiers déposés pour un seul profil : deux à poser, un imposé,
+    et ils doivent être deux à deux distincts. Un nom partagé ferait poser le
+    contenu d'une cible dans l'autre — un YAML dans un INI, sans un mot."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_deux,
+                         {"rpcs3": "RPCS3"})
+    dossier = launcher.local_dir(tmp_path) / launcher.PLAN
+    noms = sorted(p.name for p in dossier.iterdir()
+                  if launcher.BOOTSTRAP in p.name or launcher.IMPOSE in p.name)
+    assert noms == ["rpcs3.bootstrap.1.ini", "rpcs3.bootstrap.2.yml",
+                    "rpcs3.impose.1.ini"]
+    assert "Handler: XInput" in (
+        dossier / "rpcs3.bootstrap.2.yml").read_text(encoding="utf-8")
+    assert "confirmationBoxBootGame" in (
+        dossier / "rpcs3.impose.1.ini").read_text(encoding="utf-8")
+
+
+def test_passer_de_deux_amorcages_a_un_retire_le_second(tmp_path, profils_deux,
+                                                        profils_amorces):
+    """Retirer une entrée d'un profil doit EFFACER ses fichiers déposés. Les
+    laisser ne se verrait pas — ils ne sont plus nommés par aucun plan — mais
+    un ré-amorçage ultérieur reposerait une configuration d'un autre âge sur
+    une cible que plus rien ne décrit."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_deux,
+                         {"rpcs3": "RPCS3"})
+    dossier = launcher.local_dir(tmp_path) / launcher.PLAN
+    assert (dossier / "rpcs3.bootstrap.2.yml").is_file()
+
+    p = tmp_path / "rpcs3-un.toml"
+    p.write_text(PROFIL_DEUX[:PROFIL_DEUX.index(
+        "[[bootstrap]]", PROFIL_DEUX.index("[[bootstrap]]") + 1)],
+        encoding="utf-8")
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation",
+                         {"rpcs3": profiles.load_profile(p)},
+                         {"rpcs3": "RPCS3"})
+    assert not (dossier / "rpcs3.bootstrap.2.yml").exists()
+    assert (dossier / "rpcs3.bootstrap.1.ini").is_file()
+    assert (dossier / "rpcs3.impose.1.ini").is_file()
+
+
+def test_un_profil_reste_amorcable_avec_des_amorcages_indices(tmp_path,
+                                                              profils_deux):
+    """`profils_amorcables` coupe le nom du fichier sur « .bootstrap » pour
+    retrouver l'identifiant. L'indice se place APRÈS : le vérifier par un test
+    plutôt que par lecture — un identifiant mal recoupé rendrait
+    « retro launcher --reamorcer » aveugle à un profil pourtant amorçable, et
+    il faudrait relire le lanceur pour comprendre."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_deux,
+                         {"rpcs3": "RPCS3"})
+    assert launcher.profils_amorcables(tmp_path) == ["rpcs3"]
+    assert launcher.ordonner_reamorcage(tmp_path, "rpcs3").is_file()
+
+
+def test_aucun_plan_ecrit_ne_porte_de_jeton_non_substitue(tmp_path):
+    """La moitié Python du garde que le lanceur porte en C#.
+
+    Un jeton qui survit à l'écriture du plan ferait créer par Windows un
+    dossier portant LITTÉRALEMENT « {install_dir} » : le fichier y serait posé,
+    l'émulateur n'y lirait jamais rien, et rien ne le dirait. Le lanceur lève
+    plutôt que d'écrire à côté ; ici, on vérifie qu'il n'a jamais à le faire
+    pour les profils LIVRÉS."""
+    profils = profiles.load_profiles(
+        pathlib.Path(__file__).parent.parent / "retro" / "data" / "profiles")
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils,
+                         {pid: pid.capitalize() for pid in profils})
+    fautives = []
+    for fichier in sorted((launcher.local_dir(tmp_path)
+                           / launcher.PLAN).glob("*.ini")):
+        for ligne in fichier.read_text(encoding="utf-8").splitlines():
+            if ligne.startswith("bootstrap_target.") and "{" in ligne:
+                fautives.append(f"{fichier.name} : {ligne}")
+    assert fautives == [], (
+        "des plans portent un jeton non substitué : " + " | ".join(fautives))

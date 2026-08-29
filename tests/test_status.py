@@ -499,7 +499,7 @@ PROFIL_STATUS_AMORCE = """
 schema = 1
 id = "duckstation"
 exe = 'duckstation-qt.exe'
-[bootstrap]
+[[bootstrap]]
 target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
 content = '''
 ; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
@@ -523,7 +523,7 @@ def profils_amorces_status(tmp_path):
 
 @pytest.fixture
 def profils_sans_amorcage_status(tmp_path):
-    texte = (PROFIL_STATUS_AMORCE[:PROFIL_STATUS_AMORCE.index("[bootstrap]")]
+    texte = (PROFIL_STATUS_AMORCE[:PROFIL_STATUS_AMORCE.index("[[bootstrap]]")]
              + PROFIL_STATUS_AMORCE[PROFIL_STATUS_AMORCE.index("[[system]]"):])
     p = tmp_path / "duckstation.toml"
     p.write_text(texte, encoding="utf-8")
@@ -535,7 +535,7 @@ def test_le_rapport_dit_ce_qui_est_amorce(profils_amorces_status):
     configuration a bien été posée sans ouvrir l'émulateur."""
     etats = status.etat_amorcage(
         profils_amorces_status,
-        {"duckstation": ("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini")})
+        {"duckstation": [("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini")]})
     assert [(e.profile_id, e.declare, e.date) for e in etats] == [
         ("duckstation", True, "2026-08-28 10:27:26")]
 
@@ -561,8 +561,8 @@ def test_la_section_amorcage_figure_dans_le_texte(profils_amorces_status):
         emulation_root=pathlib.Path("D:\\Emulation"),
         systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
         profils=profils_amorces_status,
-        amorcages={"duckstation": ("2026-08-28 10:27:26",
-                                   "C:\\Users\\A\\settings.ini")},
+        amorcages={"duckstation": [("2026-08-28 10:27:26",
+                                    "C:\\Users\\A\\settings.ini")]},
     )
     texte = status.format_report(rapport)
     assert "Amorçage" in texte and "2026-08-28 10:27:26" in texte
@@ -740,7 +740,7 @@ StartFullscreen = true
 schema = 1
 id = "d"
 exe = "d.exe"
-[bootstrap]
+[[bootstrap]]
 target = 'C:\\d\\settings.ini'
 content = """
 ; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
@@ -934,3 +934,38 @@ def test_le_probleme_de_manette_dit_qu_une_liaison_fausse_est_muette(tmp_path):
     dit = " ".join((problemes[0].what, problemes[0].action,
                     *problemes[0].details)).lower()
     assert "silence" in dit
+
+
+# --- L'identité du paquet qui a produit le rapport ---------------------------
+
+def test_le_rapport_nomme_le_paquet():
+    """Deux roues peuvent porter le même « 0.1.0 » et ne pas contenir le même
+    code : sans cette section, un rapport ne dit pas quelle construction l'a
+    produit, et deux rapports contradictoires sont indiscernables."""
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("."), systems=[],
+        bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        paquet="0.1.0+20260829143512.a1b2c3d4.g9f8e7d6"))
+    assert "Paquet" in texte
+    assert "20260829143512" in texte
+    assert "2026-08-29" in texte and "9f8e7d6" in texte
+
+
+def test_la_section_paquet_est_inconditionnelle():
+    """Comme BIOS, Rendu, Amorçage et Manettes : une section qui disparaît se
+    lit comme une panne d'affichage."""
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("."), systems=[],
+        bios_status=[], bios_root=pathlib.Path("/BIOS")))
+    assert "Paquet" in texte
+
+
+def test_un_arbre_source_n_est_pas_un_probleme():
+    """Lancer le paquet depuis son dépôt est le cas NORMAL de l'hôte. En faire
+    une accusation apprendrait au lecteur à ignorer la section Problèmes — et
+    `status` n'a de toute façon aucune référence à opposer."""
+    r = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("."), systems=[],
+        bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        paquet="0.1.0+source")
+    assert not any("paquet" in p.what.lower() for p in r.problems)

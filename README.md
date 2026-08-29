@@ -9,7 +9,7 @@ Vous la lancez à la manette.
 
 ## Ce que ça fait
 
-Six commandes. Les quatre premières dans cet ordre, les deux dernières quand
+Sept commandes. Les quatre premières dans cet ordre, les trois dernières quand
 vous voulez :
 
 - **`retro install`** installe les émulateurs du manifeste sous la racine
@@ -49,6 +49,14 @@ vous voulez :
   quelle version, combien de jeux par système, **quels BIOS manquent**, et la
   liste des problèmes — chacun avec le chemin concerné et le geste à faire.
   Elle ne modifie rien.
+- **`retro identite`** dit quelle construction du paquet est en train de
+  tourner. Sans elle, deux paquets différents portent le même `0.1.0`, et
+  `pip install --upgrade` répond « Requirement already satisfied » **sans rien
+  installer** : un correctif écrit et testé peut alors rester sans effet sur la
+  console, et l'erreur obtenue décrit le symptôme d'origine, exactement comme
+  si le correctif était faux. `scan` et `status` citent désormais cette
+  identité en tête de leur rapport, pour que l'inventaire dise toujours qui l'a
+  produit.
 
 ### Les BIOS
 
@@ -109,20 +117,34 @@ nom du système.
 
 ### Ce qui manque, et qui est écrit quelque part
 
-Cinq manques constatés sont consignés dans `docs/dettes.md`, chacun avec ce
-qu'il coûte vu du canapé et où il se joue dans le code : aucune vibration nulle
-part, rien qui garantisse une image maximale sans déformation, la manette muette
-dans DuckStation, ni capteur de mouvement ni manette PlayStation, et aucun
-émulateur PS Vita. Les deux derniers débordent sur l'invité Windows, qui a son
-propre fichier dans `nivuus/installer` : `docs/console-dettes.md`.
+**Neuf** manques constatés sont consignés dans `docs/dettes.md`, chacun avec
+ce qu'il coûte vu du canapé et où il se joue dans le code : aucune vibration
+nulle part, rien qui garantisse une image maximale sans déformation, ni capteur
+de mouvement ni manette PlayStation, la console qui tourne sur un paquet périmé
+sans que rien ne le dise, **quatre réglages critiques que le mécanisme
+d'amorçage ne sait pas tenir**, une PS4 dont l'émulateur ne peut recevoir aucun
+jeu, et une PS Vita où installer un jeu échoue par les deux voies prévues. Ceux
+qui touchent la manette débordent sur l'invité Windows, qui a son propre fichier
+dans `nivuus/installer` : `docs/console-dettes.md`.
 
-**Deux ont bougé le 2026-08-29.** La **manette muette dans DuckStation** est
-réglée : Crash Team Racing répond, confirmé par le propriétaire. Il a fallu
-deux clés, pas une — les vingt-sept liaisons relevées, **et**
-`ForceAnalogOnReset = false`, sans laquelle les liaisons étaient justes et le
-jeu restait muet. **Le cadrage de DuckStation** est réglé lui aussi
-(`CropMode = Borders`) ; le reste de cette dette-là est ouvert. Les entrées
-gardent l'histoire complète, y compris les deux tentatives qui ont échoué.
+**Quatre ont bougé le 2026-08-29, et deux sont nées le même jour.** La
+**manette muette dans DuckStation** est réglée : Crash Team Racing répond,
+confirmé par le propriétaire. Il a fallu deux clés, pas une — les vingt-sept
+liaisons relevées, **et** `ForceAnalogOnReset = false`, sans laquelle les
+liaisons étaient justes et le jeu restait muet. **Le cadrage de DuckStation**
+est réglé lui aussi (`CropMode = Borders`) ; le reste de cette dette-là est
+ouvert. **La PS Vita est close** : l'émulateur est installé depuis le manifeste
+du propriétaire, son firmware 3.74 posé, et un jeu répertorié puis lancé.
+
+Les deux nouvelles sont nées de cette clôture, et elles portent plus loin
+qu'elle : **la console faisait tourner un paquet périmé** — neuf profils au
+lieu de dix, même numéro de version, aucun signal — de sorte qu'un correctif
+écrit ici pouvait rester sans effet sur la machine ; et **deux réglages
+mesurés, indispensables, ne sont tenus par rien**, faute d'un mécanisme
+d'amorçage capable de viser leurs fichiers.
+
+Les entrées gardent l'histoire complète, y compris les tentatives qui ont
+échoué — c'est souvent l'échec qui porte la leçon.
 
 ## Utilisation
 

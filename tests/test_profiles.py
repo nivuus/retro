@@ -796,7 +796,7 @@ BOOTSTRAP_VALIDE = """
 schema = 1
 id = "duckstation"
 exe = 'duckstation-qt.exe'
-[bootstrap]
+[[bootstrap]]
 target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
 content = '''
 ; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
@@ -815,18 +815,19 @@ def test_le_bloc_bootstrap_est_lu(tmp_path):
     """Le contenu vit dans le profil, jamais dans le code : c'est lui que le
     lanceur posera tel quel."""
     profil = profiles.load_profile(ecrire(tmp_path, "duckstation.toml", BOOTSTRAP_VALIDE))
-    assert profil.bootstrap is not None
-    assert profil.bootstrap.target == (
+    assert len(profil.bootstraps) == 1
+    assert profil.bootstraps[0].target == (
         "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
-    assert "SetupWizardIncomplete = false" in profil.bootstrap.content
+    assert "SetupWizardIncomplete = false" in profil.bootstraps[0].content
 
 
 def test_un_profil_sans_bootstrap_reste_valide(tmp_path):
     """Un émulateur qui démarre nu n'a pas de bloc, et son profil doit
     continuer de se charger."""
-    sans = BOOTSTRAP_VALIDE[:BOOTSTRAP_VALIDE.index("[bootstrap]")] + \
+    sans = BOOTSTRAP_VALIDE[:BOOTSTRAP_VALIDE.index("[[bootstrap]]")] + \
         BOOTSTRAP_VALIDE[BOOTSTRAP_VALIDE.index("[[system]]"):]
-    assert profiles.load_profile(ecrire(tmp_path, "duckstation.toml", sans)).bootstrap is None
+    assert profiles.load_profile(
+        ecrire(tmp_path, "duckstation.toml", sans)).bootstraps == ()
 
 
 def test_une_cible_sans_contenu_est_refusee(tmp_path):
@@ -889,18 +890,18 @@ def test_le_profil_duckstation_livre_ferme_les_deux_causes_mesurees():
     chemin = (pathlib.Path(__file__).parent.parent / "retro" / "data"
               / "profiles" / "duckstation.toml")
     profil = profiles.load_profile(chemin)
-    assert profil.bootstrap is not None
-    assert profil.bootstrap.target == (
+    assert len(profil.bootstraps) == 1
+    assert profil.bootstraps[0].target == (
         "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
     # La première cause mesurée : sans elle, l'assistant de première
     # configuration s'ouvre avant tout jeu et rien n'est jamais écrit.
-    assert "SetupWizardIncomplete = false" in profil.bootstrap.enforced
+    assert "SetupWizardIncomplete = false" in profil.bootstraps[0].enforced
     # La seconde, découverte le même jour : sans elle, une fenêtre « Mise à
     # jour disponible » bloque le lancement aussi sûrement que l'assistant.
-    assert "CheckAtStartup = false" in profil.bootstrap.enforced
+    assert "CheckAtStartup = false" in profil.bootstraps[0].enforced
     # Et elles ne sont plus dans le fichier « posé une fois » : les y laisser
     # aurait fait décider le même réglage à deux endroits.
-    assert "SetupWizardIncomplete" not in profil.bootstrap.content
+    assert "SetupWizardIncomplete" not in profil.bootstraps[0].content
 
 
 # --- l'identifiant d'un profil se découpe et nomme un fichier --------------
@@ -968,11 +969,11 @@ def test_l_exemple_de_bootstrap_de_la_specification_se_charge(tmp_path):
     # et elle nomme le bloc sans le montrer.
     blocs = [b.split("```")[0] for b in
              spec.read_text(encoding="utf-8").split("```toml\n")[1:]]
-    exemple = [b for b in blocs if "[bootstrap]" in b]
-    assert exemple, "la spec ne montre plus d'exemple de bloc [bootstrap]"
+    exemple = [b for b in blocs if "[[bootstrap]]" in b]
+    assert exemple, "la spec ne montre plus d'exemple de bloc [[bootstrap]]"
     for bloc in exemple:
-        assert profiles._lire_bootstrap(
-            spec, tomllib.loads(bloc)["bootstrap"]) is not None
+        assert profiles._lire_bootstraps(
+            spec, tomllib.loads(bloc)["bootstrap"])
 
 
 # --- le troisième axe : le remplissage -----------------------------------
@@ -1100,7 +1101,7 @@ def _amorcage(content_keys: str, enforced: str = "",
 schema = 1
 id = "duckstation"
 exe = 'duckstation-qt.exe'
-[bootstrap]
+[[bootstrap]]
 target = '%USERPROFILE%\\\\Documents\\\\DuckStation\\\\settings.ini'
 content = '''
 {entete}
@@ -1144,15 +1145,15 @@ def test_un_amorcage_sans_cles_imposees_reste_valide(tmp_path):
     de vouloir dire « posé une fois, jamais retouché »."""
     p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
         "[Main]\nConfirmPowerOff = false")))
-    assert p.bootstrap.enforced == ""
+    assert p.bootstraps[0].enforced == ""
 
 
 def test_les_cles_imposees_se_declarent_a_part(tmp_path):
     p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
         "[Main]\nConfirmPowerOff = false",
         enforced="[Main]\nSetupWizardIncomplete = false")))
-    assert "SetupWizardIncomplete" in p.bootstrap.enforced
-    assert "ConfirmPowerOff" not in p.bootstrap.enforced
+    assert "SetupWizardIncomplete" in p.bootstraps[0].enforced
+    assert "ConfirmPowerOff" not in p.bootstraps[0].enforced
 
 
 def test_une_cle_dans_les_deux_regimes_est_refusee(tmp_path):
@@ -1172,7 +1173,7 @@ def test_la_meme_cle_dans_deux_sections_differentes_est_permise(tmp_path):
     p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
         "[Display]\nEnabled = true",
         enforced="[Pad1]\nEnabled = true")))
-    assert p.bootstrap.enforced
+    assert p.bootstraps[0].enforced
 
 
 def test_un_amorcage_qui_impose_doit_distinguer_les_trois_categories(tmp_path):
@@ -1195,7 +1196,7 @@ def test_un_amorcage_qui_n_impose_rien_garde_l_ancienne_promesse(tmp_path):
         "[Main]\nConfirmPowerOff = false",
         entete="; Écrit par « retro » : ce fichier n'est posé que s'il est "
                "absent, vos réglages ne sont jamais retouchés.")))
-    assert p.bootstrap is not None
+    assert p.bootstraps
 
 
 def _avec_input(bloc: str) -> str:
@@ -1348,3 +1349,84 @@ def test_un_marqueur_de_dossier_qui_est_un_chemin_refuse(tmp_path):
         profiles.load_profile(ecrire(
             tmp_path, "v.toml",
             APPS.replace('"eboot.bin"', '"sce_sys/param.sfo"')))
+
+
+# --- le jeton de chemin d'une cible d'amorçage ----------------------------
+
+def _cible(target: str) -> str:
+    """Le profil d'amorçage valide, avec une autre cible."""
+    return BOOTSTRAP_VALIDE.replace(
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini", target)
+
+
+def test_une_cible_sous_le_dossier_d_installation_est_acceptee(tmp_path):
+    """La configuration de Vita3K, de RPCS3 et de Cemu vit sous le dossier
+    d'INSTALLATION de l'émulateur, dont le nom se surcharge au manifeste du
+    propriétaire. Sans jeton, ces cibles ne sont pas écrivables — le validateur
+    les refusait comme des chemins relatifs."""
+    p = profiles.load_profile(ecrire(tmp_path, "vita3k.toml", _cible(
+        "{install_dir}\\gui-configs\\CurrentSettings.ini")))
+    assert p.bootstraps[0].target == "{install_dir}\\gui-configs\\CurrentSettings.ini"
+
+
+def test_un_jeton_de_cible_inconnu_est_refuse(tmp_path):
+    """Un jeton mal orthographié tombait dans le message « chemin absolu »,
+    qui envoie corriger la mauvaise chose. Le refus NOMME le jeton reçu et
+    cite ceux qui existent : un refus qui ne dit pas ce qui est permis fait
+    relire le validateur au lieu du profil."""
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "x.toml",
+                                     _cible("{emulation_root}\\x.ini")))
+    assert "{emulation_root}" in str(e.value)
+    assert profiles.JETON_INSTALL in str(e.value)
+
+
+# --- plusieurs cibles par profil ------------------------------------------
+
+DEUX_AMORCAGES = """
+schema = 1
+id = "rpcs3"
+exe = 'rpcs3.exe'
+[[bootstrap]]
+target = '{install_dir}\\GuiConfigs\\CurrentSettings.ini'
+content = '''
+; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+[main_window]
+confirmationBoxBootGame=false
+'''
+[[bootstrap]]
+target = '{install_dir}\\config\\input_configs\\global\\Default.yml'
+content = '''
+# Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+Player 1 Input:
+  Handler: XInput
+'''
+[[system]]
+id = "ps3"
+name = "PlayStation 3"
+extensions = [".iso"]
+launch = '--no-gui "{rom}"'
+"""
+
+
+def test_un_profil_declare_plusieurs_amorcages(tmp_path):
+    """RPCS3 a DEUX fichiers à recevoir — ses modales et sa manette — et rien
+    ne permettait de le dire : un profil ne portait qu'une cible. L'ordre est
+    celui du fichier, parce que c'est le seul que le lecteur du profil voit."""
+    p = profiles.load_profile(ecrire(tmp_path, "rpcs3.toml", DEUX_AMORCAGES))
+    assert [b.target for b in p.bootstraps] == [
+        "{install_dir}\\GuiConfigs\\CurrentSettings.ini",
+        "{install_dir}\\config\\input_configs\\global\\Default.yml",
+    ]
+
+
+def test_un_bloc_d_amorcage_au_singulier_est_refuse(tmp_path):
+    """Une seule forme est acceptée. Garder les deux ferait deux façons
+    d'écrire la même chose, et le jour où quelqu'un mélange, rien ne dirait
+    laquelle gagne — le profil se chargerait, à moitié appliqué."""
+    texte = DEUX_AMORCAGES.replace("[[bootstrap]]", "[bootstrap]", 1)
+    texte = texte[:texte.index("[[bootstrap]]")] + \
+        texte[texte.index("[[system]]"):]
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "rpcs3.toml", texte))
+    assert "[[bootstrap]]" in str(e.value)

@@ -37,6 +37,7 @@ import pathlib
 import re
 from collections.abc import Sequence
 
+from retro import identite as identite_mod
 from retro import install as install_mod
 from retro import launcher as launcher_mod
 from retro import profiles as profiles_mod
@@ -112,24 +113,30 @@ class Amorcage:
 
 
 def etat_amorcage(profils: dict,
-                  amorcages: dict[str, tuple[str, str]]) -> list[Amorcage]:
-    """L'état d'amorçage de chaque profil, croisé avec le témoin du lanceur.
+                  amorcages: dict[str, list[tuple[str, str]]]
+                  ) -> list[Amorcage]:
+    """L'état d'amorçage de chaque CIBLE, croisé avec le témoin du lanceur.
+
+    Une entrée par cible, et non par profil : un profil à deux cibles en a deux
+    à dire, et les faire tenir sur une ligne ferait disparaître la seconde du
+    rapport — elle passerait pour « pas encore amorcée » alors qu'elle est en
+    place. C'est pourquoi le témoin porte lui aussi une ligne par cible.
 
     Le témoin ne peut renseigner que les profils qui DÉCLARENT un amorçage :
-    un profil sans bloc `[bootstrap]` n'aura jamais de ligne dans le témoin,
+    un profil sans bloc `[[bootstrap]]` n'aura jamais de ligne dans le témoin,
     et ce n'est pas une panne — c'est cet émulateur qui se règle seul.
     """
     etats = []
     for pid in sorted(profils):
-        declare = getattr(profils[pid], "bootstrap", None) is not None
-        date, cible = amorcages.get(pid, ("", ""))
-        amorcage = getattr(profils[pid], "bootstrap", None)
-        etats.append(Amorcage(
-            profile_id=pid, declare=declare,
-            date=date if declare else "",
-            target=cible if declare else "",
-            imposees=(len(profiles_mod.cles_ini(amorcage.enforced))
-                      if declare else 0)))
+        poses = list(amorcages.get(pid, ()))
+        if not profils[pid].bootstraps:
+            etats.append(Amorcage(profile_id=pid, declare=False))
+            continue
+        for rang, amorcage in enumerate(profils[pid].bootstraps):
+            date, cible = poses[rang] if rang < len(poses) else ("", "")
+            etats.append(Amorcage(
+                profile_id=pid, declare=True, date=date, target=cible,
+                imposees=len(profiles_mod.cles_ini(amorcage.enforced))))
     return etats
 
 
@@ -219,6 +226,10 @@ class Report:
     # rapport d'avant, à l'identique.
     render_mode: str = ""
     render: list[SystemRender] = dataclasses.field(default_factory=list)
+    # La construction du paquet qui a produit CE rapport. Vide veut dire que
+    # l'appelant ne l'a pas dite — pas qu'elle vaut celle du module courant :
+    # un rapport relu ailleurs mentirait.
+    paquet: str = ""
     amorcages: list[Amorcage] = dataclasses.field(default_factory=list)
     manettes: list[Manette] = dataclasses.field(default_factory=list)
 
@@ -563,8 +574,9 @@ def build_report(
     render_mode: str = "",
     steam_input_muets: Sequence[str] = (),
     steam_input_echec: str = "",
-    amorcages: dict[str, tuple[str, str]] | None = None,
+    amorcages: dict[str, list[tuple[str, str]]] | None = None,
     lanceur_perime: bool = False,
+    paquet: str = "",
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -595,8 +607,15 @@ def build_report(
     Amorçage ci-dessous accuserait les profils d'une panne qui n'est pas la
     leur.
 
+    `paquet` est la construction du paquet qui produit ce rapport. Il est
+    CONSTATÉ, jamais reproché : lancer `retro` depuis son arbre source est le
+    cas normal de l'hôte, et en faire un problème apprendrait au lecteur à
+    ignorer la section « Problèmes ». `status` n'a d'ailleurs aucune référence
+    à opposer — savoir quelle identité DEVRAIT être là est le travail de
+    l'hôte qui a livré la roue, pas celui d'un rapport.
+
     `amorcages` est le témoin que le lanceur écrit sur la machine — profil →
-    (date, cible). `retro status` tourne sur l'hôte, qui n'atteint ni
+    [(date, cible), …], une entrée par cible posée. `retro status` tourne sur l'hôte, qui n'atteint ni
     `C:\\Users` ni `%APPDATA%` de la console : c'est la seule trace dont il
     dispose pour dire qu'une configuration a bien été posée.
     """
@@ -617,6 +636,7 @@ def build_report(
                   *_probleme_manettes(manettes)],
         bios_root=bios_root,
         render_mode=render_mode,
+        paquet=paquet,
         render=rendu,
         amorcages=etat_amorcage(profils, amorcages or {}) if profils else [],
         manettes=manettes,
@@ -821,6 +841,20 @@ def _lignes_manettes(report: Report) -> list[str]:
 def format_report(report: Report) -> str:
     """Le texte que l'hôte relaie tel quel au propriétaire."""
     sections: list[str] = []
+
+    # EN PREMIER, et inconditionnelle comme BIOS, Rendu, Amorçage et
+    # Manettes : tout ce qui suit a été produit par UNE construction du
+    # paquet, et deux roues peuvent porter le même « 0.1.0 » sans contenir le
+    # même code. Qui compare deux rapports doit le voir avant de les croire
+    # contradictoires. Le repli est atteignable — un appelant qui ne dit pas
+    # quelle construction le produit laisse `paquet` vide — et il ne remplit
+    # PAS le blanc avec la version du module courant : un rapport relu
+    # ailleurs annoncerait alors une identité qui n'est pas la sienne.
+    sections += _section(
+        "Paquet",
+        [f"  {identite_mod.lisible(report.paquet)}"] if report.paquet else [],
+        "identité inconnue : ce rapport ne peut pas dire quelle construction "
+        "l'a produit")
 
     largeur_emu = max((len(cle) for cle, _ in report.emulators), default=0)
     lignes_emu = [

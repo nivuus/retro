@@ -1,6 +1,9 @@
 [project]
 name = "retro"
-version = "0.1.0"
+# L'identité est GRAVÉE à la construction par outils/identite_build.py :
+# un « 0.1.0 » figé rendait « Requirement already satisfied » à chaque
+# réinstallation, donc la console n'exécutait jamais le code d'ici.
+dynamic = ["version"]
 description = "Fait remonter une bibliothèque de jeux rétro dans Steam"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -18,7 +21,20 @@ retro = "retro.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+# Backend EN ARBRE : il grave l'identité puis délègue à setuptools. La
+# gravure vit ici plutôt que chez l'appelant parce qu'une roue
+# reconstruite à la main doit la porter elle aussi — c'est ce geste-là
+# qui a produit la panne du 2026-08-29.
+build-backend = "identite_build"
+backend-path = ["outils"]
+
+[tool.setuptools.dynamic]
+# On lit `retro._identite`, le module GRAVÉ, et non `retro.identite` qui
+# le relit : setuptools charge ce fichier par son chemin sans importer le
+# paquet parent, donc l'`import retro._identite` de `identite.py` y échoue
+# et rendait « 0.1.0+source » dans la métadonnée de toute roue — mesuré.
+# Ici la valeur est un littéral, lue à l'AST, sans aucun import.
+version = { attr = "retro._identite.VERSION" }
 
 # manifests/ et profiles/ ne sont pas des paquets Python. La découverte
 # automatique de setuptools verrait tout dossier de premier niveau comme un

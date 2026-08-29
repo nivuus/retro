@@ -150,7 +150,7 @@ exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 # relevé fait en interface, fermé proprement, rend un settings.ini de clés
 # nues. Les clés reviennent au lancement suivant ; l'en-tête, non.
 
-[bootstrap]
+[[bootstrap]]
 target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
 
 # Les clés que la console IMPOSE. Pas de commentaires dans ce fragment — la
