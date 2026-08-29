@@ -902,8 +902,14 @@ def test_les_trois_etats_de_manette_se_lisent_dans_le_texte(tmp_path):
         "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]"))
     texte = status.format_report(_rapport_manette(profils))
     assert "Manettes" in texte
+    # La lecture est BORNÉE à la section Manettes : depuis que Vibration
+    # existe, chaque profil a deux lignes dans le rapport, et un relevé fait
+    # sur tout le texte rendait la seconde — celle de la vibration — pour la
+    # première. Un test qui lit la mauvaise ligne serait vert quoi qu'il
+    # arrive à celle qu'il croit contrôler.
+    corps = texte.split("Manettes\n", 1)[1].split("\n\n", 1)[0]
     ligne = {l.strip().split(" : ")[0].lstrip("· ").strip(): l
-             for l in texte.splitlines() if " : " in l}
+             for l in corps.splitlines() if " : " in l}
     assert "trouve sa manette seul" in ligne["retroarch"]
     assert "jamais mesuré" in ligne["cemu"]
     assert "[Pad1]" in ligne["duckstation"]
@@ -919,6 +925,134 @@ def test_la_section_manettes_s_affiche_meme_sans_profil():
     assert rapport.manettes == []
     texte = status.format_report(rapport)
     assert "Manettes" in texte and "aucun profil chargé" in texte
+
+
+# --- Vibration : l'axe sur lequel le rapport se taisait entierement --------
+#
+# Dette D1. « retro status ne dit RIEN de la vibration — aucune section, aucun
+# probleme, aucune ligne. » L'aveu vivait dans des commentaires TOML, que
+# personne ne lit depuis un canape : c'est exactement l'ecart que le
+# sous-projet E reproche a `steam_input = "required"`, un etat consigne la ou
+# il ne sert a rien.
+
+_PROFIL_VIBRATION = """
+schema = 1
+id = "{pid}"
+exe = '{pid}.exe'
+
+[input]
+rumble = "{rumble}"
+{ou}
+{temoin}
+
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{{rom}}"'
+"""
+
+
+def _profil_vibration(tmp_path, pid, rumble, ou="", temoin=""):
+    p = tmp_path / f"{pid}.toml"
+    p.write_text(_PROFIL_VIBRATION.format(
+        pid=pid, rumble=rumble,
+        ou=f"rumble_where = '{ou}'" if ou else "",
+        temoin=f"rumble_witness = '{temoin}'" if temoin else ""),
+        encoding="utf-8")
+    return {pid: profiles.load_profile(p)}
+
+
+def _ligne_vibration(rapport, pid):
+    """La ligne que la section Vibration consacre a ce profil."""
+    texte = status.format_report(rapport).split("Vibration\n", 1)[1]
+    corps = texte.split("\n\n", 1)[0]
+    return [l for l in corps.splitlines() if pid in l]
+
+
+def test_une_vibration_a_relever_est_un_probleme(tmp_path):
+    """Le seul des cinq etats qui dise « quelqu'un a constate, et il reste un
+    geste a faire ». Sans probleme leve, cette panne-la n'existerait nulle part
+    ailleurs que devant la television : la manette ne vibre pas, et ni Steam ni
+    l'emulateur n'en disent un mot."""
+    profils = _profil_vibration(
+        tmp_path, "flycast", "a-relever", "emu.cfg, section [input]")
+    problemes = [p for p in _rapport_manette(profils).problems
+                 if "vibr" in p.what]
+    assert len(problemes) == 1
+    assert "emu.cfg" in problemes[0].where
+    assert "releve-manettes" in problemes[0].action
+
+
+def test_un_reglage_de_vibration_pose_est_dit_sans_etre_accuse(tmp_path):
+    """L'etat de DuckStation, et celui qu'aucun rapport ne savait dire.
+
+    Deux moities, et aucune ne se suffit. Ne pas accuser : un reglage EST
+    pose, il n'y a pas de geste de relevé a faire. Le dire quand meme, AVEC
+    son fichier : personne ne l'a vu agir, et il peut disparaitre de son
+    fichier sans un mot. Et surtout, ne jamais laisser croire que ca vibre.
+    """
+    profils = _profil_vibration(
+        tmp_path, "duckstation", "pose",
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]")
+    rapport = _rapport_manette(profils)
+    assert [p for p in rapport.problems if "vibr" in p.what] == []
+    ligne, = _ligne_vibration(rapport, "duckstation")
+    assert "[Pad1]" in ligne
+    assert "jamais vu" in ligne, (
+        "le rapport annonce un reglage de vibration sans dire que personne ne "
+        "l'a vu agir : il laisse croire que la manette vibre"
+    )
+
+
+def test_une_vibration_jamais_mesuree_est_nommee_sans_etre_accusee(tmp_path):
+    """« personne n'a regarde » n'est pas « c'est casse ». Le confondre ferait
+    neuf accusations sans mesure ; le taire ferait croire que ces neuf
+    emulateurs vibrent tout seuls."""
+    profils = _profil_vibration(tmp_path, "cemu", "inconnu")
+    rapport = _rapport_manette(profils)
+    assert [p for p in rapport.problems if "vibr" in p.what] == []
+    ligne, = _ligne_vibration(rapport, "cemu")
+    assert "jamais mesuré" in ligne
+
+
+def test_une_vibration_mesuree_absente_est_dite_sans_fichier(tmp_path):
+    """« il n'y a rien a regler, et c'est mesure » n'est pas « personne n'a
+    regarde » : sans cet etat, un emulateur sans rumble resterait indefiniment
+    dans la liste de ce qui reste a faire."""
+    profils = _profil_vibration(tmp_path, "xemu", "absent")
+    rapport = _rapport_manette(profils)
+    assert [p for p in rapport.problems if "vibr" in p.what] == []
+    ligne, = _ligne_vibration(rapport, "xemu")
+    assert "aucun réglage" in ligne
+
+
+def test_une_vibration_vue_est_dite_avec_son_temoin(tmp_path):
+    """Le seul etat que le rapport peut lire comme « ca marche », et il ne le
+    dit qu'avec le temoin qui le soutient — la seule chose qui distingue une
+    mesure d'une affirmation."""
+    profils = _profil_vibration(
+        tmp_path, "duckstation", "vu", "settings.ini, section [Pad1]",
+        "le propriétaire, 2026-08-29, sur Crash Team Racing")
+    rapport = _rapport_manette(profils)
+    assert [p for p in rapport.problems if "vibr" in p.what] == []
+    ligne, = _ligne_vibration(rapport, "duckstation")
+    assert "2026-08-29" in ligne, (
+        "le rapport affirme que la manette vibre sans nommer le temoin qui "
+        "l'a sentie : c'est une affirmation, pas une mesure"
+    )
+
+
+def test_la_section_vibration_s_affiche_meme_sans_profil():
+    """Comme BIOS, Rendu, Amorcage et Manettes : une section qui disparait se
+    lit comme « rien a signaler » par quelqu'un qui vient justement de ne rien
+    sentir vibrer."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"))
+    assert rapport.vibrations == []
+    texte = status.format_report(rapport)
+    assert "Vibration" in texte and "aucun profil chargé" in texte
 
 
 def test_le_probleme_de_manette_dit_qu_une_liaison_fausse_est_muette(tmp_path):

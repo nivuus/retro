@@ -20,6 +20,11 @@ from retro.render import Render, RenderMode
 
 SCHEMA = 1
 
+# La date d'un témoignage de vibration. Le format ISO est celui de tout le
+# dépôt — dettes, relevés, en-têtes d'amorçage — et c'est le seul qui se
+# compare à une révision d'émulateur épinglée au manifeste.
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
 
 class ProfileError(RuntimeError):
     """Un profil est illisible, incomplet ou incohérent."""
@@ -129,6 +134,58 @@ MAPPINGS = (MAPPING_AUTO, MAPPING_A_RELEVER, MAPPING_RELEVE, MAPPING_INCONNU)
 MAPPINGS_AVEC_OU = (MAPPING_A_RELEVER, MAPPING_RELEVE)
 
 
+# L'état de la VIBRATION, et jamais un nom de clé de rumble.
+#
+# Même raison que pour `mapping`, et le même piège : le nom de la clé qui
+# active le retour de force n'est pas une propriété de la manette, c'est une
+# propriété de l'ÉMULATEUR qui la nomme. Recopiée d'une documentation, elle est
+# ignorée EN SILENCE et la manette reste muette exactement comme si rien
+# n'avait été écrit — indiscernable de l'absence de valeur, la règle de fond de
+# ce dépôt. Un profil ne peut donc écrire honnêtement qu'une chose : où en est
+# la mesure.
+#
+# CINQ ÉTATS, et il en faut cinq — chacun affirme ce que les quatre autres
+# nient :
+#
+#   `inconnu`   personne n'a mesuré. C'est le DÉFAUT, pour la raison exacte qui
+#               a fait choisir `MAPPING_INCONNU` : tout autre défaut
+#               affirmerait, sur dix émulateurs, quelque chose que personne n'a
+#               regardé.
+#   `a-relever` mesuré muet, et AUCUNE clé relevée. C'est le seul état qui
+#               dise « quelqu'un a constaté, et il reste un geste à faire » —
+#               le seul dont `retro status` fasse un problème.
+#   `pose`      un réglage EST posé, et personne ne l'a vu agir. C'est l'état
+#               de DuckStation le 2026-08-29 : ses deux liaisons LargeMotor et
+#               SmallMotor ont été écrites par son propre assistant, elles sont
+#               reposées à chaque lancement, et nul ne les a vues faire vibrer
+#               quoi que ce soit.
+#   `vu`        quelqu'un a SENTI la manette vibrer. C'est le seul état de ce
+#               vocabulaire qui ne se déduise d'aucun fichier : il exige un
+#               témoin humain, et `rumble_witness` est ce qui l'oblige.
+#   `absent`    mesuré : cet émulateur n'a AUCUN réglage de rumble, lu dans sa
+#               source. Même distinction que `fill_absent` — « il n'y a rien à
+#               régler, et c'est mesuré » n'est pas « personne n'a regardé ».
+RUMBLE_INCONNU = "inconnu"       # personne n'a mesuré
+RUMBLE_A_RELEVER = "a-relever"   # mesuré muet, aucune clé relevée
+RUMBLE_POSE = "pose"             # un réglage est posé, jamais vu agir
+RUMBLE_VU = "vu"                 # quelqu'un a SENTI la manette vibrer
+RUMBLE_ABSENT = "absent"         # mesuré : cet émulateur n'a rien à régler
+RUMBLES = (RUMBLE_INCONNU, RUMBLE_A_RELEVER, RUMBLE_POSE, RUMBLE_VU,
+           RUMBLE_ABSENT)
+
+# Les trois états qui NOMMENT un fichier : dans les trois cas le propriétaire a
+# un endroit précis à ouvrir — celui où le relevé se fera, celui où le réglage
+# posé vit et d'où il peut disparaître sans un mot. `absent` n'en est pas :
+# il n'y a rien à ouvrir. `inconnu` non plus : personne ne sait où regarder.
+RUMBLES_AVEC_OU = (RUMBLE_A_RELEVER, RUMBLE_POSE, RUMBLE_VU)
+
+# Les états MESURÉS, au sens où le profil n'a plus d'aveu à écrire en
+# commentaire : son champ dit ce qui a été constaté et `retro status` le
+# relaie. `a-relever` n'en est pas — c'est justement un aveu, et il garde son
+# explication entière.
+RUMBLES_MESURES = (RUMBLE_POSE, RUMBLE_VU, RUMBLE_ABSENT)
+
+
 @dataclasses.dataclass(frozen=True)
 class Bootstrap:
     """La configuration qu'un émulateur neuf reçoit, et où elle va.
@@ -201,6 +258,13 @@ class Profile:
     # une accusation, pas un diagnostic.
     input_mapping: str = MAPPING_INCONNU
     input_mapping_where: str = ""
+    # Où en est la VIBRATION de cet émulateur. Même forme et même règle que
+    # `input_mapping` : l'état de la mesure, jamais un nom de clé. Le témoin
+    # n'est exigé que par `vu`, et c'est ce qui distingue cet axe du
+    # précédent — « ça vibre » ne se lit dans aucun fichier.
+    input_rumble: str = RUMBLE_INCONNU
+    input_rumble_where: str = ""
+    input_rumble_witness: str = ""
     # Facultatif, et PLURIEL : un émulateur qui démarre nu n'a rien à recevoir,
     # et le profil doit alors DIRE pourquoi il n'a pas de bloc — sans quoi rien
     # ne distingue « cet émulateur se débrouille » d'un bloc oublié. Plusieurs,
@@ -738,6 +802,38 @@ def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
         )
 
 
+# Les clés que `[input]` accepte, et il n'en accepte AUCUNE autre.
+#
+# `render` et `render.<mode>` refusaient déjà leurs clés inconnues ; `[input]`
+# ne refusait rien, et c'est la fragilité que le plan D1 exige de fermer avant
+# d'y ajouter un champ. Une clé mal orthographiée — « rumbl » pour « rumble »,
+# « maping » pour « mapping » — n'était jamais lue : le champ retombait sur son
+# défaut, `retro status` annonçait « jamais mesuré », et rien nulle part ne
+# disait qu'une valeur avait pourtant été écrite. C'est exactement la règle de
+# fond de ce dépôt — une valeur fausse se comporte comme l'absence de valeur —
+# appliquée au fichier qui la porte.
+#
+# `mode` y figure bien qu'aucun code ne le lise : il est déclaré par la
+# conception (`docs/superpowers/specs/2026-08-26-retro-console-design.md`) et
+# par les dix profils livrés. Le retirer est une décision à part, qui n'est pas
+# celle de ce garde-fou.
+_CLES_INPUT = ("steam_input", "mode",
+               "mapping", "mapping_where",
+               "rumble", "rumble_where", "rumble_witness")
+
+
+def _valider_cles_input(path: pathlib.Path, entree: dict) -> None:
+    inconnues = sorted(k for k in entree if k not in _CLES_INPUT)
+    if inconnues:
+        raise ProfileError(
+            f"{path} [input] : clés inconnues : {', '.join(inconnues)}. Les "
+            f"clés sont {', '.join(_CLES_INPUT)}. Une clé mal orthographiée "
+            "ne serait jamais lue : le champ retomberait sur son défaut, le "
+            "rapport annoncerait « jamais mesuré », et rien ne dirait qu'une "
+            "valeur a pourtant été écrite ici."
+        )
+
+
 def _lire_mapping(path: pathlib.Path, entree: dict) -> tuple[str, str]:
     """L'état du relevé de la manette, validé, et l'endroit où il se fait.
 
@@ -788,6 +884,101 @@ def _lire_mapping(path: pathlib.Path, entree: dict) -> tuple[str, str]:
             "là que le propriétaire ira voir si ses liaisons y sont encore."
         )
     return etat, ou
+
+
+def _lire_rumble(path: pathlib.Path,
+                 entree: dict) -> tuple[str, str, str]:
+    """L'état de la vibration, validé, l'endroit où elle se règle, son témoin.
+
+    Le défaut est `inconnu`, et ce choix se défend contre les quatre autres,
+    exactement comme celui de `mapping` :
+
+    - `vu` par défaut serait le pire des cinq : il affirmerait qu'un humain a
+      SENTI la manette vibrer sur dix émulateurs où personne n'a tenu de
+      manette. C'est la seule affirmation de ce vocabulaire qui ne se déduise
+      d'aucun fichier, et elle ne peut jamais être un défaut ;
+    - `pose` affirmerait qu'un réglage de rumble est écrit là où rien ne
+      l'est ;
+    - `absent` affirmerait une lecture de la source de dix émulateurs ;
+    - `a-relever` accuserait dix émulateurs d'une panne constatée sur aucun, et
+      noierait celle qui le sera.
+
+    TROIS GARDES, et chacune ferme une porte que l'autre laisse ouverte :
+
+    1. le vocabulaire — une faute de frappe retomberait sinon sur le défaut,
+       et le rapport se tairait sur l'émulateur précisément concerné ;
+    2. `rumble_where` pour les trois états qui nomment un fichier — un constat
+       sans chemin est une accusation, et un réglage posé peut disparaître de
+       son fichier sans un mot ;
+    3. `rumble_witness` pour `vu`, et pour lui seul. « Ça vibre » ne se déduit
+       d'aucun fichier : c'est un état qui exige quelqu'un, la manette en main,
+       devant la télévision. Le témoin porte une DATE — sans elle, « le
+       propriétaire, un jour » ne se vérifie pas — et le reste de la formule
+       est libre : quel jeu, quel moment. Un témoin sur un autre état est
+       refusé aussi : il dirait qu'on a senti quelque chose tout en déclarant
+       qu'on ne l'a pas senti.
+    """
+    etat = entree.get("rumble", RUMBLE_INCONNU)
+    if etat not in RUMBLES:
+        raise ProfileError(
+            f"{path} [input] : 'rumble' vaut {etat!r}, attendu l'un de "
+            f"{', '.join(RUMBLES)}. Ce champ ne porte JAMAIS un nom de clé de "
+            "rumble — il dit où en est la MESURE, seule chose qu'on puisse "
+            "écrire sans avoir senti la manette vibrer. Une faute de frappe y "
+            "retomberait sur le défaut « inconnu » et ferait taire "
+            "« retro status » sur l'émulateur précisément concerné."
+        )
+    ou = entree.get("rumble_where", "")
+    if not isinstance(ou, str):
+        raise ProfileError(
+            f"{path} [input] : 'rumble_where' doit être un texte — le "
+            "fichier, et la section, que le propriétaire ouvrira sur la "
+            f"console. Reçu {ou!r}."
+        )
+    temoin = entree.get("rumble_witness", "")
+    if not isinstance(temoin, str):
+        raise ProfileError(
+            f"{path} [input] : 'rumble_witness' doit être un texte — qui a "
+            f"senti, quel jeu, quelle date. Reçu {temoin!r}."
+        )
+    ou, temoin = ou.strip(), temoin.strip()
+    if etat in RUMBLES_AVEC_OU and not ou:
+        raise ProfileError(
+            f"{path} [input] : 'rumble' vaut « {etat} » mais 'rumble_where' "
+            "est vide. « Un constat sans chemin ni action n'aide personne » : "
+            "le rapport dirait que la manette ne vibre pas sans dire quel "
+            "fichier ouvrir, et cette panne-là ne se constate que le pad en "
+            "main, devant la télévision. Un réglage POSÉ doit nommer le même "
+            "fichier, pour la raison inverse : c'est là que le propriétaire "
+            "ira voir s'il y est encore."
+        )
+    if etat == RUMBLE_VU and not temoin:
+        raise ProfileError(
+            f"{path} [input] : 'rumble' vaut « {RUMBLE_VU} » mais "
+            "'rumble_witness' est vide. « Ça vibre » ne se déduit d'aucun "
+            "fichier : c'est le seul état de ce vocabulaire qui exige "
+            "quelqu'un, la manette en main, devant la télévision. Sans "
+            "témoin, cet état est une affirmation que rien ne soutient — et "
+            "elle ferait disparaître du rapport le seul émulateur qu'il "
+            "resterait à mesurer."
+        )
+    if temoin and not _DATE.search(temoin):
+        raise ProfileError(
+            f"{path} [input] : 'rumble_witness' ne porte pas de date au "
+            f"format AAAA-MM-JJ : {temoin!r}. Un témoignage sans date ne se "
+            "vérifie contre rien — ni contre la révision d'émulateur épinglée "
+            "au manifeste, ni contre un changement de type de pad qui "
+            "casserait la liaison le lendemain."
+        )
+    if temoin and etat != RUMBLE_VU:
+        raise ProfileError(
+            f"{path} [input] : 'rumble' vaut « {etat} » et porte pourtant un "
+            "'rumble_witness'. Les deux se contredisent : un témoin dit que "
+            "quelqu'un a SENTI la manette vibrer, ce qui EST l'état "
+            f"« {RUMBLE_VU} ». Le rapport suivrait le champ et tairait le "
+            "témoignage, sans que rien dise lequel des deux est vrai."
+        )
+    return etat, ou, temoin
 
 
 # L'identifiant d'un profil n'est pas une étiquette : il NOMME un fichier et
@@ -1043,7 +1234,9 @@ def load_profile(path: pathlib.Path) -> Profile:
 
     sortie = data.get("exit", {})
     entree = data.get("input", {})
+    _valider_cles_input(path, entree)
     mapping, mapping_ou = _lire_mapping(path, entree)
+    rumble, rumble_ou, rumble_temoin = _lire_rumble(path, entree)
     profil = Profile(
         id=data["id"], exe=data["exe"], systems=tuple(systemes),
         exit_native=sortie.get("native", ""),
@@ -1051,6 +1244,9 @@ def load_profile(path: pathlib.Path) -> Profile:
         steam_input=entree.get("steam_input", "required"),
         input_mapping=mapping,
         input_mapping_where=mapping_ou,
+        input_rumble=rumble,
+        input_rumble_where=rumble_ou,
+        input_rumble_witness=rumble_temoin,
         bootstraps=_lire_bootstraps(path, data.get("bootstrap")),
     )
     # APRÈS CONSTRUCTION, parce que la vérification croise deux morceaux du
