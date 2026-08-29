@@ -69,6 +69,50 @@ exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 # aujourd'hui : `retro status --bios` vérifie le dossier que le propriétaire
 # a choisi pendant que DuckStation cherche dans le sien, donc le rapport peut
 # annoncer « BIOS présent » sur un émulateur qui n'en voit aucun.
+# REMPLISSAGE (dette D2) — le propriétaire a AUTORISÉ « retro » à modifier un
+# settings.ini qui existe déjà, et la stratégie « fusion » qui le permet est
+# écrite, compilée et vérifiée (retro/launcher.py, retro-launch.cs). Ce profil
+# ne l'emploie POURTANT PAS ENCORE, et pour deux raisons qui se cumulent :
+#
+# 1. LA CLÉ N'EST PAS RELEVÉE. Le binaire épinglé porte bien de quoi remplir
+#    en entier — le type DisplayScalingMode et les valeurs NearestInteger et
+#    BilinearInteger, étiquetées « Nearest-Neighbor (Integer) » et « Bilinear
+#    (Integer) » — mais son couple section/clé n'apparaît nulle part sous une
+#    forme lisible : ces littéraux sont assemblés dans le code, pas stockés en
+#    clair. Et une clé qui ne correspond à rien est ignorée EN SILENCE — c'est
+#    mesuré sur cet émulateur même (2026-08-28, une clé inventée survit à un
+#    aller-retour sans rien faire). Aucune valeur n'entre donc ici avant
+#    d'avoir été lue dans un fichier que DuckStation a lui-même écrit.
+#
+#    LE GESTE POUR LA RELEVER : sous « -batch -nogui » — le seul mode que la
+#    console emploie — DuckStation ne réécrit JAMAIS son settings.ini (mesuré
+#    le 2026-08-29). Il faut donc l'ouvrir UNE fois hors du chemin de la
+#    console, changer le réglage de mise à l'échelle dans son interface,
+#    quitter, puis lire la section [Display] du fichier qu'il vient d'écrire.
+#
+# 2. BASCULER CE BLOC ENTIER EN FUSION SERAIT UNE AUTRE DÉCISION. La fusion
+#    réaffirme ses clés à CHAQUE lancement : les six réglages ci-dessous, que
+#    « si-absent » pose une fois et laisse ensuite au propriétaire,
+#    reviendraient à leur valeur d'ici chaque fois qu'il les changerait dans
+#    l'interface de DuckStation. C'est peut-être voulu pour le remplissage, ce
+#    ne l'est sûrement pas pour « ConfirmPowerOff ». Ce que la fusion doit
+#    porter — tout le bloc, ou les seules clés que la console doit imposer —
+#    reste à trancher.
+#
+# QUAND CE SERA FAIT, l'en-tête ci-dessous DEVRA changer : « une fois qu'il
+# existe, vos réglages ne sont jamais retouchés » devient faux dès la première
+# fusion. La phrase à mettre à sa place :
+#
+#    ; Écrit par « retro ». Les clés ci-dessous sont les siennes et sont
+#    ; REPOSÉES à chaque lancement ; tout le reste de ce fichier vous
+#    ; appartient et n'est jamais touché. Une sauvegarde est faite avant
+#    ; chaque modification.
+#
+# Ce n'est pas une consigne qu'on peut oublier : `profiles._lire_strategie`
+# REFUSE une stratégie « fusion » dont le contenu ne dit pas qu'il modifie, et
+# `test_donnees` le vérifie sur les profils livrés. La promesse ne peut donc
+# pas survivre en silence à la stratégie.
+
 [bootstrap]
 target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
 content = '''
