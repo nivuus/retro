@@ -69,61 +69,83 @@ exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 # aujourd'hui : `retro status --bios` vérifie le dossier que le propriétaire
 # a choisi pendant que DuckStation cherche dans le sien, donc le rapport peut
 # annoncer « BIOS présent » sur un émulateur qui n'en voit aucun.
-# REMPLISSAGE (dette D2) — le propriétaire a AUTORISÉ « retro » à modifier un
-# settings.ini qui existe déjà, et la stratégie « fusion » qui le permet est
-# écrite, compilée et vérifiée (retro/launcher.py, retro-launch.cs). Ce profil
-# ne l'emploie POURTANT PAS ENCORE, et pour deux raisons qui se cumulent :
+# DEUX RÉGIMES SUR CE FICHIER, arbitrés par le propriétaire le 2026-08-29.
 #
-# 1. LA CLÉ N'EST PAS RELEVÉE. Le binaire épinglé porte bien de quoi remplir
-#    en entier — le type DisplayScalingMode et les valeurs NearestInteger et
-#    BilinearInteger, étiquetées « Nearest-Neighbor (Integer) » et « Bilinear
-#    (Integer) » — mais son couple section/clé n'apparaît nulle part sous une
-#    forme lisible : ces littéraux sont assemblés dans le code, pas stockés en
-#    clair. Et une clé qui ne correspond à rien est ignorée EN SILENCE — c'est
-#    mesuré sur cet émulateur même (2026-08-28, une clé inventée survit à un
-#    aller-retour sans rien faire). Aucune valeur n'entre donc ici avant
-#    d'avoir été lue dans un fichier que DuckStation a lui-même écrit.
+# `enforced` — ce que la console IMPOSE, reposé à chaque lancement. Trois clés,
+# et pas une de plus : sans elles, un jeu ne démarre pas sans clavier.
+# L'assistant de première configuration s'ouvre par-dessus (SetupWizard), ou
+# une fenêtre « Mise à jour disponible » qu'aucune manette ne ferme
+# (AutoUpdater), ou le jeu s'ouvre en fenêtre sur la télévision
+# (StartFullscreen). Ce sont les trois causes mesurées d'un lancement qui
+# échoue, pas des préférences.
 #
-#    LE GESTE POUR LA RELEVER : sous « -batch -nogui » — le seul mode que la
-#    console emploie — DuckStation ne réécrit JAMAIS son settings.ini (mesuré
-#    le 2026-08-29). Il faut donc l'ouvrir UNE fois hors du chemin de la
-#    console, changer le réglage de mise à l'échelle dans son interface,
-#    quitter, puis lire la section [Display] du fichier qu'il vient d'écrire.
+# `content` — tout le reste, posé UNE FOIS parce que le fichier n'existait
+# pas, et plus jamais retouché. Ce sont des préférences : le propriétaire les
+# change dans l'interface de DuckStation, et son choix TIENT. C'est ce qu'il a
+# explicitement demandé — la console n'a pas à lui reprendre ConfirmPowerOff.
 #
-# 2. BASCULER CE BLOC ENTIER EN FUSION SERAIT UNE AUTRE DÉCISION. La fusion
-#    réaffirme ses clés à CHAQUE lancement : les six réglages ci-dessous, que
-#    « si-absent » pose une fois et laisse ensuite au propriétaire,
-#    reviendraient à leur valeur d'ici chaque fois qu'il les changerait dans
-#    l'interface de DuckStation. C'est peut-être voulu pour le remplissage, ce
-#    ne l'est sûrement pas pour « ConfirmPowerOff ». Ce que la fusion doit
-#    porter — tout le bloc, ou les seules clés que la console doit imposer —
-#    reste à trancher.
+# Le reste du fichier — son [BIOS] SearchDirectory, ses réglages, ses
+# commentaires — n'est jamais touché : la fusion ne connaît que les clés
+# qu'elle apporte.
 #
-# QUAND CE SERA FAIT, l'en-tête ci-dessous DEVRA changer : « une fois qu'il
-# existe, vos réglages ne sont jamais retouchés » devient faux dès la première
-# fusion. La phrase à mettre à sa place :
+# REMPLISSAGE (dette D2) — la clé de rendu rejoindra `enforced` DÈS QU'ELLE
+# SERA RELEVÉE, et elle ne l'est pas. Le binaire épinglé porte bien de quoi
+# remplir en entier — le type DisplayScalingMode, les valeurs NearestInteger
+# et BilinearInteger, étiquetées « Nearest-Neighbor (Integer) » et
+# « Bilinear (Integer) » — mais son couple section/clé n'apparaît nulle part
+# sous une forme lisible : ces littéraux sont assemblés dans le code. Or une
+# clé qui ne correspond à rien est ignorée EN SILENCE — mesuré sur cet
+# émulateur même (2026-08-28, une clé inventée survit à un aller-retour sans
+# rien faire). En écrire une plausible produirait exactement ce que la dette
+# D2 combat : un réglage qui a l'air posé et qui ne fait rien.
 #
-#    ; Écrit par « retro ». Les clés ci-dessous sont les siennes et sont
-#    ; REPOSÉES à chaque lancement ; tout le reste de ce fichier vous
-#    ; appartient et n'est jamais touché. Une sauvegarde est faite avant
-#    ; chaque modification.
+# LE GESTE POUR LA RELEVER, et il revient au propriétaire : sous
+# « -batch -nogui » — le seul mode que la console emploie — DuckStation ne
+# réécrit JAMAIS son settings.ini. Il faut donc l'ouvrir UNE fois hors du
+# chemin de la console, changer le réglage de mise à l'échelle dans son
+# interface, quitter, puis lire la section [Display] du fichier qu'il vient
+# d'écrire.
 #
-# Ce n'est pas une consigne qu'on peut oublier : `profiles._lire_strategie`
-# REFUSE une stratégie « fusion » dont le contenu ne dit pas qu'il modifie, et
-# `test_donnees` le vérifie sur les profils livrés. La promesse ne peut donc
-# pas survivre en silence à la stratégie.
+# CE QUI SE PASSE ALORS, et qu'il ne faut pas prendre pour un sabotage : ce
+# relevé — comme celui de la manette (D3), qui exige de repasser
+# SetupWizardIncomplete à `true` — se fait DuckStation lancé hors de la
+# console. La console ne réaffirme rien pendant ce temps. Mais le PROCHAIN
+# lancement par la console remettra SetupWizardIncomplete à `false`, et c'est
+# VOULU : c'est précisément le rôle de `enforced`. Le relevé n'est pas perdu
+# pour autant — la clé relevée se recopie dans ce profil, où elle devient à
+# son tour une clé imposée.
 
 [bootstrap]
 target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
-content = '''
-; Écrit par « retro ». Ce fichier n'est posé que s'il est absent : une fois
-; qu'il existe, vos réglages ne sont jamais retouchés.
+
+# Les clés que la console IMPOSE. D3 ajoutera sa section [Pad1] ICI, et rien
+# d'autre : le mécanisme, la sauvegarde et l'idempotence sont déjà en place.
+# Pas de commentaires dans ce fragment — la fusion ne reporte que les clés,
+# et un commentaire y serait un texte que personne ne lirait jamais.
+enforced = '''
 [Main]
-; Sans elle, l'assistant de première configuration s'ouvre avant tout jeu.
 SetupWizardIncomplete = false
-; « Démarrer en plein écran », cochée : un jeu dans une fenêtre laisse le
-; bureau Windows visible derrière une manette.
 StartFullscreen = true
+
+[AutoUpdater]
+CheckAtStartup = false
+'''
+
+content = '''
+; Écrit par « retro ». Ce fichier porte TROIS choses, et elles n'obéissent pas
+; aux mêmes règles :
+;
+;   1. les clés que la console IMPOSE, reposées à chaque lancement — elles
+;      portent la marque « posé par « retro » ». Sans elles, un jeu ne démarre
+;      pas sans clavier. Les changer ici ne sert à rien : elles reviennent.
+;   2. les clés ci-dessous, posées UNE FOIS parce que ce fichier n'existait
+;      pas, et que « retro » ne retouche plus jamais. Ce sont des préférences :
+;      changez-les dans DuckStation, votre choix tient.
+;   3. tout le reste du fichier, qui vous appartient entièrement et que
+;      « retro » ne lit même pas.
+;
+; Une sauvegarde horodatée est faite avant chaque modification.
+[Main]
 ; « Confirmer la fermeture du jeu », décochée : une confirmation est une
 ; boîte de plus à fermer sans souris.
 ConfirmPowerOff = false
@@ -135,11 +157,6 @@ SaveStateOnExit = false
 ; « Désactiver l'économiseur d'écran », cochée : une console de salon ne
 ; doit pas voir l'écran de veille tomber pendant une partie.
 InhibitScreensaver = true
-
-; Seconde cause du même symptôme : sans elle, une fenêtre « Mise à jour
-; disponible » bloque le lancement, aussi sûrement que l'assistant.
-[AutoUpdater]
-CheckAtStartup = false
 
 [Display]
 ; « Masquer le curseur en plein écran », cochée.

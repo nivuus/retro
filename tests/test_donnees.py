@@ -598,38 +598,52 @@ def test_chaque_mode_livre_tranche_sur_le_remplissage():
     )
 
 
-def test_le_lanceur_connait_toutes_les_strategies_d_amorcage():
-    """Couplage a travers deux langages : `retro scan` écrit
-    « bootstrap_when=<stratégie> » dans le plan, et retro-launch.cs REFUSE
-    une stratégie qu'il ne connaît pas — sur la console, devant une
-    télévision, après que le raccourci Steam a déjà été cliqué.
-
-    Ajouter une stratégie côté Python sans l'implémenter côté C# est donc une
-    panne muette jusqu'au salon. Ce test est le seul endroit où les deux
-    listes se rencontrent.
-    """
-    from retro import launcher
-    source = (DONNEES / "launcher" / launcher.SOURCE).read_text(
-        encoding="utf-8-sig")
-    absentes = [s for s in launcher.STRATEGIES if f'"{s}"' not in source]
-    assert absentes == [], (
-        f"stratégies que retro-launch.cs ne connaît pas : {absentes}. "
-        "Le plan les écrirait, et l'amorçage échouerait sur la console."
-    )
+# Ce que la console IMPOSE dans le settings.ini de DuckStation, arbitré par le
+# propriétaire le 2026-08-29 : ces trois clés, et pas une de plus. Sans elles,
+# un jeu ne démarre pas sans clavier — l'assistant de première configuration
+# ou la fenêtre de mise à jour s'ouvrent par-dessus, et le plein écran manque.
+# Tout le reste du bloc est une PRÉFÉRENCE, posée une fois puis laissée au
+# propriétaire : la liste est ici pour qu'un ajout se voie en revue.
+# L'ordre est celui du FICHIER, pas celui dans lequel ils ont été énoncés :
+# regrouper les deux clés de [Main] évite de déclarer la section deux fois.
+DUCKSTATION_IMPOSE = (
+    ("Main", "SetupWizardIncomplete"),
+    ("Main", "StartFullscreen"),
+    ("AutoUpdater", "CheckAtStartup"),
+)
 
 
-def test_tout_amorcage_livre_qui_fusionne_dit_qu_il_modifie():
-    """« si-absent » pouvait promettre « vos réglages ne sont jamais
-    retouchés » ; la fusion ne le peut pas. Un en-tête qui ment sur ce qu'on
-    fait au fichier est pire qu'une absence d'en-tête, parce qu'il est CRU."""
-    from retro import launcher
+def _cles_ini(texte: str) -> list[tuple[str, str]]:
+    """Les couples (section, clé) d'un fragment INI, dans l'ordre."""
+    section, cles = "", []
+    for ligne in texte.splitlines():
+        nu = ligne.strip()
+        if not nu or nu[0] in ";#":
+            continue
+        if nu.startswith("[") and nu.endswith("]"):
+            section = nu[1:-1].strip()
+        elif "=" in nu:
+            cles.append((section, nu.split("=", 1)[0].strip()))
+    return cles
+
+
+def test_duckstation_n_impose_que_ce_que_le_proprietaire_a_approuve():
+    """Élargir ce que la console impose, c'est reprendre au propriétaire un
+    réglage qu'il croyait sien — et il ne s'en apercevrait qu'en le voyant
+    revenir après l'avoir changé. L'ajout doit se voir en revue."""
+    b = profiles.load_profiles(PROFILS)["duckstation"].bootstrap
+    assert tuple(_cles_ini(b.enforced)) == DUCKSTATION_IMPOSE
+
+
+def test_aucune_preference_livree_n_est_reposee_a_chaque_lancement():
+    """La règle générale dont la liste ci-dessus est le cas particulier :
+    aucune clé ne doit être à la fois posée une fois et imposée."""
     fautifs = []
     for pid, p in sorted(profiles.load_profiles(PROFILS).items()):
         b = getattr(p, "bootstrap", None)
-        if b is not None and b.strategy == launcher.FUSION \
-                and "modifi" not in b.content.lower():
-            fautifs.append(pid)
-    assert fautifs == [], (
-        f"amorçages en fusion dont l'en-tête ne dit pas qu'il modifie : "
-        f"{fautifs}"
-    )
+        if b is None or not b.enforced:
+            continue
+        deux = set(_cles_ini(b.content)) & set(_cles_ini(b.enforced))
+        if deux:
+            fautifs.append((pid, sorted(deux)))
+    assert fautifs == [], f"clés dans les deux régimes : {fautifs}"
