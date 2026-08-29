@@ -1004,3 +1004,52 @@ def test_le_rapport_compte_les_cles_imposees_d_une_cible_yaml(tmp_path):
     p.write_text(PROFIL_STATUS_YAML, encoding="utf-8")
     etats = status.etat_amorcage({"vita3k": profiles.load_profile(p)}, {})
     assert [e.imposees for e in etats] == [1]
+
+
+# --- les licences PS Vita : ce que le rapport peut dire, et à quel titre ----
+
+def _rapport_licences(etats):
+    return status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("/E"), systems=[],
+        bios_status=[], bios_root=pathlib.Path("/BIOS"), licences=etats)
+
+
+def test_le_rapport_dit_ou_la_licence_d_un_jeu_vita_est_attendue():
+    """L'absence d'une licence ne bloque rien : `get_license` journalise un
+    avertissement et fausse un seul champ. Personne ne s'en aperçoit avant
+    d'être en jeu, dans un journal qu'on ne lit pas depuis un canapé — c'est
+    exactement ce qu'un rapport existe pour dire."""
+    from retro import licence
+    texte = status.format_report(_rapport_licences([licence.EtatLicence(
+        jeu="Un jeu", etat=licence.ABSENTE,
+        attendue="ux0\\license\\PCSF00012\\EP9000-PCSF00012_00-0000000000000000.rif")]))
+    assert "Licences" in texte
+    assert "Un jeu" in texte
+    assert "ux0\\license\\PCSF00012" in texte
+
+
+def test_une_licence_hors_de_portee_n_est_pas_comptee_comme_un_manque():
+    """Un rapport qui annonce un manque qu'il ne peut pas constater est le
+    pire des états. Tant que le système de fichiers Vita vit dans le profil
+    Windows, l'hôte ne peut RIEN en dire — et il doit dire cela, pas
+    « licence absente »."""
+    from retro import licence
+    r = _rapport_licences([licence.EtatLicence(
+        jeu="Un jeu", etat=licence.HORS_DE_PORTEE, attendue="ux0\\license\\x",
+        detail="la console range son système de fichiers Vita dans le profil "
+               "Windows, que cet hôte n'atteint pas")])
+    assert r.problems == []
+    texte = status.format_report(r)
+    assert "n'atteint pas" in texte
+
+
+def test_une_licence_absente_est_un_probleme_qui_nomme_son_geste():
+    """Le geste est NATIF : main.cpp traite tout content-path nommé work.bin
+    comme une licence à poser. Un problème qui ne le dirait pas enverrait
+    chercher une conversion qui n'existe pas."""
+    from retro import licence
+    r = _rapport_licences([licence.EtatLicence(
+        jeu="Un jeu", etat=licence.ABSENTE, attendue="ux0\\license\\x.rif")])
+    fautifs = [p for p in r.problems if "licence" in p.what.lower()]
+    assert len(fautifs) == 1, r.problems
+    assert "work.bin" in fautifs[0].action

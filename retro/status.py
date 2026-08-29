@@ -40,6 +40,7 @@ from collections.abc import Sequence
 from retro import identite as identite_mod
 from retro import install as install_mod
 from retro import launcher as launcher_mod
+from retro import licence as licence_mod
 from retro import profiles as profiles_mod
 from retro import render as render_mod
 from retro.bios import BiosNeed, SystemBios
@@ -237,6 +238,11 @@ class Report:
     paquet: str = ""
     amorcages: list[Amorcage] = dataclasses.field(default_factory=list)
     manettes: list[Manette] = dataclasses.field(default_factory=list)
+    # Les licences PS Vita, une entrée par jeu QUI EN PORTE UNE. Vide veut dire
+    # « aucun jeu inventorié n'a de licence à faire poser » — pas « aucune
+    # n'est posée ».
+    licences: list[licence_mod.EtatLicence] = dataclasses.field(
+        default_factory=list)
 
 
 def _joindre(racine: str, *parties: str) -> str:
@@ -567,6 +573,63 @@ def _probleme_steam_input(muets: Sequence[str], echec: str = "") -> list[Problem
     )]
 
 
+def _lignes_licences(report: Report) -> list[str]:
+    """Où en est la licence de chaque jeu PS Vita qui en porte une.
+
+    Quatre formulations, une par état, et c'est le quatrième qui compte : tant
+    que le système de fichiers Vita vit dans le profil Windows, l'hôte ne peut
+    RIEN constater, et il doit le dire plutôt que d'annoncer un manque. Un
+    rapport qui annonce un manque qu'il ne peut pas constater est le pire des
+    états — c'est le raisonnement déjà écrit pour le témoin d'amorçage.
+    """
+    lignes = []
+    for l in report.licences:
+        if l.etat == licence_mod.POSEE:
+            lignes.append(f"  · {l.jeu} : licence posée ({l.attendue})")
+        elif l.etat == licence_mod.ABSENTE:
+            lignes.append(f"  · {l.jeu} : licence ABSENTE — attendue en "
+                          f"{l.attendue}")
+        elif l.etat == licence_mod.HORS_DE_PORTEE:
+            lignes.append(f"  · {l.jeu} : porte une licence ; sa présence ne "
+                          "peut pas être constatée d'ici")
+            lignes.append(f"      {l.detail}")
+            lignes.append(f"      elle serait en {l.attendue}")
+        else:
+            lignes.append(f"  · {l.jeu} : sa licence est illisible")
+            lignes.append(f"      {l.detail}")
+    return lignes
+
+
+def _probleme_licences(licences: Sequence[licence_mod.EtatLicence]
+                       ) -> list[Problem]:
+    """Un problème pour ce qui est CONSTATÉ, jamais pour ce qui est hors de
+    portée : l'accuser apprendrait au lecteur à ignorer cette section."""
+    problemes = []
+    for l in licences:
+        if l.etat == licence_mod.ABSENTE:
+            problemes.append(Problem(
+                what=f"{l.jeu} : sa licence n'est pas posée",
+                where=l.attendue,
+                # Le geste est NATIF, et le dire évite d'envoyer chercher une
+                # conversion qui n'existe pas : main.cpp traite tout
+                # content-path nommé « work.bin » comme une licence à poser, et
+                # copy_license copie le fichier TEL QUEL sous son nom de .rif.
+                action="passer le fichier sce_sys\\package\\work.bin du jeu à "
+                       "l'émulateur en ligne de commande : il le pose "
+                       "lui-même, sans rien convertir",
+                details=("son absence ne bloque pas le jeu : elle fausse un "
+                         "seul champ, et l'émulateur ne s'en plaint que dans "
+                         "son journal",)))
+        elif l.etat == licence_mod.ILLISIBLE:
+            problemes.append(Problem(
+                what=f"{l.jeu} : le fichier de licence du dump est illisible",
+                where="\\".join((str(l.jeu), *licence_mod.LICENCE_DU_DUMP)),
+                action="vérifier le dump : ce fichier n'a pas la forme d'une "
+                       "licence, et « absente » serait un diagnostic faux",
+                details=(l.detail,)))
+    return problemes
+
+
 def build_report(
     install_dirs: dict[str, str],
     emulation_root: pathlib.Path,
@@ -582,6 +645,7 @@ def build_report(
     amorcages: dict[str, list[tuple[str, str]]] | None = None,
     lanceur_perime: bool = False,
     paquet: str = "",
+    licences: Sequence[licence_mod.EtatLicence] = (),
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -638,13 +702,15 @@ def build_report(
                   *_probleme_remplissage_non_mesure(rendu),
                   *_probleme_steam_input(steam_input_muets, steam_input_echec),
                   *_probleme_lanceur_perime(lanceur_perime, emulation_root),
-                  *_probleme_manettes(manettes)],
+                  *_probleme_manettes(manettes),
+                  *_probleme_licences(licences)],
         bios_root=bios_root,
         render_mode=render_mode,
         paquet=paquet,
         render=rendu,
         amorcages=etat_amorcage(profils, amorcages or {}) if profils else [],
         manettes=manettes,
+        licences=list(licences),
     )
 
 
@@ -902,6 +968,14 @@ def format_report(report: Report) -> str:
     sections += _section(
         "Manettes", _lignes_manettes(report),
         "aucun profil chargé : l'état des manettes se lit profil par profil")
+
+    # INCONDITIONNELLE, pour la même raison que les autres : une section qui
+    # disparaît se lit comme une panne d'affichage. Le repli dit exactement ce
+    # que le vide veut dire — « aucun jeu n'en porte » — et non « aucune n'est
+    # posée », qui serait un tout autre constat.
+    sections += _section(
+        "Licences", _lignes_licences(report),
+        "aucun jeu inventorié ne porte de licence à faire poser")
 
     nb = len(report.problems)
     # 0 et 1 prennent le singulier en français : « Problème (1) », pas
