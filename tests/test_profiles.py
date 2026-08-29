@@ -1732,3 +1732,110 @@ def test_la_garde_de_coherence_regarde_tous_les_amorcages(tmp_path):
             f'content = """\n{ENTETE_TROIS}\n[X]\nY = 1\n"""\n'
             'enforced = """\n[Z]\nW = 2\n"""\n\n[[system]]', 1)))
     assert p.systems[0].render.fill_enforced == "entier"
+
+# --- le second dialecte de fusion : le YAML plat --------------------------
+#
+# La fusion du projet ne parlait qu'INI, et son défaut aurait été muet : la
+# modale des polices de Vita3K se ferme par une clé qui vit dans un
+# `config.yml`, et `cles_ini` — comme `CleDe` dans le lanceur — exige un « = ».
+# Une ligne « warn-missing-firmware: false » n'aurait donc posé RIEN, sans un
+# mot, et les deux gardes bâties sur `cles_ini` auraient gardé le vide.
+
+_YAML_AMORCAGE = """
+schema = 1
+id = "vita3k"
+exe = 'Vita3K.exe'
+[[bootstrap]]
+target = '{install_dir}\\config.yml'
+content = '''
+# Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+# à chaque lancement, ce qu'il a posé UNE FOIS et ne retouche plus, et tout le
+# reste, qui vous appartient.
+__CONTENU__
+'''
+enforced = '''
+__IMPOSE__
+'''
+[[system]]
+id = "vita"
+name = "PS Vita"
+extensions = [".vpk"]
+launch = '--fullscreen "{rom}"'
+"""
+
+
+def _yaml_amorcage(contenu: str = "", impose: str = "") -> str:
+    return (_YAML_AMORCAGE.replace("__CONTENU__", contenu)
+            .replace("__IMPOSE__", impose))
+
+
+def test_les_cles_d_un_fragment_yaml_sont_lues_sans_section():
+    """Un YAML plat n'a pas de sections : la clé se lit seule, sous « »."""
+    fragment = (
+        "# posé par retro\n"
+        "warn-missing-firmware: false\n"
+        "pref-path: D:\\Emulation\\Vita3K\\data\n"
+        "lle-modules:\n"
+        "  - libscemp4\n"
+    )
+    assert profiles.cles_yaml(fragment) == [
+        ("", "warn-missing-firmware"), ("", "pref-path"), ("", "lle-modules")]
+
+
+def test_une_ligne_de_sequence_yaml_n_est_pas_une_cle():
+    """« - libscemp4 » appartient à la clé du dessus. La compter séparément
+    ferait croire à un réglage que rien ne lit."""
+    assert profiles.cles_yaml("lle-modules:\n  - libscemp4\n") == [
+        ("", "lle-modules")]
+
+
+def test_le_dialecte_suit_l_extension_de_la_cible():
+    """Le dialecte se déduit de l'extension du fichier VISÉ, pas d'un champ
+    déclaré : un champ pourrait contredire ce que le fragment contient, une
+    extension non."""
+    assert profiles.cles_de("C:\\x\\a.ini", "[S]\nk = 1\n") == [("S", "k")]
+    assert profiles.cles_de("C:\\x\\config.yml", "k: 1\n") == [("", "k")]
+
+
+def test_deux_cles_yaml_dans_les_deux_regimes_sont_refusees(tmp_path):
+    """La garde des deux régimes est bâtie sur l'analyse des clés. Branchée
+    sur `cles_ini` seule, elle ne trouvait aucun « = » dans un YAML, rendait
+    une liste vide, et l'intersection était TOUJOURS vide : la garde ne
+    gardait plus rien, précisément sur le seul profil qui en avait besoin."""
+    with pytest.raises(profiles.ProfileError, match="DEUX régimes"):
+        profiles.load_profile(ecrire(tmp_path, "v.toml", _yaml_amorcage(
+            contenu="warn-missing-firmware: true",
+            impose="warn-missing-firmware: false")))
+
+
+def test_deux_cles_yaml_distinctes_dans_les_deux_regimes_passent(tmp_path):
+    """Le pendant du refus : deux clés différentes ne se recouvrent pas, et
+    une garde qui refuserait tout serait aussi inutile qu'une qui accepte
+    tout."""
+    p = profiles.load_profile(ecrire(tmp_path, "v.toml", _yaml_amorcage(
+        contenu="pref-path: D:\\v",
+        impose="warn-missing-firmware: false")))
+    assert profiles.cles_de(p.bootstraps[0].target, p.bootstraps[0].enforced) \
+        == [("", "warn-missing-firmware")]
+
+
+def test_la_marque_d_amorcage_se_porte_en_commentaire_yaml(tmp_path):
+    """`MARQUE_BOOTSTRAP` est cherchée en SOUS-CHAÎNE : un « # » YAML la porte
+    aussi bien qu'un « ; » INI. Ce test le fige, pour qu'un durcissement futur
+    de la garde ne casse pas le seul profil YAML livré."""
+    p = profiles.load_profile(ecrire(tmp_path, "v.toml", _yaml_amorcage(
+        impose="warn-missing-firmware: false")))
+    assert profiles.MARQUE_BOOTSTRAP in p.bootstraps[0].content
+    assert p.bootstraps[0].content.lstrip().startswith("#")
+
+
+def test_le_refus_des_deux_regimes_nomme_une_cle_yaml_lisiblement(tmp_path):
+    """Un YAML plat n'a pas de section. Le message la rendait quand même —
+    « [] warn-missing-firmware » — et le lecteur serait parti chercher une
+    section inexistante dans un fichier qui n'en porte aucune."""
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "v.toml", _yaml_amorcage(
+            contenu="warn-missing-firmware: true",
+            impose="warn-missing-firmware: false")))
+    assert "[]" not in str(e.value)
+    assert "warn-missing-firmware" in str(e.value)

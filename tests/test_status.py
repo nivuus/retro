@@ -1289,3 +1289,86 @@ def test_deux_cibles_non_amorcees_ne_donnent_pas_deux_lignes_identiques(
     assert dites[0] != dites[1], dites
     assert "CurrentSettings.ini" in dites[0]
     assert "Default.yml" in dites[1]
+
+PROFIL_STATUS_YAML = """
+schema = 1
+id = "vita3k"
+exe = 'Vita3K.exe'
+[[bootstrap]]
+target = '{install_dir}\\config.yml'
+content = '''
+# Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+# à chaque lancement, ce qu'il a posé UNE FOIS et ne retouche plus, et tout le
+# reste, qui vous appartient.
+'''
+enforced = '''
+warn-missing-firmware: false
+'''
+[[system]]
+id = "vita"
+name = "PS Vita"
+extensions = [".vpk"]
+launch = '--fullscreen "{rom}"'
+"""
+
+
+def test_le_rapport_compte_les_cles_imposees_d_une_cible_yaml(tmp_path):
+    """Le rapport annonce au propriétaire combien de réglages la console lui
+    reprend. Compté avec l'analyseur INI seul, un YAML rendait ZÉRO — le
+    rapport aurait dit « aucun réglage imposé » sur le seul profil qui en
+    impose un hors INI, et le propriétaire aurait cherché ailleurs la raison
+    pour laquelle son réglage revient.
+    """
+    p = tmp_path / "vita3k.toml"
+    p.write_text(PROFIL_STATUS_YAML, encoding="utf-8")
+    etats = status.etat_amorcage({"vita3k": profiles.load_profile(p)}, {})
+    assert [e.imposees for e in etats] == [1]
+
+
+# --- les licences PS Vita : ce que le rapport peut dire, et à quel titre ----
+
+def _rapport_licences(etats):
+    return status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("/E"), systems=[],
+        bios_status=[], bios_root=pathlib.Path("/BIOS"), licences=etats)
+
+
+def test_le_rapport_dit_ou_la_licence_d_un_jeu_vita_est_attendue():
+    """L'absence d'une licence ne bloque rien : `get_license` journalise un
+    avertissement et fausse un seul champ. Personne ne s'en aperçoit avant
+    d'être en jeu, dans un journal qu'on ne lit pas depuis un canapé — c'est
+    exactement ce qu'un rapport existe pour dire."""
+    from retro import licence
+    texte = status.format_report(_rapport_licences([licence.EtatLicence(
+        jeu="Un jeu", etat=licence.ABSENTE,
+        attendue="ux0\\license\\PCSF00012\\EP9000-PCSF00012_00-0000000000000000.rif")]))
+    assert "Licences" in texte
+    assert "Un jeu" in texte
+    assert "ux0\\license\\PCSF00012" in texte
+
+
+def test_une_licence_hors_de_portee_n_est_pas_comptee_comme_un_manque():
+    """Un rapport qui annonce un manque qu'il ne peut pas constater est le
+    pire des états. Tant que le système de fichiers Vita vit dans le profil
+    Windows, l'hôte ne peut RIEN en dire — et il doit dire cela, pas
+    « licence absente »."""
+    from retro import licence
+    r = _rapport_licences([licence.EtatLicence(
+        jeu="Un jeu", etat=licence.HORS_DE_PORTEE, attendue="ux0\\license\\x",
+        detail="la console range son système de fichiers Vita dans le profil "
+               "Windows, que cet hôte n'atteint pas")])
+    assert r.problems == []
+    texte = status.format_report(r)
+    assert "n'atteint pas" in texte
+
+
+def test_une_licence_absente_est_un_probleme_qui_nomme_son_geste():
+    """Le geste est NATIF : main.cpp traite tout content-path nommé work.bin
+    comme une licence à poser. Un problème qui ne le dirait pas enverrait
+    chercher une conversion qui n'existe pas."""
+    from retro import licence
+    r = _rapport_licences([licence.EtatLicence(
+        jeu="Un jeu", etat=licence.ABSENTE, attendue="ux0\\license\\x.rif")])
+    fautifs = [p for p in r.problems if "licence" in p.what.lower()]
+    assert len(fautifs) == 1, r.problems
+    assert "work.bin" in fautifs[0].action

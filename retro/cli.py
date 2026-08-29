@@ -9,7 +9,7 @@ import sys
 
 from retro import launcher as launcher_mod
 from retro import render as render_mod
-from retro import bios, identite, install as install_mod
+from retro import bios, identite, install as install_mod, licence
 from retro import manifest, profiles, scan, status
 from retro.steam import accounts, artwork, entry, steam_input, sync, vdf_io, writer
 
@@ -536,6 +536,22 @@ def _cmd_status(args) -> int:
             # opposer, et c'est l'hôte qui a livré la roue qui sait laquelle
             # devrait être là.
             paquet=identite.VERSION,
+            # Les licences PS Vita. Le rapport ne peut RIEN en constater
+            # aujourd'hui, et c'est justement ce qu'il dit : l'émulateur range
+            # son système de fichiers Vita dans le profil Windows de la
+            # console, que l'hôte n'atteint pas. `racine_vita` restera None
+            # tant que `pref-path` ne l'aura pas sorti de là — et inventer
+            # cette racine pour pouvoir conclure produirait « licence
+            # absente » sur des licences posées.
+            #
+            # Le tri ne connaît pas la PS Vita : un jeu qui porte
+            # sce_sys\package\work.bin EST un dump Vita, et le reconnaître à
+            # son contenu plutôt qu'à son système évite de le rater le jour où
+            # le propriétaire renomme son dossier.
+            licences=licence.etat_licences(
+                licence.jeux_locaux(inventaire, args.roms_windows,
+                                    pathlib.Path(args.roms)),
+                racine_vita=None),
         )
         texte = status.format_report(rapport)
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair

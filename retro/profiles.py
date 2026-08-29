@@ -724,7 +724,7 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
             "fragment de configuration que la console REPOSE à chaque "
             "lancement."
         )
-    _valider_regimes(path, content, enforced)
+    _valider_regimes(path, target, content, enforced)
     return Bootstrap(target=target, content=content,
                      enforced=enforced.strip())
 
@@ -753,7 +753,59 @@ def cles_ini(fragment: str) -> list[tuple[str, str]]:
     return cles
 
 
-def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
+# Les extensions dont le contenu est un YAML PLAT. Vita3K est le seul cas
+# livré : son config.yml est une map de scalaires au premier niveau, plus
+# quelques séquences (CONFIG_VECTOR, vita3k/config/include/config/config.h).
+#
+# Pourquoi un second dialecte, alors que D7 a conclu que « la fusion n'a pas
+# besoin d'apprendre le YAML » : le Default.yml de RPCS3 est posé par le
+# régime « si-absent », qui copie des octets et ne lit jamais le contenu. Le
+# config.yml de Vita3K, lui, est créé par l'émulateur au premier lancement
+# (init_config -> serialize_config, vita3k/config/src/config.cpp) : « si-absent »
+# ne se déclencherait donc JAMAIS, et le seul régime qui s'applique est celui
+# qui lit et fusionne.
+_YAML = (".yml", ".yaml")
+
+
+def cles_yaml(fragment: str) -> list[tuple[str, str]]:
+    """Les clés d'un YAML PLAT, sous la section vide.
+
+    Seul le PREMIER NIVEAU compte : une ligne indentée appartient à la clé du
+    dessus, et une ligne « - x » est un élément de séquence. Les compter pour
+    des réglages ferait dire au rapport qu'une clé est imposée alors qu'aucun
+    lecteur YAML ne la verrait — la panne muette que ce dépôt refuse.
+
+    La section rendue est vide, et le couple est gardé : les deux dialectes se
+    comparent alors entre eux sans que l'appelant ait à savoir lequel il tient.
+    """
+    cles = []
+    for ligne in fragment.splitlines():
+        if not ligne.strip() or ligne.lstrip().startswith("#"):
+            continue
+        if ligne[:1].isspace() or ligne.lstrip().startswith("-"):
+            continue
+        if ":" in ligne:
+            cles.append(("", ligne.split(":", 1)[0].strip()))
+    return cles
+
+
+def cles_de(target: str, fragment: str) -> list[tuple[str, str]]:
+    """Les couples (section, clé) d'un fragment, dans le dialecte de sa CIBLE.
+
+    Le dialecte se déduit de l'EXTENSION du fichier visé, pas d'un champ
+    déclaré : un champ pourrait contredire ce que le fragment contient, une
+    extension non.
+
+    Sans cela, une ligne « warn-missing-firmware: false » apportée à un YAML
+    n'aurait posé RIEN, sans un mot : `cles_ini` exige un « = », rend une
+    liste vide, et toutes les gardes bâties dessus gardent alors le vide.
+    """
+    suffixe = pathlib.PureWindowsPath(target).suffix.lower()
+    return cles_yaml(fragment) if suffixe in _YAML else cles_ini(fragment)
+
+
+def _valider_regimes(path: pathlib.Path, target: str,
+                     content: str, enforced: str) -> None:
     """Les deux régimes ne se recouvrent pas, et l'en-tête dit lequel est quoi.
 
     Une clé déclarée DES DEUX CÔTÉS serait décidée à deux endroits. Le
@@ -776,9 +828,11 @@ def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
     """
     if not enforced.strip():
         return
-    deux = sorted(set(cles_ini(content)) & set(cles_ini(enforced)))
+    deux = sorted(set(cles_de(target, content)) & set(cles_de(target, enforced)))
     if deux:
-        noms = ", ".join(f"[{s}] {c}" for s, c in deux)
+        # Un YAML plat n'a pas de section : rendre « [] clé » enverrait
+        # chercher une section dans un fichier qui n'en porte aucune.
+        noms = ", ".join(f"[{s}] {c}" if s else c for s, c in deux)
         raise ProfileError(
             f"{path} [[bootstrap]] : {noms} — déclaré dans les DEUX régimes, "
             "'content' et 'enforced'. Le réglage serait décidé à deux "

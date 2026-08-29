@@ -888,19 +888,37 @@ def test_aucun_profil_livre_ne_pose_de_liaison_de_manette():
             if b.target.lower().endswith(".yml"):
                 # « bindings/… » est une forme d'INI : ce garde ne dirait RIEN
                 # d'un YAML, et se taire sur un format qu'on ne sait pas lire
-                # se lit comme une absence de faute. La seule entrée YAML
-                # livrée est celle de RPCS3, et l'exception est NOMMÉE : son
-                # contenu est gelé ligne à ligne (RPCS3_MANETTE, plus bas),
-                # donc toute liaison qu'on y glisserait se verrait ici.
-                assert f.stem == "rpcs3", (
+                # se lit comme une absence de faute. Les cibles YAML livrées
+                # sont donc NOMMÉES une à une, chacune avec sa propre règle ;
+                # une troisième devra l'être aussi, sinon le garde ne garde
+                # plus rien.
+                assert f.stem in ("rpcs3", "vita3k"), (
                     f"{f.name} : une cible YAML dont ce garde ne sait rien "
-                    "dire. L'exception de RPCS3 est nommée ; une seconde doit "
-                    "l'être aussi, ou le garde ne garde plus rien.")
-                assert tuple(actives) == RPCS3_MANETTE, (
-                    f"{f.name} : le contenu de {b.target} n'est plus celui qui "
-                    f"est gelé — reçu {actives}. Handler et Device ne sont pas "
-                    "des liaisons, ils CHOISISSENT le gestionnaire ; tout le "
-                    "reste en serait une, et serait faux.")
+                    "dire. Les exceptions de RPCS3 et de Vita3K sont nommées ; "
+                    "une troisième doit l'être aussi, ou le garde ne garde "
+                    "plus rien.")
+                if f.stem == "rpcs3":
+                    # Son contenu est gelé ligne à ligne : toute liaison qu'on
+                    # y glisserait se verrait ici.
+                    assert tuple(actives) == RPCS3_MANETTE, (
+                        f"{f.name} : le contenu de {b.target} n'est plus celui "
+                        f"qui est gelé — reçu {actives}. Handler et Device ne "
+                        "sont pas des liaisons, ils CHOISISSENT le "
+                        "gestionnaire ; tout le reste en serait une, et serait "
+                        "faux.")
+                else:
+                    # Vita3K ne pose RIEN en `content` : son unique réglage
+                    # YAML est imposé (`warn-missing-firmware`), donc reposé à
+                    # chaque lancement, et il vit dans `enforced`. Exiger le
+                    # vide est plus fort que d'y chercher des liaisons : la
+                    # règle ne dépend pas de savoir à quoi une liaison Vita
+                    # ressemblerait, ce que personne n'a relevé.
+                    assert actives == [], (
+                        f"{f.name} : le bloc visant {b.target} pose désormais "
+                        f"quelque chose en `content` — reçu {actives}. Ce "
+                        "profil n'a aucun relevé de manette : ce qu'on y "
+                        "poserait serait écrit d'après une recette, donc faux, "
+                        "et son échec serait indiscernable de l'absence.")
                 continue
             fautives = [l for l in actives if l.lower().startswith("bindings/")]
             assert fautives == [], (
@@ -1215,6 +1233,22 @@ def test_aucun_profil_livre_ne_declare_une_vibration_vue_sans_temoin():
 
 # --- Vita3K : la modale de privilèges, et le jeton qui la rend reposable ---
 
+def _amorcage_vita(fin: str):
+    """LE bloc d'amorçage de Vita3K dont la cible se termine par `fin`.
+
+    Vita3K en a DEUX, dans deux fichiers et deux formats : les prendre par
+    leur rang les échangerait silencieusement le jour où l'ordre du profil
+    change, et le test vérifierait alors la mauvaise modale.
+    """
+    trouves = [b for b in profiles.load_profiles(PROFILS)["vita3k"].bootstraps
+               if b.target.endswith(fin)]
+    assert len(trouves) == 1, (
+        f"vita3k.toml : {len(trouves)} bloc(s) [[bootstrap]] visent « {fin} », "
+        "il en faut exactement un"
+    )
+    return trouves[0]
+
+
 def test_vita3k_impose_la_modale_de_privileges():
     """Mesuré le 2026-08-29 : Vita3K ouvre à CHAQUE lancement un avertissement
     de privilèges élevés qu'aucune manette ne ferme, et toute la console tourne
@@ -1225,13 +1259,54 @@ def test_vita3k_impose_la_modale_de_privileges():
     la case se recoche d'un clic dans l'interface. Une préférence « posée une
     fois » ne la reposerait jamais sur une console déjà jouée.
     """
-    b, = profiles.load_profiles(PROFILS)["vita3k"].bootstraps
+    b = _amorcage_vita("gui-configs\\CurrentSettings.ini")
     assert b.target.startswith(profiles.JETON_INSTALL), b.target
-    assert b.target.endswith("gui-configs\\CurrentSettings.ini"), b.target
     assert ("MainWindow", "warnAdminPrivileges") in _cles_ini(b.enforced)
     # Et NULLE PART dans le régime « posé une fois » : le réglage serait
     # décidé à deux endroits, et rien ne dirait lequel gagne.
     assert ("MainWindow", "warnAdminPrivileges") not in _cles_ini(b.content)
+
+
+def test_vita3k_impose_la_modale_des_polices():
+    """La SECONDE modale de Vita3K, et elle ne vit ni dans le même fichier ni
+    dans le même format que la première.
+
+    LA CLÉ ET SA SOURCE — lue dans le CODE, jamais dans une documentation ni
+    dans les chaînes du binaire, qui ne donnent que des libellés d'interface :
+
+        vita3k/config/include/config/config.h
+            code(bool, "warn-missing-firmware", true, warn_missing_firmware)
+        vita3k/gui-qt/src/main_window.cpp
+            confirm_missing_firmware_warning fait
+            emuenv.cfg.warn_missing_firmware = false; puis serialize_config(…)
+
+    Le défaut est `true` : ne rien poser laisse la modale sortir à chaque
+    partie. Et le fichier est un YAML — une valeur écrite en INI y serait
+    ignorée en silence, ce qui est indiscernable de l'absence de valeur.
+    """
+    b = _amorcage_vita("config.yml")
+    assert b.target.startswith(profiles.JETON_INSTALL), b.target
+    impose = profiles.cles_de(b.target, b.enforced)
+    assert ("", "warn-missing-firmware") in impose, (
+        "vita3k.toml n'impose pas « warn-missing-firmware », le nom exact lu "
+        "dans vita3k/config/include/config/config.h — "
+        "code(bool, \"warn-missing-firmware\", true, warn_missing_firmware). "
+        f"Imposé aujourd'hui : {impose}"
+    )
+    assert ("", "warn-missing-firmware") not in profiles.cles_de(
+        b.target, b.content)
+
+
+def test_vita3k_garde_sa_configuration_entre_deux_lancements():
+    """`overwrite_config` vaut VRAI par défaut — `add_flag("!--keep-config,!-w")`
+    dans vita3k/config/src/config.cpp — et `init_config` finit par
+    `serialize_config`. Sans `--keep-config`, Vita3K RÉGÉNÈRE son config.yml à
+    chaque partie : l'en-tête que la console vient de poser disparaît, et la
+    fusion le repose, donc chaque lancement dépose une sauvegarde de plus.
+    """
+    vita = profiles.load_profiles(PROFILS)["vita3k"]
+    lignes = [s.launch for s in vita.systems]
+    assert all("--keep-config" in l for l in lignes), lignes
 
 
 def test_aucun_profil_livre_ne_porte_de_jeton_inconnu():
@@ -1451,4 +1526,67 @@ def test_le_lanceur_lit_chaque_cle_d_amorcage_que_le_plan_ecrit():
     assert manquantes == [], (
         "retro-launch.cs ne lit pas ces clés que le plan écrit — elles seraient "
         f"ignorées en silence, à chaque lancement : {manquantes}"
+    )
+
+
+def _source_lanceur() -> str:
+    from retro import launcher
+    return (launcher.SOURCES / launcher.SOURCE).read_text(encoding="utf-8-sig")
+
+
+def test_le_lanceur_parle_le_dialecte_de_chaque_cible_qu_il_fusionne():
+    """La fusion du lanceur ne parlait qu'INI, et son défaut était MUET : sa
+    `CleDe` exige un « = » et rend null sans lui, donc une ligne
+    « warn-missing-firmware: false » apportée à un YAML n'aurait posé aucune
+    clé, sans un message, et la modale serait restée là.
+
+    Le contrôle porte sur les cibles du régime FUSION seulement : le régime
+    « si-absent » copie des octets et ne lit jamais le contenu, donc il n'a
+    besoin d'aucun dialecte.
+    """
+    source = _source_lanceur()
+    manquants = sorted({
+        pathlib.PureWindowsPath(b.target).suffix.lower()
+        for p in profiles.load_profiles(PROFILS).values()
+        for b in p.bootstraps
+        if b.enforced
+        and f'"{pathlib.PureWindowsPath(b.target).suffix.lower()}"' not in source
+    })
+    assert manquants == [], (
+        "retro-launch.cs ne connaît pas ces extensions de cible, qu'un profil "
+        "livré lui donne pourtant à FUSIONNER. Sa fusion les traiterait en "
+        "INI : aucune clé posée, aucun message, le réglage jamais imposé — "
+        f"{manquants}"
+    )
+
+
+def test_le_lanceur_ne_pose_aucune_marque_de_ligne_dans_un_yaml():
+    """Deux raisons, et il faut les deux pour comprendre la décision :
+
+    · `MARQUE_FUSION` commence par « ; », qui n'est PAS un commentaire en
+      YAML — la marque corromprait le fichier ;
+    · Vita3K RÉGÉNÈRE son config.yml à chaque lancement (`serialize_config`,
+      appelée par `init_config`, `vita3k/config/src/config.cpp`) et yaml-cpp
+      n'émet aucun commentaire : la marque disparaîtrait à chaque partie, la
+      fusion la reposerait, et chaque lancement déposerait une sauvegarde de
+      plus — l'inverse exact de ce que l'idempotence garantit.
+
+    La raison doit se lire DANS le fichier, à côté de la marque : sans elle,
+    le prochain lecteur la remettra.
+    """
+    source = _source_lanceur()
+    debut = source.index("MARQUE_FUSION")
+    voisinage = source[max(0, debut - 1600):debut].lower()
+    assert "yaml" in voisinage, (
+        "retro-launch.cs ne dit pas, à côté de MARQUE_FUSION, pourquoi elle "
+        "n'est pas posée dans un YAML — un lecteur futur la remettrait, et "
+        "chaque lancement déposerait une sauvegarde de plus"
+    )
+    # Chaque pose de la marque est gardée : une seule oubliée écrirait un
+    # « ; » au milieu d'un YAML, que le lecteur de l'émulateur refuserait.
+    nues = [n + 1 for n, l in enumerate(source.splitlines())
+            if ".Add(MARQUE_FUSION)" in l and "!yaml" not in l]
+    assert nues == [], (
+        "ces poses de MARQUE_FUSION ne sont pas gardées par « !yaml » : "
+        f"lignes {nues}"
     )

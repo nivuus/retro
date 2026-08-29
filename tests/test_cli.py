@@ -630,6 +630,66 @@ def test_status_dit_ce_qui_l_empeche_de_verifier_steam_input(tmp_path, capsys):
     assert "localconfig.vdf" in sortie
 
 
+# --- les licences PS Vita, dans le rapport ---------------------------------
+
+def _profil_dossier(tmp_path):
+    """Un profil dont les jeux sont des DOSSIERS, comme une application Vita
+    installée."""
+    profils = tmp_path / "profiles"
+    profils.mkdir()
+    (profils / "p.toml").write_text("""
+schema = 1
+id = "v"
+exe = 'v.exe'
+[[system]]
+id = "vita"
+name = "PS Vita"
+folders = ["PSVita"]
+extensions = [".vpk"]
+app_dir_marker = "eboot.bin"
+launch = '-f "{rom}"'
+bios = []
+""", encoding="utf-8")
+    return profils
+
+
+def test_status_dit_qu_il_ne_peut_pas_constater_une_licence_vita(tmp_path,
+                                                                 capsys):
+    """La chaîne complète, du disque au texte : sans ce branchement, `licence`
+    serait un module que rien n'appelle — une fonctionnalité inerte, et sans
+    un mot.
+
+    Le rapport ne conclut PAS « licence absente » : le système de fichiers
+    Vita vit dans le profil Windows de la console, que l'hôte n'atteint pas.
+    Annoncer un manque qu'on ne peut pas constater est le pire des états.
+    """
+    profils = _profil_dossier(tmp_path)
+    jeu = tmp_path / "ROMs" / "PSVita" / "PCSF00012"
+    (jeu / "sce_sys" / "package").mkdir(parents=True)
+    (jeu / "eboot.bin").write_bytes(b"x")
+    licence_brute = bytearray(0x200)
+    cid = b"EP9000-PCSF00012_00-0000000000000000"
+    licence_brute[0x10:0x10 + len(cid)] = cid
+    (jeu / "sce_sys" / "package" / "work.bin").write_bytes(bytes(licence_brute))
+    bios_dir = tmp_path / "bios"
+    bios_dir.mkdir()
+    emu = tmp_path / "Emulation" / "v"
+    emu.mkdir(parents=True)
+    (emu / "v.exe").write_bytes(b"MZ")
+    (emu / ".retro-version").write_text("1.0\n", encoding="utf-8")
+    code = cli.main(["status", "--roms", str(tmp_path / "ROMs"),
+                     "--roms-windows", "G:\\ROMs",
+                     "--profiles", str(profils),
+                     "--emulation-root", str(tmp_path / "Emulation"),
+                     "--bios", str(bios_dir)])
+    out = capsys.readouterr().out
+    assert code == 0, capsys.readouterr().err
+    assert "Licences" in out
+    assert "PCSF00012" in out
+    assert "n'atteint pas" in out
+    assert "licence ABSENTE" not in out
+
+
 # --- retro launcher --reamorcer ---------------------------------------------
 
 def test_launcher_reamorcer(tmp_path, capsys):
