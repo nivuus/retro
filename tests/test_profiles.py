@@ -964,3 +964,83 @@ def test_l_exemple_de_bootstrap_de_la_specification_se_charge(tmp_path):
     for bloc in exemple:
         assert profiles._lire_bootstrap(
             spec, tomllib.loads(bloc)["bootstrap"]) is not None
+
+
+# --- [input] mapping : ce que le profil SAIT de sa manette ---------------
+#
+# Dette D3 : la manette reste muette dans DuckStation, et rien ne le disait.
+# Le champ ne porte JAMAIS un identifiant : il porte l'état du RELEVÉ, seule
+# chose qu'on puisse écrire sans mesurer. Un identifiant recopié d'ailleurs
+# est un défaut muet — l'émulateur ignore une liaison qui ne correspond à rien
+# sans un mot, et la manette reste muette comme si le fichier était vide.
+
+_SANS_INPUT = """
+schema = 1
+id = "duckstation"
+exe = "duckstation.exe"
+
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
+
+
+def _avec_input(bloc: str) -> str:
+    return _SANS_INPUT.replace("[[system]]", bloc + "\n[[system]]", 1)
+
+
+def test_un_profil_muet_sur_sa_manette_vaut_inconnu(tmp_path):
+    """Le défaut ne peut être ni « auto » ni « à relever ».
+
+    « auto » ferait dire au rapport que neuf émulateurs trouvent leur manette
+    seuls, ce que personne n'a mesuré — c'est exactement le mensonge de
+    `steam_input = "required"`, que le code lisait sans jamais l'appliquer.
+    « à relever » accuserait de la même façon huit émulateurs d'une panne que
+    personne n'a constatée. « inconnu » est le seul état vrai d'un profil qui
+    se tait.
+    """
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _SANS_INPUT))
+    assert p.input_mapping == profiles.MAPPING_INCONNU
+
+
+def test_un_profil_declare_que_sa_manette_reste_a_relever(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+        '[input]\nmapping = "a-relever"\n'
+        "mapping_where = '%USERPROFILE%\\\\Documents\\\\D\\\\settings.ini, "
+        "section [Pad1]'\n")))
+    assert p.input_mapping == profiles.MAPPING_A_RELEVER
+    assert "[Pad1]" in p.input_mapping_where
+
+
+def test_un_profil_peut_declarer_que_l_emulateur_trouve_seul(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+        '[input]\nmapping = "auto"\n')))
+    assert p.input_mapping == profiles.MAPPING_AUTO
+
+
+def test_un_etat_de_mapping_inconnu_du_code_est_refuse(tmp_path):
+    """Une faute de frappe — « arelever » — retomberait sinon sur le défaut et
+    ferait taire le rapport sur l'émulateur précisément concerné."""
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nmapping = "arelever"\n')))
+
+
+def test_un_mapping_a_relever_sans_ou_est_refuse(tmp_path):
+    """« un constat sans chemin ni action n'aide personne » : c'est la règle
+    de `retro status`, et un profil qui déclare sa manette à relever sans dire
+    OÙ produirait exactement l'accusation sans diagnostic qu'elle interdit."""
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nmapping = "a-relever"\n')))
+
+
+def test_mapping_where_reste_facultatif_quand_rien_n_est_a_relever(tmp_path):
+    """Un émulateur qui trouve sa manette seul n'a aucun fichier à nommer, et
+    un profil qui n'a jamais été mesuré ne sait pas où regarder."""
+    for etat in ("auto", "inconnu"):
+        p = profiles.load_profile(ecrire(tmp_path, f"{etat}.toml", _avec_input(
+            f'[input]\nmapping = "{etat}"\n')))
+        assert p.input_mapping_where == ""
