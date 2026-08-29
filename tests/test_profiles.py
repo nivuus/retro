@@ -1225,6 +1225,41 @@ def test_un_profil_declare_que_sa_manette_reste_a_relever(tmp_path):
     assert "[Pad1]" in p.input_mapping_where
 
 
+def test_un_profil_declare_un_releve_clos_sans_dire_que_l_emulateur_trouve_seul(tmp_path):
+    """Le quatrième état, né le 2026-08-29 avec la clôture de D3.
+
+    Il dit une chose qu'aucun des trois autres ne pouvait dire : le relevé est
+    fait, les liaisons sont IMPOSÉES par la console, et un bouton a été VU
+    répondre dans un jeu. C'est le seul état de ce vocabulaire qui exige un
+    témoin humain.
+
+    Ce qu'il ne dit PAS, et c'est pour cela qu'il n'est pas « auto » :
+    l'émulateur ne trouve toujours pas sa manette seul. Confondre les deux
+    ferait disparaître du dépôt la raison pour laquelle `enforced` existe.
+    """
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+        '[input]\nmapping = "releve"\n'
+        "mapping_where = '%USERPROFILE%\\\\Documents\\\\D\\\\settings.ini, "
+        "section [Pad1]'\n")))
+    assert p.input_mapping == profiles.MAPPING_RELEVE
+    assert p.input_mapping != profiles.MAPPING_AUTO
+    assert "[Pad1]" in p.input_mapping_where
+
+
+def test_un_releve_clos_sans_ou_est_refuse(tmp_path):
+    """Même exigence que « a-relever », pour la raison INVERSE.
+
+    « a-relever » nomme le fichier où le relevé se fera. « releve » nomme celui
+    où les liaisons sont reposées à chaque lancement — le seul endroit où
+    vérifier qu'elles y sont encore. Une console dont un pad de plus s'énumère
+    avant celui d'Apollo redevient muette en silence : sans ce chemin, le
+    rapport dirait « ça marche » et n'offrirait rien à regarder.
+    """
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nmapping = "releve"\n')))
+
+
 def test_un_profil_peut_declarer_que_l_emulateur_trouve_seul(tmp_path):
     p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
         '[input]\nmapping = "auto"\n')))
