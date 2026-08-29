@@ -1148,3 +1148,204 @@ def test_le_lanceur_lit_chaque_cle_d_amorcage_que_le_plan_ecrit():
         "retro-launch.cs ne lit pas ces clés que le plan écrit — elles seraient "
         f"ignorées en silence, à chaque lancement : {manquantes}"
     )
+
+
+# ---------------------------------------------------------------------------
+# D4 — le recensement de ce qui dépend du type de manette, et sa garde.
+#
+# Ce bloc est le RECENSEMENT lui-même, tenu par des assertions plutôt que par
+# de la prose : le jour où Apollo annoncera une DualShock au lieu d'un Xbox
+# 360, ce sont ces valeurs-là qui décideront si la console reste jouable.
+#
+# TROIS FAITS, MESURÉS LE 2026-08-29, et leur source :
+#
+# 1. AUCUNE SUBSTITUTION D'IDENTIFIANT N'EXISTE. Les seuls jetons substitués
+#    sont `{render_config}` (retro/launcher.py) et `{render}`, `{rom}`,
+#    `{width}`, `{height}`, `{scale}` (retro-launch.cs) — tous de rendu. Il
+#    n'y a ni `{pad1}`, ni GUID, ni index substitué nulle part. Les tâches 2 à
+#    4 du plan des manettes n'ont jamais été faites : il n'y a rien à
+#    préserver, tout à construire, et d'ici là la seule protection possible
+#    est d'EMPÊCHER qu'un identifiant figé entre dans les données livrées.
+# 2. `SDL-0`, VINGT-SEPT FOIS DANS duckstation.toml, EST TOLÉRÉ. C'est un
+#    INDEX d'énumération, pas un GUID : il ne dépend pas du VID/PID, donc pas
+#    du type de pad (FRAGILITÉ 1 de ce profil, relevée sur le binaire). Ce qui
+#    le casse est un pad DE PLUS énuméré avant celui d'Apollo — c'est le
+#    premier problème que `retro status` nomme désormais, pas celui-ci.
+# 3. `Device: "XInput Pad #1"` DE RPCS3 EST HORS DE PORTÉE DE TOUTE GARDE.
+#    Il a été posé À LA MAIN sur la console le 2026-08-29 (dette D7), dans un
+#    `Default.yml` qu'aucun fichier versionné ne repose. rpcs3.toml n'en parle
+#    qu'en COMMENTAIRE. C'est donc le premier identifiant qui mourra à la
+#    bascule, et rien dans le dépôt ne pourra l'en empêcher : la seule chose
+#    qu'on puisse faire est de l'écrire, ce que fait ce recensement.
+#
+# La forme d'un identifiant de périphérique, et pourquoi le seuil est en
+# CHIFFRES HEXADÉCIMAUX plutôt qu'en motif exact : un GUID SDL s'écrit
+# canoniquement `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (32 chiffres), mais les
+# émulateurs le recopient sous des découpages qui leur sont propres — celui
+# que l'émulateur personnel écrit, `0-00000003-045e-0000-8e02-000000007200`,
+# en porte 33 sur six groupes. Une garde calquée sur UN découpage laisserait
+# passer les autres. On normalise donc en retirant les tirets, et tout jeton
+# hexadécimal d'au moins 32 chiffres est un identifiant.
+LONGUEUR_IDENTIFIANT = 32
+
+# Un GUID SDL canonique, cité ici pour que la garde ci-dessous prouve qu'elle
+# DÉTECTE quelque chose. Sans cette preuve, une expression régulière fautive
+# rendrait le test vert sur tout l'arbre sans rien surveiller.
+GUID_EXEMPLE = "030000005e0400008e02000010010000"
+GUID_EXEMPLE_DECOUPE = "0-00000003-045e-0000-8e02-000000007200"
+
+
+def _identifiants_de_peripherique(texte: str) -> list[str]:
+    """Les jetons de `texte` qui ont la forme d'un identifiant de manette."""
+    trouves = []
+    for jeton in re.findall(r"[0-9a-fA-F-]{20,}", texte):
+        chiffres = jeton.replace("-", "")
+        if (chiffres and len(chiffres) >= LONGUEUR_IDENTIFIANT
+                and all(c in "0123456789abcdefABCDEF" for c in chiffres)):
+            trouves.append(jeton)
+    return trouves
+
+
+def _empreintes_bios_declarees(fichier: pathlib.Path) -> set[str]:
+    """Les MD5 de BIOS que CE profil déclare, lus dans sa structure.
+
+    Une empreinte MD5 fait trente-deux chiffres hexadécimaux : elle a la forme
+    exacte d'un GUID SDL compact, et la garde ci-dessous la prendrait pour un
+    identifiant de manette. On ne l'exclut donc PAS par une heuristique de
+    texte — « la ligne contient md5 » se contourne d'une ligne coupée — mais
+    en relisant les empreintes que le profil déclare vraiment. Une valeur qui
+    n'est pas déclarée comme empreinte reste fautive, où qu'elle soit écrite.
+    """
+    declarees = set()
+    for s in profiles.load_profile(fichier).systems:
+        for b in s.bios:
+            empreinte = b.get("md5")
+            if isinstance(empreinte, str):
+                declarees.add(empreinte.lower())
+    return declarees
+
+
+def test_aucun_profil_livre_ne_fige_un_identifiant_de_peripherique():
+    """Un GUID figé dans un profil est la panne que D4 existe pour empêcher.
+
+    Changer le type de pad change le VID/PID, donc le GUID SDL. Une liaison
+    qui ne correspond à aucun périphérique est ignorée EN SILENCE : la console
+    redeviendrait muette PARTOUT, sans un message, sans une ligne de journal,
+    et le symptôme serait identique à celui d'un fichier vide.
+
+    Et la substitution qui devrait fournir cet identifiant au lancement
+    N'EXISTE PAS (fait 1 du recensement ci-dessus). Tant qu'elle n'existe pas,
+    la seule protection est de refuser l'entrée.
+    """
+    # D'ABORD la preuve que la garde détecte : les deux découpages connus.
+    assert _identifiants_de_peripherique(GUID_EXEMPLE), (
+        "la garde ne reconnaît plus un GUID SDL compact : elle serait verte "
+        "sur tout l'arbre sans rien surveiller")
+    assert _identifiants_de_peripherique(GUID_EXEMPLE_DECOUPE), (
+        "la garde ne reconnaît plus le découpage que l'émulateur personnel "
+        "écrit — c'est très exactement la forme qu'un relevé recopierait")
+    # ENSUITE que l'index de DuckStation n'en est pas un, et reste accepté.
+    assert _identifiants_de_peripherique("Cross = SDL-0/A") == [], (
+        "la garde prend « SDL-0 » pour un identifiant. C'est un INDEX "
+        "d'énumération, pas un GUID : il ne dépend pas du VID/PID et survit "
+        "au changement de type de pad")
+
+    fautifs = []
+    for f in sorted(PROFILS.glob("*.toml")):
+        for jeton in _identifiants_de_peripherique(f.read_text(encoding="utf-8")):
+            if jeton.lower() in _empreintes_bios_declarees(f):
+                continue
+            fautifs.append(f"{f.name} : {jeton}")
+    assert fautifs == [], (
+        "ces profils figent ce qui ressemble à un identifiant de "
+        "périphérique : " + " | ".join(fautifs) + ". Un tel identifiant "
+        "dépend du VID/PID, donc du type de manette qu'Apollo annonce, et "
+        "aucune substitution ne le remplace au lancement — ce mécanisme n'a "
+        "jamais été écrit. Le jour où le pad change, la liaison est ignorée "
+        "en silence. L'index « SDL-0 » de DuckStation, lui, est toléré : il "
+        "ne dépend d'aucun VID/PID."
+    )
+
+
+def test_le_recensement_des_valeurs_figees_par_le_type_de_pad_ne_bouge_pas():
+    """Deux valeurs sont déjà figées, et le recensement doit les NOMMER.
+
+    Elles ne sont pas au même endroit ni dans le même état, et c'est tout
+    l'intérêt de les compter ici :
+
+    - les vingt-sept `SDL-0` de DuckStation sont dans le dépôt, sous garde, et
+      SURVIVENT à la bascule (index, pas GUID) ;
+    - le `Device: "XInput Pad #1"` de RPCS3 est HORS du dépôt — posé à la main
+      dans un `Default.yml` que rien ne repose (D7). rpcs3.toml ne le porte
+      qu'en commentaire, donc aucune garde ne le protège, et il MEURT à la
+      bascule sans qu'un mot soit dit.
+    """
+    duck = (PROFILS / "duckstation.toml").read_text(encoding="utf-8")
+    liaisons = [l for l in duck.splitlines()
+                if "SDL-0" in l and not l.lstrip().startswith("#")]
+    assert len(liaisons) == 27, (
+        f"DuckStation porte {len(liaisons)} liaisons « SDL-0 » et non 27. "
+        "Ce nombre est le recensement : s'il change, c'est que quelqu'un a "
+        "touché aux liaisons imposées, et la tâche 7 de D4 — confirmer que "
+        "cet index survit à la bascule — ne porte plus sur le même objet."
+    )
+    rpcs3 = (PROFILS / "rpcs3.toml").read_text(encoding="utf-8")
+    porteuses = [l for l in rpcs3.splitlines() if "XInput Pad" in l]
+    assert porteuses, "rpcs3.toml ne dit plus rien de son Device posé à la main"
+    assert all(l.lstrip().startswith("#") for l in porteuses), (
+        "rpcs3.toml POSE désormais « XInput Pad #1 » au lieu d'en parler. "
+        "Cette valeur dépend du gestionnaire, donc du type de pad : la poser "
+        "dans un fichier livré la ferait mourir à la bascule, en silence."
+    )
+
+
+def _bloc_dette_d4(fichier: pathlib.Path) -> str:
+    """Le bloc de commentaires « DETTE D4 » d'un profil, tel qu'il est écrit."""
+    lignes = fichier.read_text(encoding="utf-8").splitlines()
+    debut = next((n for n, l in enumerate(lignes) if "DETTE D4" in l), None)
+    assert debut is not None, f"{fichier.name} : plus de bloc « DETTE D4 »"
+    bloc = []
+    for l in lignes[debut:]:
+        if not l.lstrip().startswith("#"):
+            break
+        bloc.append(l.lstrip().lstrip("#").strip())
+    # Recollé en UNE ligne, en minuscules : une phrase de ce bloc court sur
+    # deux lignes de commentaire, et un test qui chercherait sa forme brute
+    # deviendrait vert ou rouge selon la largeur de la colonne — c'est-à-dire
+    # sur autre chose que ce qu'il prétend vérifier.
+    return " ".join(bloc).lower()
+
+
+def test_le_bloc_dette_d4_de_vita3k_ne_promet_pas_une_substitution_absente():
+    """Ce bloc annonçait « l'identifiant SDL substitué AU LANCEMENT par
+    retro/launcher.py » comme un mécanisme existant. IL N'EXISTE PAS.
+
+    Vérifié le 2026-08-29 : les seuls jetons substitués dans tout le dépôt
+    sont `{render_config}` côté Python et `{render}`, `{rom}`, `{width}`,
+    `{height}`, `{scale}` côté lanceur — tous de rendu. Aucun jeton de
+    manette nulle part.
+
+    C'est la pire espèce d'erreur de documentation : elle décrit une
+    protection. Le prochain lecteur écrit un gabarit d'entrée en croyant que
+    la substitution le sauvera du changement de type de pad, et la console
+    devient muette exactement comme si rien n'avait été fait. Un bloc qui
+    promet une garantie inexistante est plus dangereux qu'un bloc absent.
+    """
+    bloc = _bloc_dette_d4(PROFILS / "vita3k.toml")
+    assert "substitué au lancement" not in bloc, (
+        "vita3k.toml annonce toujours la substitution d'identifiant comme "
+        "existante. Elle n'a jamais été écrite : les tâches 2 à 4 du plan des "
+        "manettes n'ont pas été exécutées."
+    )
+    # Ce que le bloc doit dire À LA PLACE, et qui est vrai.
+    assert "n'existe pas" in bloc, (
+        "le bloc ne DIT PAS que le mécanisme de substitution n'existe pas — "
+        "un lecteur qui ne trouve rien conclura qu'il a mal cherché")
+    assert "disable-motion" in bloc, (
+        "le bloc ne dit pas que le mouvement de Vita3K ne se règle par AUCUNE "
+        "clé : « disable-motion » vaut déjà false, son défaut utile "
+        "(vita3k/config/include/config/config.h). Sans ça, la tâche que ce "
+        "bloc annonce est un travail qui n'a pas lieu d'être.")
+    assert "tactile" in bloc, (
+        "le bloc a perdu l'écran tactile avant et le pavé arrière de la "
+        "Vita : un manque distinct du gyroscope, traité nulle part")
