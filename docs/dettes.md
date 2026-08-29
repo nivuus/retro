@@ -108,13 +108,37 @@ de Dolphin n'a aucune clé de mise à l'échelle entière.
 deux premiers, et `retro status` les nomme déjà. C'est le travail du
 sous-projet D, pas celui-ci.
 
-**L'arbitrage DuckStation n'est pas tranché**, et c'est délibéré : il
-appartient au propriétaire. Il est posé en question fermée dans
-`retro/render.py`, au-dessus de la politique. En résumé : DuckStation *sait*
-remplir en entier (ses modes `NearestInteger` et `BilinearInteger` sont dans
-le binaire livré), mais seulement par son `settings.ini`, que l'amorçage ne
-pose **que s'il est absent** — donc sans effet sur une console déjà jouée, et
-l'y forcer serait réécrire un fichier du propriétaire.
+**L'arbitrage DuckStation est TRANCHÉ — le propriétaire a répondu oui**, le
+2026-08-29 : `retro` est autorisé à modifier un `settings.ini` qui existe.
+
+Ce que cette réponse a permis de construire, et qui sert aussi à **D3** :
+la seconde stratégie d'écriture, `fusion`, à côté de `si-absent`
+(`retro/launcher.py`, `retro/data/launcher/retro-launch.cs`). Elle **modifie
+sans jamais écraser** : seules les clés que le profil apporte sont réécrites,
+tout le reste est préservé — les clés inconnues comme le `[BIOS]
+SearchDirectory` ajouté à la main, les commentaires, l'ordre, la marque
+d'octets du fichier — une sauvegarde horodatée précède chaque écriture, les
+lignes posées portent une marque qui les distingue de celles du propriétaire,
+et un fichier **déjà conforme n'est pas réécrit du tout**. Un profil qui
+fusionne est en outre REFUSÉ au chargement si son en-tête promet encore que
+les réglages ne sont jamais retouchés.
+
+Vérifiée sur la console le 2026-08-29 : la source compile avec le `csc.exe`
+du .NET Framework, et `--explain` — qui fait la fusion à blanc, sans rien
+écrire — rend « 3 clé(s) posée(s) » sur un fichier neuf, puis « déjà
+conforme, rien ne sera réécrit » sur le résultat. L'idempotence est donc
+prouvée, et avec elle la préservation : le fichier comparé égal contenait les
+clés et commentaires du propriétaire.
+
+**Ce qui reste, et qui n'est pas une paresse** : le nom de la clé de
+DuckStation n'est toujours pas relevé — le binaire assemble ses littéraux
+dans le code —, et sous `-batch -nogui` il ne réécrit jamais son fichier,
+donc le relevé demande de l'ouvrir une fois hors du chemin de la console.
+`duckstation.toml` n'est donc **pas** basculé en fusion : le geste exact et
+la phrase d'en-tête à employer y sont écrits. Le profil pose au passage une
+seconde question au propriétaire — la fusion réaffirme ses clés à chaque
+lancement, ce qui convient au remplissage mais sûrement pas à
+`ConfirmPowerOff`.
 
 ---
 

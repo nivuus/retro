@@ -84,10 +84,20 @@ nom du système.
   vos ROMs et vos BIOS. `retro install` ne redistribue pas les émulateurs non
   plus : il télécharge chacun depuis le site de son propre projet, à l'URL et
   sous l'empreinte que porte le manifeste.
-- **Ça ne retouche jamais la configuration d'un émulateur.** Ni fusion, ni clé
-  ajoutée, ni valeur corrigée : le fichier n'est posé que s'il est **absent**.
-  Un émulateur que vous avez réglé vous appartient. Le seul chemin qui écrase
-  est `retro launcher --reamorcer`, et il sauvegarde d'abord.
+- **Ça ne retouche la configuration d'un émulateur que si vous l'avez
+  autorisé.** Par défaut — la stratégie `si-absent` — le fichier n'est posé
+  que s'il est **absent** : un émulateur que vous avez réglé vous appartient,
+  et le seul chemin qui écrase est `retro launcher --reamorcer`, qui
+  sauvegarde d'abord.
+  Un profil peut déclarer la seconde stratégie, `fusion`, pour un émulateur
+  dont un réglage ne s'atteint que par son fichier de configuration.
+  **Modifier n'y est jamais écraser** : seules les clés que le profil apporte
+  sont réécrites, tout le reste — vos clés, vos commentaires, l'ordre du
+  fichier — est préservé, une sauvegarde est faite avant chaque écriture, et
+  un fichier déjà conforme n'est **pas** réécrit du tout. Les lignes posées
+  par `retro` sont marquées comme telles, `retro status` nomme les profils
+  concernés, et l'en-tête du fichier doit dire qu'il est modifié — le
+  chargement refuse un profil qui fusionne en promettant le contraire.
 - **Ça n'arrête pas Steam.** `retro sync` refuse de s'exécuter tant que Steam
   tourne — il réécrirait le fichier à sa fermeture et le travail serait perdu,
   sans le moindre message. Fermez Steam d'abord.
