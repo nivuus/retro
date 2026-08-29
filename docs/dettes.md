@@ -204,13 +204,19 @@ l'émulateur, comme le PS3UPDAT.PUP de RPCS3, et son empreinte change à chaque
 version sans que rien de publiquement citable n'existe. Sans lui, mêmes
 symptômes que DuckStation sans BIOS — le jeu apparaît, se lance, écran noir.
 
-Le patron est mesuré sur la console (2026-08-29, invité en
-`provision_version=B1`) : les BIOS-fichiers vivent dans `G:\retro\bios\` et
-l'émulateur y est pointé par sa configuration (`[BIOS] SearchDirectory` chez
-DuckStation) ; un firmware est rangé à part, hors de `bios\`, parce qu'il
-s'installe. **RPCS3 n'a d'ailleurs sur cette machine ni `dev_flash` ni
-`dev_hdd0` : son firmware n'a jamais été installé, et personne ne s'en est
-aperçu** — la même panne muette attend la Vita.
+Le patron se lit sur le partage, sans rien demander à l'invité (2026-08-29) :
+`G:\retro\bios\` ne contient que des BIOS-fichiers, sur lesquels l'émulateur
+est pointé par sa configuration — `duckstation.toml` documente déjà
+`[BIOS] SearchDirectory`. Un firmware est rangé à côté, **hors** de `bios\`,
+parce qu'il ne se lit pas : il s'installe. Le PUP Vita suivra ce rangement-là.
+
+Un fait vu une fois **dans** l'invité le 2026-08-29, et que personne ne peut
+re-vérifier depuis — l'accès à l'invité est fermé, il est donc consigné ici
+comme une observation datée et non comme un état courant : **RPCS3 n'avait ni
+`dev_flash` ni `dev_hdd0`, son firmware n'ayant jamais été installé**, et rien
+dans `retro status` ne le disait. Si l'observation tient toujours, c'est
+exactement la panne muette qui attend la Vita ; la reprendre demande un accès
+à la machine, pas un raisonnement.
 
 Ce que Vita3K a de plus que RPCS3 : `--firmware <chemin.pup>` installe le
 firmware depuis la ligne de commande, donc sans souris. Il reste à trancher où

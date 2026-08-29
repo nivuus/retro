@@ -32,9 +32,11 @@
 #   l'exécutable dans l'archive et un éventuel dossier racine (les neuf autres
 #   profils le savent parce que leur archive a été LISTÉE ; celle-ci ne l'a
 #   pas été), la liste complète des extensions acceptées, et la forme d'une
-#   bibliothèque Vita réelle — le propriétaire n'en a aucune aujourd'hui,
-#   mesuré le 2026-08-29 sur son partage (G:\Games, un dossier par
-#   constructeur puis par système, aucun dossier PS Vita).
+#   bibliothèque Vita réelle — le propriétaire n'en a aucune aujourd'hui. Lu
+#   le 2026-08-29 sur le PARTAGE lui-même, celui que le scan parcourt : un
+#   dossier par constructeur puis par système, aucun dossier PS Vita. C'est
+#   donc la seule chose que le partage puisse dire de cette forme-là : elle
+#   n'existe pas encore, et ce profil la prévoit sans l'avoir vue.
 
 schema = 1
 id  = "vita3k"
@@ -124,13 +126,12 @@ launch     = '--fullscreen "{rom}"'
 # n'existe. Il n'y a donc rien de vérifiable à déclarer ici : ce profil ne
 # couvre pas le firmware, et le dit.
 #
-# Le patron est mesuré, lui, sur la console (2026-08-29, invité en
-# provision_version B1) : les BIOS-fichiers vivent dans G:\retro\bios\ et
-# l'émulateur y est POINTÉ par sa configuration (DuckStation,
-# [BIOS] SearchDirectory) ; un firmware, lui, est rangé à part, hors de
-# bios\, parce qu'il s'installe. RPCS3 n'a d'ailleurs à ce jour ni dev_flash
-# ni dev_hdd0 sur cette machine : son firmware n'a jamais été installé, et
-# personne ne s'en est aperçu.
+# Le patron, lui, se lit sur le PARTAGE (2026-08-29) : G:\retro\bios\ ne
+# contient que des BIOS-fichiers, sur lesquels l'émulateur est POINTÉ par sa
+# configuration — duckstation.toml le documente déjà pour
+# [BIOS] SearchDirectory. Un FIRMWARE, lui, est rangé à côté, hors de bios\,
+# précisément parce qu'il ne se lit pas : il s'installe. Le PUP Vita suivra
+# ce rangement-là, pas celui de bios\.
 #
 # Ce que Vita3K a de plus que RPCS3, et qui rend la suite faisable sans
 # souris : « --firmware <chemin.pup> » installe le firmware depuis la ligne de
