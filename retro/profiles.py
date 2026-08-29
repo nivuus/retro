@@ -61,13 +61,25 @@ class Bootstrap:
     configuration d'un émulateur vit dans le profil de l'utilisateur Windows,
     que la machine qui pilote `retro` n'atteint pas. Le lanceur, lui, y est.
 
-    `strategy` dit COMMENT le fichier est écrit — voir `launcher.STRATEGIES`.
-    Le défaut reste « si-absent », de sorte qu'un profil qui ne déclare rien
-    ne change pas de comportement du jour où la fusion existe.
+    DEUX RÉGIMES, et ils sont STRUCTURELS — deux champs, pas un mode déclaré
+    qu'on pourrait mettre en contradiction avec ce que le bloc contient :
+
+    `content`  est posé SI LE FICHIER EST ABSENT, et plus jamais retouché. Ce
+      sont des préférences : le propriétaire les change dans l'interface de
+      son émulateur, et son choix tient.
+    `enforced` est REPOSÉ À CHAQUE LANCEMENT, par fusion. Ce sont les clés
+      sans lesquelles un jeu ne démarre pas sans clavier — un assistant de
+      première configuration qui s'ouvre par-dessus, une fenêtre de mise à
+      jour, un plein écran manquant. La console doit pouvoir les imposer,
+      sinon la bibliothèque entière devient inutilisable au premier réglage
+      malheureux.
+
+    Les deux visent LE MÊME fichier. Ce qui n'est dans ni l'un ni l'autre
+    appartient entièrement au propriétaire et n'est jamais touché.
     """
     target: str
     content: str
-    strategy: str = ""
+    enforced: str = ""
 
 
 def folder_key(nom: str) -> str:
@@ -416,53 +428,89 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
             "configuration écrit par un outil doit dire qui l'a écrit : sans "
             "cela, le propriétaire le prend pour le sien."
         )
+    enforced = brut.get("enforced", "")
+    if not isinstance(enforced, str):
+        raise ProfileError(
+            f"{path} [bootstrap] : 'enforced' doit être du texte — le "
+            "fragment de configuration que la console REPOSE à chaque "
+            "lancement."
+        )
+    _valider_regimes(path, content, enforced)
     return Bootstrap(target=target, content=content,
-                     strategy=_lire_strategie(path, brut, content))
+                     enforced=enforced.strip())
 
 
-def _lire_strategie(path: pathlib.Path, brut, content: str) -> str:
-    """Comment ce fichier est écrit, et ce que son en-tête doit alors dire.
+def cles_ini(fragment: str) -> list[tuple[str, str]]:
+    """Les couples (section, clé) d'un fragment INI, dans l'ordre.
 
-    Le défaut est « si-absent » : ne rien déclarer, c'est ne toucher à rien,
-    donc les profils écrits avant que la fusion existe gardent exactement leur
-    comportement.
+    Rendue publique : `retro status` compte ce que la console impose, et
+    recompter ailleurs ferait deux analyseurs qui divergeraient au premier
+    format inhabituel.
 
-    Deux refus, et le second est le plus important :
-
-    - une stratégie inconnue. Le lanceur la refuse déjà, et il a raison — mais
-      il le fait SUR LA CONSOLE, après que le raccourci Steam a été cliqué.
-      La même faute doit se voir ici, où elle se corrige.
-    - un en-tête qui ne dit pas que le fichier est MODIFIÉ. Tant que la
-      stratégie était « si-absent », « une fois qu'il existe, vos réglages ne
-      sont jamais retouchés » était vrai, et c'est ce que les fichiers posés
-      promettent. En fusion, cette phrase devient un mensonge — et un fichier
-      qui ment sur ce qu'on lui fait est pire qu'un fichier sans en-tête,
-      parce qu'il est CRU. La garde est volontairement grossière (le mot doit
-      apparaître) : elle attrape le seul défaut qui compte, l'oubli.
+    Les commentaires n'y sont PAS des clés. Une ligne « ; Scaling = ... » ne
+    doit pas passer pour le réglage qu'elle explique — c'est la même règle que
+    dans la fusion du lanceur, et l'y contredire ferait dire au rapport qu'une
+    clé est imposée alors qu'elle ne l'est pas.
     """
-    from retro import launcher as launcher_mod
+    section, cles = "", []
+    for ligne in fragment.splitlines():
+        nu = ligne.strip()
+        if not nu or nu[0] in ";#":
+            continue
+        if nu.startswith("[") and nu.endswith("]"):
+            section = nu[1:-1].strip()
+        elif "=" in nu:
+            cles.append((section, nu.split("=", 1)[0].strip()))
+    return cles
 
-    strategie = brut.get("strategy", launcher_mod.SI_ABSENT)
-    if not isinstance(strategie, str) or \
-            strategie not in launcher_mod.STRATEGIES:
+
+def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
+    """Les deux régimes ne se recouvrent pas, et l'en-tête dit lequel est quoi.
+
+    Une clé déclarée DES DEUX CÔTÉS serait décidée à deux endroits. Le
+    fusionné l'emporterait toujours — il passe après —, mais personne, en
+    lisant le profil, ne pourrait dire lequel gagne, et la préférence
+    apparemment posée ne tiendrait jamais. C'est la faute que ce dépôt refuse
+    partout ailleurs, et elle serait ici parfaitement muette.
+
+    La comparaison porte sur le couple SECTION/CLÉ : « Enabled » sous [Pad1]
+    et sous [Display] ne sont pas le même réglage.
+
+    Et l'en-tête. Il PROMET quelque chose au propriétaire, qui règle son
+    comportement dessus. « Vos réglages ne sont jamais retouchés » était vrai
+    tant que rien n'était imposé ; il devient faux pour les clés reposées.
+    Mais « tout est reposé » serait faux aussi, pour les préférences. Dès
+    qu'un profil impose quelque chose, son en-tête doit donc distinguer les
+    TROIS catégories — imposé, posé une fois, à vous. La garde est
+    volontairement grossière : elle n'attrape pas une formulation
+    malheureuse, elle attrape l'oubli.
+    """
+    if not enforced.strip():
+        return
+    deux = sorted(set(cles_ini(content)) & set(cles_ini(enforced)))
+    if deux:
+        noms = ", ".join(f"[{s}] {c}" for s, c in deux)
         raise ProfileError(
-            f"{path} [bootstrap] : stratégie d'amorçage inconnue : "
-            f"{strategie!r}. Les stratégies sont "
-            f"{', '.join(launcher_mod.STRATEGIES)}. Le lanceur refuse celle "
-            "qu'il ne connaît pas — mais il le fait sur la console, devant "
-            "une télévision, alors qu'ici elle se corrige."
+            f"{path} [bootstrap] : {noms} — déclaré dans les DEUX régimes, "
+            "'content' et 'enforced'. Le réglage serait décidé à deux "
+            "endroits : l'imposé l'emporterait toujours, la préférence "
+            "posée ne tiendrait jamais, et rien dans le profil ne dirait "
+            "lequel gagne. Choisir : imposé par la console, ou posé une fois "
+            "puis laissé au propriétaire."
         )
-    if strategie == launcher_mod.FUSION and "modifi" not in content.lower():
+    minuscules = content.lower()
+    if not ("impos" in minuscules and "une fois" in minuscules):
         raise ProfileError(
-            f"{path} [bootstrap] : la stratégie « {launcher_mod.FUSION} » "
-            "exige que 'content' dise en toutes lettres ce qu'elle modifie. "
-            "Un amorçage « si-absent » peut promettre que les réglages du "
-            "propriétaire ne sont jamais retouchés ; une fusion ne le peut "
-            "pas, puisqu'elle rouvre un fichier qui existe. Un en-tête qui "
-            "ment sur ce qu'on fait au fichier est pire qu'une absence "
-            "d'en-tête : il est cru."
+            f"{path} [bootstrap] : ce profil IMPOSE des clés, mais son "
+            "'content' ne distingue pas les TROIS catégories que le fichier "
+            "porte désormais : ce que la console impose et repose à chaque "
+            "lancement, ce qu'elle a posé UNE FOIS et ne retouche plus, et "
+            "tout le reste, qui appartient au propriétaire. L'en-tête d'un "
+            "fichier de configuration est CRU : le propriétaire y lit une "
+            "garantie et règle son comportement dessus. Une promesse qui "
+            "survivrait au régime qui la rendait vraie serait pire qu'une "
+            "absence d'en-tête."
         )
-    return strategie
 
 
 # L'identifiant d'un profil n'est pas une étiquette : il NOMME un fichier et

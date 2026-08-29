@@ -879,7 +879,13 @@ def test_le_profil_duckstation_livre_ferme_les_deux_causes_mesurees():
     DuckStation à la place d'un jeu — l'assistant de première configuration
     lui-même, et une fenêtre de mise à jour qui bloquait le lancement même
     l'assistant désactivé. Un profil qui n'en fermerait qu'une laisserait le
-    symptôme intact pour la moitié des propriétaires qui l'installent."""
+    symptôme intact pour la moitié des propriétaires qui l'installent.
+
+    Ces deux clés sont désormais IMPOSÉES et non plus seulement posées : le
+    propriétaire l'a arbitré le 2026-08-29. La différence n'est pas
+    théorique — une seule case recochée par curiosité dans l'interface de
+    DuckStation rendait auparavant toute la bibliothèque injouable, sans
+    aucun moyen de le deviner."""
     chemin = (pathlib.Path(__file__).parent.parent / "retro" / "data"
               / "profiles" / "duckstation.toml")
     profil = profiles.load_profile(chemin)
@@ -888,10 +894,13 @@ def test_le_profil_duckstation_livre_ferme_les_deux_causes_mesurees():
         "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
     # La première cause mesurée : sans elle, l'assistant de première
     # configuration s'ouvre avant tout jeu et rien n'est jamais écrit.
-    assert "SetupWizardIncomplete = false" in profil.bootstrap.content
+    assert "SetupWizardIncomplete = false" in profil.bootstrap.enforced
     # La seconde, découverte le même jour : sans elle, une fenêtre « Mise à
     # jour disponible » bloque le lancement aussi sûrement que l'assistant.
-    assert "CheckAtStartup = false" in profil.bootstrap.content
+    assert "CheckAtStartup = false" in profil.bootstrap.enforced
+    # Et elles ne sont plus dans le fichier « posé une fois » : les y laisser
+    # aurait fait décider le même réglage à deux endroits.
+    assert "SetupWizardIncomplete" not in profil.bootstrap.content
 
 
 # --- l'identifiant d'un profil se découpe et nomme un fichier --------------
@@ -1069,51 +1078,100 @@ def test_un_profil_qui_ne_tranche_pas_sur_le_remplissage_reste_valide(tmp_path):
     assert p.systems[0].render.native.fill_absent == ""
 
 
-# --- la stratégie d'écriture de l'amorçage --------------------------------
+# --- les deux régimes d'un amorçage ---------------------------------------
+#
+# Un même fichier cible porte deux choses qui ne se gouvernent pas pareil :
+# ce que la console IMPOSE (sans quoi un jeu ne démarre pas sans clavier) et
+# ce qu'elle a POSÉ UNE FOIS parce que le fichier n'existait pas (des
+# préférences, qui appartiennent au propriétaire dès la seconde suivante).
+#
+# Le régime est STRUCTUREL : deux champs distincts, `content` et `enforced`.
+# Il ne se déclare pas dans un mode qu'on pourrait mettre en contradiction
+# avec ce que le bloc contient — et il se lit d'un coup d'œil dans le profil.
 
-def _avec_strategie(valeur: str, entete: str = "") -> str:
-    """BOOTSTRAP_VALIDE, avec une stratégie déclarée.
-
-    L'en-tête par défaut DIT qu'il modifie : c'est ce que la fusion exige, et
-    le test qui vérifie ce refus le retire exprès.
-    """
-    texte = BOOTSTRAP_VALIDE.replace(
-        "[bootstrap]\n", f'[bootstrap]\nstrategy = "{valeur}"\n')
-    return texte.replace(
-        "; Écrit par « retro » au premier lancement, parce que ce fichier "
-        "était absent.",
-        entete or "; Écrit par « retro », qui MODIFIE ce fichier.")
-
-
-def test_la_strategie_par_defaut_reste_si_absent(tmp_path):
-    """Les huit autres profils ne changent pas de comportement du jour où une
-    seconde stratégie existe : ne rien déclarer, c'est ne toucher à rien."""
-    from retro import launcher
-    p = profiles.load_profile(ecrire(tmp_path, "d.toml", BOOTSTRAP_VALIDE))
-    assert p.bootstrap.strategy == launcher.SI_ABSENT
+ENTETE_TROIS = """; Écrit par « retro », qui distingue trois choses ici : ce qu'il IMPOSE et
+; repose à chaque lancement, ce qu'il a posé UNE FOIS et ne retouche plus, et
+; tout le reste, qui vous appartient."""
 
 
-def test_la_strategie_de_fusion_se_declare(tmp_path):
-    from retro import launcher
-    p = profiles.load_profile(ecrire(tmp_path, "d.toml",
-                                     _avec_strategie("fusion")))
-    assert p.bootstrap.strategy == launcher.FUSION
+def _amorcage(content_keys: str, enforced: str = "",
+              entete: str = ENTETE_TROIS) -> str:
+    bloc = f"""
+schema = 1
+id = "duckstation"
+exe = 'duckstation-qt.exe'
+[bootstrap]
+target = '%USERPROFILE%\\\\Documents\\\\DuckStation\\\\settings.ini'
+content = '''
+{entete}
+{content_keys}
+'''
+"""
+    if enforced:
+        bloc += f"enforced = '''\n{enforced}\n'''\n"
+    return bloc + """
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
 
 
-def test_une_strategie_inconnue_est_refusee(tmp_path):
-    """Le lanceur REFUSE une stratégie qu'il ne connaît pas, et il a raison :
-    mais il le fait sur la console, devant une télévision. La même faute doit
-    se voir ici, sur la machine qui pilote, où elle se corrige."""
-    with pytest.raises(profiles.ProfileError, match="stratégie d'amorçage"):
-        profiles.load_profile(ecrire(tmp_path, "d.toml",
-                                     _avec_strategie("ecraser")))
+def test_un_amorcage_sans_cles_imposees_reste_valide(tmp_path):
+    """Huit profils livrés n'imposent rien : ne rien déclarer doit continuer
+    de vouloir dire « posé une fois, jamais retouché »."""
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+        "[Main]\nConfirmPowerOff = false")))
+    assert p.bootstrap.enforced == ""
 
 
-def test_la_fusion_exige_de_dire_qu_elle_modifie(tmp_path):
-    """L'en-tête d'un fichier posé PROMET quelque chose au propriétaire. Tant
-    que la stratégie était « si-absent », « vos réglages ne sont jamais
-    retouchés » était vrai. En fusion, c'est faux — et un fichier qui ment sur
-    ce qu'on lui fait est pire qu'un fichier sans en-tête."""
-    texte = _avec_strategie("fusion", entete="; Écrit par « retro ».")
-    with pytest.raises(profiles.ProfileError, match="ce qu'elle modifie"):
-        profiles.load_profile(ecrire(tmp_path, "d.toml", texte))
+def test_les_cles_imposees_se_declarent_a_part(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+        "[Main]\nConfirmPowerOff = false",
+        enforced="[Main]\nSetupWizardIncomplete = false")))
+    assert "SetupWizardIncomplete" in p.bootstrap.enforced
+    assert "ConfirmPowerOff" not in p.bootstrap.enforced
+
+
+def test_une_cle_dans_les_deux_regimes_est_refusee(tmp_path):
+    """Le même réglage décidé à deux endroits : l'un des deux perdrait
+    toujours — le fusionné écrase le posé — et personne, en lisant le profil,
+    ne pourrait dire lequel gagne. C'est la faute que ce dépôt refuse partout
+    ailleurs, et elle serait ici parfaitement muette."""
+    with pytest.raises(profiles.ProfileError, match="DEUX régimes"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+            "[Main]\nStartFullscreen = true",
+            enforced="[Main]\nStartFullscreen = true")))
+
+
+def test_la_meme_cle_dans_deux_sections_differentes_est_permise(tmp_path):
+    """« Enabled » sous [Pad1] et sous [Display] ne sont pas le même réglage :
+    la comparaison porte sur le couple section/clé, pas sur le nom seul."""
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+        "[Display]\nEnabled = true",
+        enforced="[Pad1]\nEnabled = true")))
+    assert p.bootstrap.enforced
+
+
+def test_un_amorcage_qui_impose_doit_distinguer_les_trois_categories(tmp_path):
+    """L'en-tête PROMET quelque chose. « Vos réglages ne sont jamais
+    retouchés » était vrai quand rien n'était imposé ; il devient faux pour
+    les clés reposées. Mais dire « tout est reposé » serait faux aussi, pour
+    les préférences. Les trois catégories doivent se lire."""
+    with pytest.raises(profiles.ProfileError, match="TROIS"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+            "[Main]\nConfirmPowerOff = false",
+            enforced="[Main]\nSetupWizardIncomplete = false",
+            entete="; Écrit par « retro ». Vos réglages ne sont jamais "
+                   "retouchés.")))
+
+
+def test_un_amorcage_qui_n_impose_rien_garde_l_ancienne_promesse(tmp_path):
+    """La garde ne se déclenche QUE s'il y a des clés imposées : les profils
+    qui n'en ont pas gardent leur en-tête, qui reste vrai."""
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+        "[Main]\nConfirmPowerOff = false",
+        entete="; Écrit par « retro » : ce fichier n'est posé que s'il est "
+               "absent, vos réglages ne sont jamais retouchés.")))
+    assert p.bootstrap is not None
