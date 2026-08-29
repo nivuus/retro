@@ -792,3 +792,170 @@ video_aspect_ratio_auto = "false"
 video_scale_integer = "false"
 '''
 
+
+# ---------------------------------------------------------------------------
+# TROIS SYSTÈMES AJOUTÉS LE 2026-08-29, chacun parce que le propriétaire en
+# possède un jeu et qu'aucun profil ne le servait — sa ROM était donc INVISIBLE
+# à `retro scan`, sans le moindre message : un dossier qu'aucun profil ne
+# revendique ressort en « non reconnu », pas en erreur.
+#
+# LA PROVENANCE EST LA MÊME POUR LES TROIS, et c'est celle que l'en-tête de ce
+# fichier impose : les noms de core, les extensions et les BIOS sont LUS dans
+# les RetroArch-Win64\info\*_libretro.info de l'installation, relevés sur la
+# console le 2026-08-29 par WinRM. Aucune valeur ne vient d'une page tierce.
+# Les blocs de rendu reprennent mot pour mot ceux du système « nes » ci-dessus,
+# dont le commentaire porte la démonstration des trois clés de cadrage : la
+# répéter ici n'ajouterait rien, et les faire diverger serait la vraie faute.
+
+[[system]]
+id         = "atari2600"
+name       = "Atari 2600"
+# Le propriétaire range déjà « Atari\5200\ » : « 2600 » suit la même forme.
+# « VCS » est le nom d'origine de la machine, que certaines collections
+# emploient.
+folders    = ["2600", "Atari 2600", "VCS"]
+# stella_libretro.info : supported_extensions = "a26|bin". Le « .bin » est
+# ambigu dans l'absolu — c'est aussi une piste de CD et une ROM Mega Drive —
+# mais il ne l'est pas ICI : ce qui compte est le DOSSIER où le fichier se
+# trouve, et un .bin rangé sous « Atari\2600 » est une cartouche 2600.
+extensions = [".a26", ".bin"]
+launch     = '-L "RetroArch-Win64\cores\stella_libretro.dll" {render} -f "{rom}"'
+# stella_libretro.info ne déclare AUCUN firmware (pas de clé firmware_count) :
+# la 2600 n'avait pas de ROM de démarrage, tout tenait dans la cartouche. Rien
+# à exiger, et ce vide-ci est mesuré, pas supposé.
+bios       = []
+cost       = "light"
+[system.render.native]
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+fill = "entier"
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
+'''
+[system.render.full]
+args = '--appendconfig "{render_config}"'
+fill = "ajuste"
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
+'''
+
+[[system]]
+id         = "nds"
+name       = "Nintendo DS"
+folders    = ["NDS", "DS", "Nintendo DS"]
+# melonds_libretro.info : supported_extensions = "nds|ids|dsi".
+extensions = [".nds", ".ids", ".dsi"]
+launch     = '-L "RetroArch-Win64\cores\melonds_libretro.dll" {render} -f "{rom}"'
+# melonds_libretro.info déclare HUIT firmwares et les huit portent
+# « firmwareN_opt = "true" » : aucun n'est requis, le core sachant simuler le
+# démarrage sans les ROMs d'origine. Une liste vide dit donc vrai. Les deux
+# md5 que ses `notes` publient (bios7.bin, bios9.bin) ne sont pas repris :
+# les déclarer ferait annoncer un manque là où rien ne manque, et un rapport
+# qui accuse à tort se lit exactement comme un rapport qui se tait.
+bios       = []
+# LA DEUXIÈME ÉCRAN N'EST PAS RÉGLÉE ICI, et c'est un manque nommé. La DS a
+# deux écrans, et le core expose leur disposition (haut/bas, côte à côte,
+# écran unique) par une OPTION DE CORE, pas par la ligne de commande ni par
+# retroarch.cfg : elle vit dans config\melonDS\melonDS.opt, que RetroArch
+# écrit lui-même au premier lancement. Rien n'est posé tant que ce fichier
+# n'a pas été LU sur la machine — une clé recopiée d'une documentation est
+# ignorée en silence, et l'écran resterait tel quel. À relever au premier
+# lancement, exactement comme l'amorçage des autres émulateurs.
+cost       = "light"
+[system.render.native]
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+fill = "entier"
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
+'''
+[system.render.full]
+args = '--appendconfig "{render_config}"'
+fill = "ajuste"
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
+'''
+
+[[system]]
+id         = "saturn"
+name       = "Saturn"
+folders    = ["Saturn", "Sega Saturn"]
+# mednafen_saturn_libretro.info : supported_extensions = "ccd|chd|cue|toc|m3u".
+# Le « .bin » n'y est PAS, et c'est heureux : un dump Saturn est fait d'une
+# trentaine de pistes .bin qu'un seul .cue rassemble. Les accepter aurait fait
+# trente entrées Steam pour un jeu, dont vingt-neuf qui ne démarrent pas.
+extensions = [".cue", ".chd", ".ccd", ".toc", ".m3u"]
+# BEETLE SATURN PLUTÔT QUE KRONOS, et l'arbitrage est écrit ici parce qu'il se
+# paie. Kronos rend en OpenGL et sait monter la résolution interne ; Beetle est
+# rendu logiciel, résolution d'origine seulement, et exige davantage du
+# processeur (sa propre `description` le dit). Ce qui a tranché n'est pas
+# l'image, c'est le BIOS : Kronos le cherche sous « kronos\saturn_bios.bin »,
+# un CHEMIN, alors que la vérification de `retro` compare des NOMS de fichier
+# (bios._trouver). Le rapport aurait dit « déposez saturn_bios.bin » pendant
+# que l'émulateur l'attendait dans un sous-dossier — un rapport faux se lit
+# exactement comme un rapport absent. Beetle porte des noms plats, qui se
+# vérifient pour de bon.
+launch     = '-L "RetroArch-Win64\cores\mednafen_saturn_libretro.dll" {render} -f "{rom}"'
+# Les deux BIOS sont déclarés firmware0/1_opt = "false" — REQUIS — et ils se
+# partagent le monde : sega_101.bin couvre le Japon, mpr-17933.bin l'Amérique
+# du Nord et l'Europe. C'est exactement la forme du groupe « psx-region » de
+# DuckStation : un seul suffit, celui de la région du jeu, et `group` fait dire
+# au rapport « un parmi » plutôt que d'exiger les deux.
+#
+# ⚠ AUCUN DES DEUX N'EST SUR CETTE MACHINE. Relevé le 2026-08-29 :
+# G:\retro\bios ne porte que PS3UPDAT.PUP, PSVUPDAT.PUP et scph5502.bin. Tant
+# que le propriétaire n'y dépose pas mpr-17933.bin — Saturn Bomberman est une
+# version USA — le jeu ne démarrera pas, et c'est `retro status --bios` qui le
+# dira, en le nommant. Les empreintes viennent des `notes` du .info lu sur la
+# console, pas d'une page recopiée.
+bios       = [
+  { file = "sega_101.bin",  md5 = "85ec9ca47d8f6807718151cbcca8b964", required = true, group = "saturn-region", region = "Japon" },
+  { file = "mpr-17933.bin", md5 = "3240872c70984b6cbfda1586cab68dbe", required = true, group = "saturn-region", region = "Amérique du Nord et Europe" },
+]
+# « heavy » : le core est rendu logiciel et sa propre description annonce
+# « high CPU requirements ». C'est le premier système livré à le déclarer, et
+# c'est ce que le mode `auto` croise avec la classe de la machine.
+cost       = "heavy"
+[system.render.native]
+args = '--appendconfig "{render_config}"'
+crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
+fill = "entier"
+config = '''
+video_shader_enable = "true"
+video_shader_dir = ":\shaders"
+aspect_ratio_index = "0"
+video_aspect_ratio_auto = "false"
+video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
+'''
+[system.render.full]
+args = '--appendconfig "{render_config}"'
+fill = "ajuste"
+config = '''
+video_shader_enable = "false"
+aspect_ratio_index = "22"
+video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
+'''

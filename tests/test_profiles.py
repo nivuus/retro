@@ -1553,6 +1553,34 @@ def test_un_marqueur_de_dossier_qui_est_un_chemin_refuse(tmp_path):
             APPS.replace('"eboot.bin"', '"sce_sys/param.sfo"')))
 
 
+def test_un_systeme_en_dossiers_seuls_se_charge_sans_extension(tmp_path):
+    """Un système dont un jeu n'est JAMAIS un fichier — la PS4, dont ce qui se
+    télécharge est un paquet d'installation et non un jeu — n'a aucune
+    extension à déclarer. Le refus d'origine ne regardait que `extensions` et
+    fermait ce cas avec celui du système réellement inerte.
+
+    Ce que ça coûtait : déclarer « .pkg » pour contourner le refus aurait fait
+    une entrée Steam qui lance un INSTALLATEUR — un raccourci d'apparence
+    parfaitement normale qui ne joue rien.
+    """
+    p = profiles.load_profile(ecrire(
+        tmp_path, "shadps4.toml",
+        APPS.replace('extensions = [".vpk"]', "extensions = []")))
+    assert p.systems[0].extensions == ()
+    assert p.systems[0].app_dir_marker == "eboot.bin"
+
+
+def test_sans_extension_ni_marqueur_le_systeme_est_refuse(tmp_path):
+    """L'autre moitié : sans l'un ni l'autre, ce système ne reconnaît ni
+    fichier ni dossier. Il se chargerait, apparaîtrait dans `retro status`, et
+    rendrait zéro jeu — une bibliothèque vide, sans un mot."""
+    with pytest.raises(profiles.ProfileError, match="aucun 'app_dir_marker'"):
+        profiles.load_profile(ecrire(
+            tmp_path, "v.toml",
+            APPS.replace('extensions = [".vpk"]', "extensions = []")
+                .replace('app_dir_marker = "eboot.bin"\n', "")))
+
+
 # --- le jeton de chemin d'une cible d'amorçage ----------------------------
 
 def _cible(target: str) -> str:

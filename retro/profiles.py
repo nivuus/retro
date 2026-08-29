@@ -1230,10 +1230,26 @@ def load_profile(path: pathlib.Path) -> Profile:
             if champ not in brut:
                 raise ProfileError(f"{path} [{sid}] : champ '{champ}' manquant")
         exts = tuple(brut["extensions"])
-        if not exts:
+        # SANS EXTENSION NI MARQUEUR, ce système ne peut rien reconnaître :
+        # ni un fichier (c'est `extensions` qui le dit), ni un dossier (c'est
+        # `app_dir_marker`). Il se chargerait, apparaîtrait dans `retro
+        # status`, et rendrait zéro jeu — une bibliothèque vide, sans un mot.
+        #
+        # AVEC UN MARQUEUR SEUL, il reconnaît quelque chose, et la liste vide
+        # est alors une RÉPONSE plutôt qu'un oubli : elle dit « sur ce système,
+        # un jeu n'est jamais un fichier ». C'est le cas de la PS4, dont ce
+        # qui se télécharge est un PAQUET D'INSTALLATION et non un jeu —
+        # déclarer « .pkg » y aurait fait une entrée Steam qui lance un
+        # installateur, un raccourci d'apparence normale qui ne joue rien.
+        # Le refus d'origine ne distinguait pas les deux cas et fermait le
+        # second avec le premier.
+        if not exts and not brut.get("app_dir_marker", ""):
             raise ProfileError(
-                f"{path} [{sid}] : aucune extension. Ce système ne pourrait "
-                "matcher aucune ROM et serait absent sans rien signaler."
+                f"{path} [{sid}] : aucune extension et aucun "
+                "'app_dir_marker'. Ce système ne pourrait matcher ni fichier "
+                "ni dossier, et serait absent sans rien signaler. Déclarer "
+                "des extensions si un jeu y est un fichier, un "
+                "'app_dir_marker' s'il y est un dossier installé."
             )
         # Le scan compare à Path.suffix, qui porte toujours son point.
         mauvaises = [e for e in exts if not e.startswith(".")]
