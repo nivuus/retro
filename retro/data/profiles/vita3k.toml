@@ -37,8 +37,13 @@
 #     --fullscreen, -F « Start the emulator in fullscreen mode. » ;
 #     --installed-path, -r « Path to the installed app to run » — l'autre voie
 #                   pour une application DÉJÀ installée dans le ux0: de
-#                   Vita3K ; sa forme exacte (identifiant de titre ou chemin)
-#                   reste à mesurer, et le profil ne s'en sert pas ;
+#                   Vita3K. SA FORME EST MESURÉE depuis le 2026-08-29, et ce
+#                   n'est pas un chemin : config.cpp la valide par
+#                   CLI::IsMember(get_file_set(vita_fs_path / "ux0/app")), qui
+#                   rend les NOMS DE DOSSIERS de ux0/app — c'est donc le
+#                   TITLE ID. Le profil ne s'en sert pas encore : `-r` échoue
+#                   au parsing sur un titre absent de ux0/app, il ne peut donc
+#                   pas servir aussi les jeux non installés.
 #     --firmware    « Path to the firmware file (.pup extension) to install »
 #                   — voir la section BIOS plus bas ;
 #     -c, --config-location « Default loaded: <Vita3K>/config.yml » : la
@@ -73,7 +78,12 @@ exe = 'Vita3K.exe'
 # Rien dans l'aide ne le dit ; c'est le journal d'installation qui l'a montré
 # (« Extracting … to C:\Users\…\AppData\Roaming\Vita3K\Vita3K\PUP_DEC »).
 
-# AMORÇAGE — un bloc, et il ferme une modale mesurée le 2026-08-29.
+# AMORÇAGE — DEUX blocs, et ils ferment DEUX modales distinctes.
+#
+# Les deux modales de Vita3K ne vivent ni dans le même fichier ni dans le même
+# format : celle des privilèges est un QSettings INI, celle des polices une clé
+# d'un YAML. Les confondre poserait une clé qu'aucun lecteur ne lit — et rien
+# ne le dirait. Le second bloc est plus bas.
 #
 # 🔴 LA PANNE : Vita3K avertit à CHAQUE lancement qu'il tourne avec des
 # privilèges élevés — une boîte modale qu'aucune manette ne ferme, exactement
@@ -153,6 +163,82 @@ enforced = '''
 warnAdminPrivileges=false
 '''
 
+# LA SECONDE MODALE — le paquet de polices, et un fichier d'un AUTRE format.
+#
+# 🔴 LA PANNE, relevée le 2026-08-29 (dette D9) : Vita3K ouvre au lancement un
+# avertissement « firmware incomplet » nommant le paquet de polices, avec un
+# bouton « lancer quand même » et une case « ne plus prévenir ». Aucune manette
+# ne la ferme. La case a été cochée à la main une fois — et comme les quatre
+# réglages de D7, rien ne la repose.
+#
+# LA CLÉ, ET SA SOURCE — lue dans le CODE de Vita3K, jamais dans une page de
+# documentation ni dans les chaînes du binaire, qui donnent les libellés de
+# l'interface et non les valeurs du fichier (leçon D2) :
+#
+#     config/include/config/config.h
+#         code(bool, "warn-missing-firmware", true, warn_missing_firmware)
+#         — le nom EXACT de la clé, et son défaut : true. Ne rien poser laisse
+#         donc la modale sortir à chaque partie.
+#     gui-qt/src/main_window.cpp
+#         confirm_missing_firmware_warning fait
+#         emuenv.cfg.warn_missing_firmware = false; puis serialize_config(…)
+#         — c'est CETTE clé-là que la case écrit, et pas celle de D7.
+#     config/src/config.cpp, init_config
+#         la clé n'est exposée par AUCUNE option de ligne de commande : le
+#         fichier est la seule voie.
+#
+# ⚠ CE FICHIER EST UN YAML, et c'est ce qui a fait écrire le second dialecte
+# de fusion (retro/profiles.py, cles_de). Une ligne posée en INI y serait
+# ignorée en silence : la fusion exige un « = » et n'aurait rien vu.
+#
+# POURQUOI `enforced` ET NON `content`. Vita3K CRÉE lui-même son config.yml au
+# premier lancement (init_config → serialize_config, config/src/config.cpp) :
+# le régime « si-absent » ne se déclencherait donc JAMAIS, et la clé ne serait
+# jamais posée. Seul le régime qui lit et fusionne s'applique ici.
+#
+# CE QUI N'ENTRE PAS DANS CE BLOC, et pourquoi :
+#
+#   `pref-path`, qui sortirait le système de fichiers Vita de %APPDATA%. Il
+#   attend la mesure de la tâche 1 du plan D9 — la cause de l'échec de
+#   `install_content` — parce qu'il n'est un remède que si cette cause est la
+#   longueur ou le lieu de la destination. Et il a un piège propre : une valeur
+#   non vide qui ne désigne pas un dossier EXISTANT fait refuser le démarrage
+#   (« Cannot find Vita FS path »). Le dossier se crée avant, ou la console ne
+#   démarre plus.
+#
+#   tout le reste de la configuration de Vita3K. Aucune clé n'entre ici sans
+#   avoir été relevée dans la source ou dans un fichier que l'émulateur a
+#   lui-même écrit.
+
+[[bootstrap]]
+# « -c, --config-location » annonce « Default loaded: <Vita3K>/config.yml » :
+# la configuration vit À CÔTÉ de l'exécutable, donc sous le dossier
+# d'installation. Le jeton, et non « Vita3K » en clair : ce nom se surcharge au
+# manifeste du propriétaire, et le réécrire ici ferait rater la cible en
+# silence.
+target = '{install_dir}\config.yml'
+
+# L'en-tête seul, en commentaire YAML — « # », pas « ; », qui n'est pas un
+# commentaire dans ce format et corromprait le fichier. Aucune préférence : il
+# n'en a été mesuré aucune, et en inventer une la rendrait indiscernable d'un
+# relevé.
+content = '''
+# Écrit par « retro », qui distingue trois choses :
+#   · ce qu'il IMPOSE et repose à CHAQUE lancement — la clé ci-dessous ; la
+#     changer ici ne tiendrait pas ;
+#   · ce qu'il a posé UNE FOIS, à la création de ce fichier, et ne retouche
+#     plus jamais : vos réglages tiennent ;
+#   · tout le reste, qui est à vous et qu'il ne lit même pas.
+'''
+
+# Une seule clé imposée, une seule modale fermée. Aucune marque de ligne n'est
+# posée à côté d'elle : voir retro-launch.cs, MARQUE_FUSION — en YAML, la
+# marque serait effacée à chaque régénération du fichier et reposée à chaque
+# lancement, ce qui déposerait une sauvegarde de plus par partie.
+enforced = '''
+warn-missing-firmware: false
+'''
+
 # Manette : « inconnu », et il ne peut rien y avoir d'autre aujourd'hui.
 # Vita3K ne s'installe pas depuis ce manifeste — son empreinte est vide —
 # donc personne n'a pu voir une manette repondre dans cet emulateur. Ce
@@ -165,11 +251,10 @@ warnAdminPrivileges=false
 # jeux Steam, ni depuis le client Moonlight — et aucun des trois maillons n'a
 # été mesuré : dette D1 de docs/dettes.md. Le rumble est un réglage de la
 # configuration d'entrée, pas de la ligne de commande : il ira dans le
-# gabarit d'entrée du sous-projet E. Ici la question est même en amont des
-# autres profils : Vita3K ne s'installe pas depuis ce manifeste, aucun
-# `target` écrivable ne désigne encore son config.yml (voir la note
-# d'amorçage ci-dessus), et le nom de la clé n'a été relevé dans AUCUN
-# fichier que Vita3K a lui-même écrit. Recopié d'une documentation, il serait
+# gabarit d'entrée du sous-projet E. Le config.yml est désormais ATTEIGNABLE
+# — le second bloc d'amorçage ci-dessus y écrit — mais cela ne change rien
+# ici : le nom de la clé de vibration n'a été relevé dans AUCUNE source,
+# ni dans le code, ni dans un fichier que Vita3K a lui-même écrit. Recopié d'une documentation, il serait
 # ignoré en silence et la manette resterait muette exactement comme
 # aujourd'hui. Ce qui reste à mesurer, sur la machine : ce que Vita3K écrit
 # de lui-même une fois la vibration activée dans son interface.
@@ -224,7 +309,15 @@ app_dir_marker = "eboot.bin"
 # comporterait exactement comme un drapeau ignoré : le jeu s'ouvrirait en
 # fenêtre, sans un mot. C'est la même classe d'erreur que les valeurs de
 # CropMode recopiées des libellés dans duckstation.toml.
-launch     = '--fullscreen "{rom}"'
+# ⚠ `--keep-config` N'EST PAS DÉCORATIF, et il est la moitié du bloc
+# d'amorçage ci-dessus. `overwrite_config` vaut VRAI par défaut —
+# add_flag("!--keep-config,!-w", …) dans config/src/config.cpp — et
+# `init_config` finit par `serialize_config`. Sans ce drapeau, Vita3K RÉGÉNÈRE
+# son config.yml à chaque lancement : l'en-tête que la console vient de poser
+# disparaît, la fusion le repose au lancement suivant, et chaque partie dépose
+# une sauvegarde de plus — l'inverse exact de ce que l'idempotence garantit.
+# La forme longue, pour la même raison que --fullscreen : « -w » se lit mal.
+launch     = '--keep-config --fullscreen "{rom}"'
 # Le titre affiché sera le NOM DU DOSSIER. Si le propriétaire garde les
 # identifiants de titre de la console (« PCSE00123 »), sa bibliothèque Steam
 # affichera des identifiants. Le vrai nom du jeu est dans
@@ -280,8 +373,9 @@ bios       = []
 # Modes de rendu : aucun bloc, et c'est une réponse, pas un oubli. Des options
 # lues dans config.cpp, aucune n'est un réglage de rendu : --backend-renderer
 # choisit OpenGL ou Vulkan, ce qui n'est ni une résolution ni un cadrage. Le
-# multiplicateur de résolution de Vita3K vit dans son config.yml — donc
-# derrière l'amorçage, donc derrière le jeton de chemin qui manque ci-dessus.
+# multiplicateur de résolution de Vita3K vit dans son config.yml, que le second
+# bloc d'amorçage sait désormais atteindre — mais sa CLÉ n'a pas été relevée,
+# et une clé inventée serait ignorée en silence.
 # `cost` n'est pas déclaré non plus : il ne sert qu'au mode `auto`, qui croise
 # ce coût avec la machine POUR CHOISIR ENTRE des modes déclarés. Sans modes,
 # ce serait une valeur que personne ne lit.
