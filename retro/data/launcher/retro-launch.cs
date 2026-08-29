@@ -236,27 +236,24 @@ static class RetroLaunch
             return;
         }
 
+        // « bootstrap_when » ne gouverne QUE le fichier « posé une fois ». Le
+        // second regime, celui des cles imposees, se reconnait a la presence
+        // de « bootstrap_enforced » : le profil le distingue par STRUCTURE,
+        // pas par un mode qu'on pourrait mettre en contradiction avec ce
+        // qu'il contient.
         string quand = Valeur(p, "bootstrap_when");
-        if (quand != SI_ABSENT && quand != FUSION)
+        if (quand.Length > 0 && quand != SI_ABSENT)
             throw new Exception(
                 "Le plan demande une stratégie d'amorçage inconnue : « " + quand
-                + " ». Ce lanceur ne connaît que « " + SI_ABSENT + " » et « "
-                + FUSION + " ».\n\n"
+                + " ». Ce lanceur ne connaît que « " + SI_ABSENT + " » pour le "
+                + "fichier posé une fois, et « " + FUSION + " » pour les clés "
+                + "imposées, qu'il reconnaît à « bootstrap_enforced ».\n\n"
                 + "Recompiler le lanceur (compiler.cmd), ou relancer "
                 + "« retro scan ».");
 
         cible = Environment.ExpandEnvironmentVariables(cible);
         bool force = OrdreDeReamorcage(profil);
-        // En « si-absent », une cible qui existe clot l'affaire. En fusion,
-        // c'est precisement le cas interessant : on y va, mais Fusionner()
-        // ne reecrira rien si le fichier est deja conforme.
-        if (quand == SI_ABSENT && File.Exists(cible) && !force) return;
-
-        string source = Valeur(p, "bootstrap_source");
-        if (!File.Exists(source))
-            throw new Exception(
-                "Le fichier de configuration à poser est introuvable :\n\n"
-                + source + "\n\nRelancer « retro scan » depuis l'hôte.");
+        string impose = Valeur(p, "bootstrap_enforced");
 
         // GetDirectoryName rend null pour une racine ("C:\") : tester
         // parent.Length sans ce garde leverait une NullReferenceException,
@@ -272,93 +269,152 @@ static class RetroLaunch
         if (parent.Length > 0 && !Directory.Exists(parent))
             Directory.CreateDirectory(parent);
 
-        // CE QU'ON VA ECRIRE, decide AVANT toute sauvegarde. L'ordre compte :
-        // en fusion, un fichier deja conforme ne doit etre ni sauvegarde ni
-        // reecrit — sinon chaque lancement deposerait une sauvegarde de plus
-        // et retoucherait un fichier qui n'avait rien a changer, ce qui est
-        // exactement le contraire de ce que le proprietaire a autorise.
-        bool bom;
-        string contenu = LireTexte(source, out bom);
-        int posees = 0;
-        if (quand == FUSION && File.Exists(cible))
-        {
-            bool bomCible;
-            string existant = LireTexte(cible, out bomCible);
-            contenu = Fusionner(existant, contenu, out posees);
-            // Le fichier appartient au proprietaire : on lui rend sa propre
-            // marque d'octets, pas celle du fichier qu'on apporte.
-            bom = bomCible;
-            if (contenu == existant)
-            {
-                Noter("amorcage : " + cible + " deja conforme — aucune "
-                      + "sauvegarde, aucune reecriture (" + FUSION + ")");
-                InscrireTemoin(profil, cible);
-                if (force) ConsommerOrdre(profil, true);
-                return;
-            }
-        }
-
-        // Rien n'ecrase une configuration sans sauvegarde : la convention est
-        // celle de shortcuts.vdf.bak-*, deja en usage cote synchronisation.
-        if (File.Exists(cible))
-        {
-            // L'horodatage a une resolution d'une seconde : deux lancements
-            // du meme profil dans la meme seconde visent le meme nom, et
-            // File.Copy(..., false) refuse a bon droit de l'ecraser — mais
-            // il faut alors essayer un AUTRE nom plutot que de faire echouer
-            // l'amorcage. Meme parade que sauvegarder() cote synchronisation
-            // (retro/steam/writer.py) : un suffixe « -N » croissant, borne
-            // pour ne jamais boucler indefiniment.
-            string based = cible + ".bak-" + DateTime.Now.ToString(
-                "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-            string sauvegarde = based;
-            bool copiee = false;
-            for (int n = 0; n < 1000 && !copiee; n++)
-            {
-                sauvegarde = n == 0 ? based : based + "-" + n;
-                try
-                {
-                    File.Copy(cible, sauvegarde, false);
-                    copiee = true;
-                }
-                catch (IOException)
-                {
-                    // Un filtre d'exception (« catch (...) when ») serait du
-                    // C# 6 ; compiler.cmd appelle le csc.exe du .NET
-                    // Framework 4.0.30319, dont rien ne garantit la version
-                    // de langage sur la machine du proprietaire. Le test est
-                    // donc fait EN CLAIR, dans le catch : si ce nom est deja
-                    // pris, essayer le suivant ; toute autre IOException
-                    // (disque plein, permission) n'est pas une collision de
-                    // nom et remonte telle quelle.
-                    if (!File.Exists(sauvegarde)) throw;
-                }
-            }
-            if (!copiee)
-                throw new Exception(
-                    "Impossible de sauvegarder " + cible + " : 1000 noms de "
-                    + "sauvegarde sont déjà pris.");
-            Noter("amorcage : " + cible + " sauvegarde en " + sauvegarde);
-        }
-
-        // ECRITURE ATOMIQUE, comme retro/steam/writer.py (os.replace) : c'est
-        // la politique du depot, et elle vaut ici plus qu'ailleurs. Un
-        // File.Copy interrompu — disque plein, machine eteinte, antivirus —
-        // laisserait une cible qui EXISTE, a moitie ecrite : la strategie
-        // « si-absent » ne la reparerait plus JAMAIS, et l'emulateur
-        // rouvrirait son assistant pour de bon. On ecrit donc a cote, puis on
-        // bascule d'un coup : a tout instant, la cible est soit l'ancienne,
-        // soit la nouvelle, jamais une moitie des deux.
+        // LES DEUX REGIMES, DANS CET ORDRE, SUR LA MEME CIBLE.
         //
-        // Deux appels et non un : File.Move refuse d'ecraser (l'option
-        // « overwrite » n'existe pas sur le .NET Framework) et File.Replace
-        // exige au contraire une cible existante.
+        // 1. poser le fichier s'il est absent — les preferences, que le
+        //    proprietaire pourra ensuite changer pour de bon ;
+        // 2. y refondre les cles que la console impose.
+        //
+        // L'ordre n'est pas indifferent : sur une console neuve, la seconde
+        // etape doit trouver le fichier que la premiere vient de poser. A
+        // l'envers, la fusion aurait cree un fichier ne portant QUE les cles
+        // imposees, et « si-absent » n'aurait plus jamais pose les
+        // preferences — la cible existant desormais.
+        bool ecrit = false;
+
+        if (!File.Exists(cible) || force)
+        {
+            string source = Valeur(p, "bootstrap_source");
+            if (source.Length > 0)
+            {
+                if (!File.Exists(source))
+                    throw new Exception(
+                        "Le fichier de configuration à poser est introuvable :"
+                        + "\n\n" + source + "\n\nRelancer « retro scan » "
+                        + "depuis l'hôte.");
+                bool bomSource;
+                string contenu = LireTexte(source, out bomSource);
+                Sauvegarder(cible);
+                EcrireAtomique(cible, contenu, bomSource);
+                Noter("amorcage : " + profil + " -> " + cible + " (" + SI_ABSENT
+                      + ")" + (force ? " (ordre de reamorcage)" : ""));
+                ecrit = true;
+            }
+        }
+
+        if (impose.Length > 0)
+        {
+            if (!File.Exists(impose))
+                throw new Exception(
+                    "Le fichier des clés imposées est introuvable :\n\n"
+                    + impose + "\n\nRelancer « retro scan » depuis l'hôte.");
+            bool bomImpose;
+            string apporte = LireTexte(impose, out bomImpose);
+            if (File.Exists(cible))
+            {
+                bool bomCible;
+                string existant = LireTexte(cible, out bomCible);
+                int posees;
+                string fusionne = Fusionner(existant, apporte, out posees);
+                // Un fichier deja conforme n'est NI sauvegarde NI reecrit.
+                // Sans ce test, chaque lancement deposerait une sauvegarde de
+                // plus et retoucherait un fichier qui n'avait rien a changer
+                // — le contraire exact de ce que le proprietaire a autorise.
+                if (fusionne == existant)
+                {
+                    Noter("amorcage : " + cible + " deja conforme — aucune "
+                          + "sauvegarde, aucune reecriture (" + FUSION + ")");
+                }
+                else
+                {
+                    Sauvegarder(cible);
+                    // Le BOM rendu est celui de la CIBLE : le fichier
+                    // appartient au proprietaire, et le lui changer au
+                    // passage serait une modification qu'il n'a pas
+                    // autorisee.
+                    EcrireAtomique(cible, fusionne, bomCible);
+                    Noter("amorcage : " + profil + " -> " + cible + " ("
+                          + FUSION + ", " + posees + " cle(s) imposee(s))");
+                    ecrit = true;
+                }
+            }
+            else
+            {
+                // Aucune cible : le profil n'a pas de fichier « posé une
+                // fois », ou il est vide. Les cles imposees suffisent a le
+                // creer — sans elles l'emulateur rouvrirait son assistant.
+                EcrireAtomique(cible, apporte, bomImpose);
+                Noter("amorcage : " + profil + " -> " + cible + " (" + FUSION
+                      + ", fichier cree)");
+                ecrit = true;
+            }
+        }
+
+        if (ecrit) InscrireTemoin(profil, cible);
+        if (force) ConsommerOrdre(profil, true);
+    }
+
+    // Une copie horodatee de la cible, avant toute ecriture. Rien n'ecrase
+    // une configuration sans sauvegarde : la convention est celle de
+    // shortcuts.vdf.bak-*, deja en usage cote synchronisation.
+    static void Sauvegarder(string cible)
+    {
+        if (!File.Exists(cible)) return;
+        // L'horodatage a une resolution d'une seconde : deux lancements du
+        // meme profil dans la meme seconde visent le meme nom, et
+        // File.Copy(..., false) refuse a bon droit de l'ecraser — mais il
+        // faut alors essayer un AUTRE nom plutot que de faire echouer
+        // l'amorcage. Meme parade que sauvegarder() cote synchronisation
+        // (retro/steam/writer.py) : un suffixe « -N » croissant, borne pour
+        // ne jamais boucler indefiniment.
+        string based = cible + ".bak-" + DateTime.Now.ToString(
+            "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        string sauvegarde = based;
+        bool copiee = false;
+        for (int n = 0; n < 1000 && !copiee; n++)
+        {
+            sauvegarde = n == 0 ? based : based + "-" + n;
+            try
+            {
+                File.Copy(cible, sauvegarde, false);
+                copiee = true;
+            }
+            catch (IOException)
+            {
+                // Un filtre d'exception (« catch (...) when ») serait du
+                // C# 6 ; compiler.cmd appelle le csc.exe du .NET Framework
+                // 4.0.30319, dont rien ne garantit la version de langage sur
+                // la machine du proprietaire. Le test est donc fait EN CLAIR,
+                // dans le catch : si ce nom est deja pris, essayer le
+                // suivant ; toute autre IOException (disque plein,
+                // permission) n'est pas une collision de nom et remonte telle
+                // quelle.
+                if (!File.Exists(sauvegarde)) throw;
+            }
+        }
+        if (!copiee)
+            throw new Exception(
+                "Impossible de sauvegarder " + cible + " : 1000 noms de "
+                + "sauvegarde sont déjà pris.");
+        Noter("amorcage : " + cible + " sauvegarde en " + sauvegarde);
+    }
+
+    // ECRITURE ATOMIQUE, comme retro/steam/writer.py (os.replace) : c'est la
+    // politique du depot, et elle vaut ici plus qu'ailleurs. Une ecriture
+    // interrompue — disque plein, machine eteinte, antivirus — laisserait une
+    // cible qui EXISTE, a moitie ecrite : « si-absent » ne la reparerait plus
+    // JAMAIS, et l'emulateur rouvrirait son assistant pour de bon. On ecrit
+    // donc a cote, puis on bascule d'un coup : a tout instant, la cible est
+    // soit l'ancienne, soit la nouvelle, jamais une moitie des deux.
+    //
+    // Deux appels et non un : File.Move refuse d'ecraser (l'option
+    // « overwrite » n'existe pas sur le .NET Framework) et File.Replace exige
+    // au contraire une cible existante.
+    static void EcrireAtomique(string cible, string contenu, bool bom)
+    {
         string temporaire = cible + ".retro-tmp";
         try
         {
-            // WriteAllText et non File.Copy : en fusion, ce qui part sur le
-            // disque n'est plus le fichier source mais le resultat du
-            // melange. En « si-absent », c'est le source mot pour mot.
             File.WriteAllText(temporaire, contenu, new UTF8Encoding(bom));
             if (File.Exists(cible)) File.Replace(temporaire, cible, null);
             else File.Move(temporaire, cible);
@@ -372,14 +428,7 @@ static class RetroLaunch
             catch (Exception) { }
             throw;
         }
-        Noter("amorcage : " + profil + " -> " + cible
-              + " (" + quand
-              + (quand == FUSION ? ", " + posees + " cle(s) posee(s)" : "")
-              + ")" + (force ? " (ordre de reamorcage)" : ""));
-        InscrireTemoin(profil, cible);
-        if (force) ConsommerOrdre(profil, true);
     }
-
 
     // Ce qu'une fusion FERAIT, sans rien ecrire. C'est la seule facon de
     // verifier a distance qu'elle ne va pas abimer le fichier du
@@ -389,24 +438,26 @@ static class RetroLaunch
     // Toute exception est RATTRAPEE et rendue en clair : --explain est appele
     // par WinRM en session 0, ou une boite de dialogue pendrait jusqu'a
     // l'expiration du delai. Meme raison que pour la lecture de reamorcer.txt.
-    static string FusionAPoser(string cible, string source)
+    static string FusionAPoser(string cible, string impose)
     {
         try
         {
             cible = Environment.ExpandEnvironmentVariables(cible);
-            if (!File.Exists(source))
-                return "inconnu (le fichier a poser est introuvable : "
-                       + source + ")";
-            bool bomCible, bomSource;
+            if (!File.Exists(impose))
+                return "inconnu (le fichier des cles imposees est "
+                       + "introuvable : " + impose + ")";
+            bool bomCible, bomImpose;
+            string apporte = LireTexte(impose, out bomImpose);
+            if (!File.Exists(cible))
+                return "oui (" + FUSION + " : la cible n'existe pas encore)";
             string existant = LireTexte(cible, out bomCible);
             int posees;
-            string fusionne = Fusionner(
-                existant, LireTexte(source, out bomSource), out posees);
+            string fusionne = Fusionner(existant, apporte, out posees);
             if (fusionne == existant)
-                return "non (" + FUSION + " : la cible est deja conforme, "
-                       + "rien ne sera reecrit)";
-            return "oui (" + FUSION + " : " + posees + " cle(s) posee(s) ; la "
-                   + "cible sera sauvegardee, le reste de son contenu est "
+                return "non (" + FUSION + " : la cible porte deja les cles "
+                       + "imposees, rien ne sera reecrit)";
+            return "oui (" + FUSION + " : " + posees + " cle(s) imposee(s) ; "
+                   + "la cible sera sauvegardee, le reste de son contenu est "
                    + "preserve)";
         }
         catch (Exception e)
@@ -811,6 +862,11 @@ static class RetroLaunch
             rapport.AppendLine("commande=" + commande);
             string cibleAmorcage = Valeur(p, "bootstrap_target");
             rapport.AppendLine("amorcage_cible=" + cibleAmorcage);
+            // Combien de cles la console impose dans ce fichier, et non
+            // seulement qu'elle en impose : « 3 cles » et « tout le fichier »
+            // n'appellent pas la meme reaction.
+            rapport.AppendLine("amorcage_impose="
+                + (Valeur(p, "bootstrap_enforced").Length > 0 ? "oui" : "non"));
             // Un ordre en attente CHANGE la reponse, et le taire faisait
             // mentir le seul controle verifiable a distance : --explain
             // rendait « non (la cible existe) » alors que le lancement
@@ -866,12 +922,14 @@ static class RetroLaunch
                     + "puis reecrite)";
             else if (File.Exists(Environment.ExpandEnvironmentVariables(
                          cibleAmorcage)))
-                // « si-absent » s'arrete la ; la fusion, elle, ROUVRE ce
-                // fichier. Repondre « non (la cible existe) » pour une fusion
-                // mentirait sur le seul controle verifiable a distance — et
-                // c'est precisement le fichier du proprietaire qui est en jeu.
-                aPoser = Valeur(p, "bootstrap_when") == FUSION
-                    ? FusionAPoser(cibleAmorcage, Valeur(p, "bootstrap_source"))
+                // « si-absent » s'arrete la ; les cles IMPOSEES, elles,
+                // rouvrent ce fichier a chaque lancement. Repondre « non (la
+                // cible existe) » quand il y en a mentirait sur le seul
+                // controle verifiable a distance — et c'est precisement le
+                // fichier du proprietaire qui est en jeu.
+                aPoser = Valeur(p, "bootstrap_enforced").Length > 0
+                    ? FusionAPoser(cibleAmorcage,
+                                   Valeur(p, "bootstrap_enforced"))
                     : "non (la cible existe)";
             else
                 aPoser = "oui";
