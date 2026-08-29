@@ -1365,9 +1365,16 @@ def load_profile(path: pathlib.Path) -> Profile:
                 "d'application, jamais plus bas : un chemin n'y serait comparé "
                 "à rien, et le système rendrait zéro jeu sans un mot."
             )
-        if "{rom}" not in brut["launch"]:
+        # {rom} — le CHEMIN — ou {rom_id} — le NOM SEUL. Le second existe
+        # pour les émulateurs qui ne se lancent pas sur un chemin : Vita3K se
+        # lance sur un identifiant de titre, et lui donner un chemin le fait
+        # RÉINSTALLER le jeu par-dessus lui-même (mesuré le 2026-08-30 : après
+        # ce lancement, l'application avait perdu son eboot.bin). Ce qui reste
+        # interdit est de n'en avoir AUCUN, et la raison est inchangée.
+        if "{rom}" not in brut["launch"] and "{rom_id}" not in brut["launch"]:
             raise ProfileError(
-                f"{path} [{sid}] : le gabarit launch ne contient pas {{rom}}. "
+                f"{path} [{sid}] : le gabarit launch ne contient ni {{rom}} "
+                f"ni {{rom_id}}. "
                 "L'émulateur s'ouvrirait sur son propre menu, sans jeu, et la "
                 "console aurait l'air de fonctionner."
             )

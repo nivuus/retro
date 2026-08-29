@@ -873,3 +873,31 @@ def test_le_lanceur_accepte_un_jeu_qui_est_un_dossier():
     assert "!Directory.Exists(rom)" in garde, (
         f"les deux tests doivent etre sur la MEME condition : {garde.strip()}"
     )
+
+
+def test_le_lanceur_substitue_l_identifiant_du_jeu():
+    """{rom_id} rend le NOM du jeu, sans chemin ni extension.
+
+    Il existe pour les emulateurs qui ne se lancent PAS sur un chemin. Vita3K
+    en est un : son argument positionnel signifie « installer ET lancer », si
+    bien que lui passer le dossier d'une application deja installee la
+    reinstalle par-dessus elle-meme. Mesure le 2026-08-30 : apres ce
+    lancement, l'application avait perdu son eboot.bin et son param.sfo, et
+    ne demarrait plus. Un lancement qui DETRUIT ce qu'il devait lancer.
+
+    Ce test lit la SOURCE, faute de compilateur C# sur cette machine.
+    """
+    src = (launcher.SOURCES / launcher.SOURCE).read_text(encoding="utf-8-sig")
+    assert '"{rom_id}"' in src, (
+        "le lanceur ne substitue pas {rom_id} : un gabarit qui le porte "
+        "passerait le jeton LITTERAL a l'emulateur, qui ne lancerait rien"
+    )
+    assert "GetFileNameWithoutExtension" in src, (
+        "{rom_id} doit etre le nom SEUL : un chemin complet ferait "
+        "reinstaller le jeu au lieu de le lancer"
+    )
+    # L'ordre compte : {rom_id} avant {rom}, sinon « {rom} » remplacerait le
+    # debut de « {rom_id} » et laisserait un « _id » colle au chemin.
+    assert src.index('"{rom_id}"') < src.index('.Replace("{rom}", rom)'), (
+        "{rom_id} doit etre substitue AVANT {rom}"
+    )

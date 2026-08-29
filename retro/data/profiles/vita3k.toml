@@ -286,22 +286,36 @@ name       = "PS Vita"
 # choisi se déclare ici, ou le dossier se renomme. « retro scan » nomme les
 # dossiers qu'aucun profil ne reconnaît, précisément pour ça.
 folders    = ["PSVita", "PS Vita", "PlayStation Vita", "Vita"]
-# Une bibliothèque Vita a DEUX formes, et il faut les deux :
+# UNE BIBLIOTHÈQUE VITA NE PORTE QUE DES APPLICATIONS INSTALLÉES, et cette
+# liste vide est le résultat d'une DESTRUCTION mesurée.
 #
-#   .vpk               le paquet non installé, un FICHIER ;
-#   ux0:app\<TITLEID>\ l'application INSTALLÉE, un DOSSIER.
+# Le profil couvrait auparavant deux formes : le .vpk, un FICHIER, et
+# l'application installée, un DOSSIER. C'était une erreur, et voici pourquoi.
+# L'aide de Vita3K décrit son argument positionnel ainsi :
 #
-# `extensions` couvre la première, `app_dir_marker` la seconde. C'est le point
-# dur de la dette D5 : le scan comptait des fichiers, et une bibliothèque en
-# dossiers y rendait zéro jeu sans un mot. Le dossier est inventorié TEL QUEL
-# et n'est jamais ouvert — l'ouvrir ferait une entrée Steam par fichier du
-# jeu, ce que cette dette redoutait.
+#   content-path TEXT   Path to the app with a .vpk/.zip extension or folder
+#                       of content to install & run
 #
-# .zip est écarté volontairement, bien que Vita3K l'accepte (« a .vpk/.zip
-# extension ») : un .zip dans un dossier de jeux est plus souvent une archive
-# de n'importe quoi qu'un jeu, et chacun deviendrait une entrée Steam. Même
-# raison que les .bin écartés du profil PlayStation.
-extensions = [".vpk"]
+# « INSTALL and run » — le positionnel INSTALLE. Passer le dossier d'une
+# application déjà installée la réinstalle donc par-dessus elle-même, et le
+# 2026-08-30 cela l'a DÉTRUITE : après ce lancement, ux0\app\PCSF00012 avait
+# perdu son eboot.bin et son param.sfo, son titre était retombé sur son
+# identifiant, et Vita3K refusait de la démarrer (« Failed to read module
+# file app0:eboot.bin »). Un lancement qui détruit ce qu'il devait lancer.
+#
+# La commande qui LANCE, et ne réinstalle rien, est « -r <identifiant de
+# titre> » (« --installed-path : Path to the installed app to run »). Elle ne
+# prend pas un chemin : elle prend le NOM du dossier sous ux0\app\, d'où le
+# jeton {rom_id} du gabarit ci-dessous, et d'où la convention que la
+# bibliothèque doit suivre — un dossier par application, nommé par son
+# identifiant de titre, exactement comme Vita3K les range lui-même.
+#
+# ET UN .VPK N'EST PAS UN JEU : c'est un paquet d'INSTALLATION. Le déclarer
+# ferait une entrée Steam qui lance un installateur — un raccourci
+# d'apparence parfaitement normale qui ne joue rien, et qui, sur cette
+# machine, écrase une application qui marchait. C'est mot pour mot le
+# raisonnement déjà écrit pour le .pkg de la PS4.
+extensions = []
 # eboot.bin est l'exécutable qu'une application Vita porte à sa racine. C'est
 # LUI qui distingue une application d'un dossier de sauvegardes — sans
 # marqueur, « savedata » deviendrait une entrée de la bibliothèque. À
@@ -324,7 +338,15 @@ app_dir_marker = "eboot.bin"
 # disparaît, la fusion le repose au lancement suivant, et chaque partie dépose
 # une sauvegarde de plus — l'inverse exact de ce que l'idempotence garantit.
 # La forme longue, pour la même raison que --fullscreen : « -w » se lit mal.
-launch     = '--keep-config --fullscreen "{rom}"'
+# « -r » ET NON UN CHEMIN. Voir le bloc `extensions` ci-dessus : le
+# positionnel de Vita3K signifie « installer ET lancer », et il a détruit une
+# application installée. « -r » la LANCE, et ne réinstalle rien.
+#
+# {rom_id} rend le NOM du dossier inventorié, sans chemin ni extension. Il
+# vaut donc l'identifiant de titre — à condition que la bibliothèque nomme ses
+# dossiers comme ux0\app\ le fait. C'est la convention, et elle n'est pas
+# arbitraire : c'est celle de la console d'origine.
+launch     = '--keep-config --fullscreen -r "{rom_id}"'
 # Le titre affiché sera le NOM DU DOSSIER. Si le propriétaire garde les
 # identifiants de titre de la console (« PCSE00123 »), sa bibliothèque Steam
 # affichera des identifiants. Le vrai nom du jeu est dans

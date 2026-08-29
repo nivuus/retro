@@ -498,9 +498,15 @@ def test_chaque_gabarit_livre_guillemete_la_rom():
     nus = [
         f"{pid}/{s.id}"
         for pid, p in profiles.load_profiles(PROFILS).items()
-        for s in p.systems if '"{rom}"' not in s.launch
+        for s in p.systems
+        # {rom_id} porte lui aussi des espaces — « Uncharted Golden Abyss »
+        # est un nom de dossier possible — et il se guillemette pour la même
+        # raison. Un gabarit peut porter l'un ou l'autre, jamais aucun des
+        # deux : `load_profile` le refuse.
+        if '"{rom}"' not in s.launch and '"{rom_id}"' not in s.launch
     ]
-    assert nus == [], f"gabarits dont {{rom}} n'est pas guillemeté : {nus}"
+    assert nus == [], (
+        f"gabarits dont {{rom}} ou {{rom_id}} n'est pas guillemeté : {nus}")
 
 
 def test_chaque_profil_livre_lance_en_plein_ecran():
@@ -1067,16 +1073,25 @@ def test_les_liaisons_de_duckstation_portent_la_forme_qu_il_a_ecrite():
     )
 
 
-def test_le_systeme_vita_couvre_les_deux_formes_de_bibliotheque():
-    """Une bibliothèque PS Vita a DEUX formes, et il en faut les deux.
+def test_une_bibliotheque_vita_ne_porte_que_des_applications_installees():
+    """L'ARBITRAGE S'EST INVERSÉ LE 2026-08-30, ET UNE DESTRUCTION L'A DÉCIDÉ.
 
-    Les .vpk sont des fichiers, les applications installées sont des dossiers
-    (« ux0:app\\PCSE00123\\ »). N'en déclarer qu'une moitié ne se voit pas :
-    le scan rend simplement moins de jeux qu'il n'y en a, ce qui ressemble à
-    une bibliothèque plus petite.
+    Ce test exigeait auparavant que le système Vita couvre DEUX formes : le
+    .vpk, un fichier, et l'application installée, un dossier. La seconde
+    reste ; la première est retirée, et voici la mesure.
 
-    Ce test suit le SYSTÈME, pas le profil : c'est la forme de la
-    bibliothèque Vita qui est en jeu, quel que soit l'émulateur qui la sert.
+    L'aide de Vita3K décrit son argument positionnel ainsi : « Path to the app
+    with a .vpk/.zip extension or folder of content to INSTALL & run ».
+    Passer le dossier d'une application déjà installée la réinstalle donc
+    par-dessus elle-même — et cela l'a DÉTRUITE : ux0\\app\\PCSF00012 a perdu
+    son eboot.bin et son param.sfo, son titre est retombé sur son identifiant,
+    et Vita3K refusait de la démarrer (« Failed to read module file
+    app0:eboot.bin »). Un lancement qui détruit ce qu'il devait lancer.
+
+    La commande qui LANCE est « -r <identifiant de titre> », qui ne prend pas
+    un chemin. Et un .vpk n'est pas un jeu : c'est un paquet d'INSTALLATION,
+    dont une entrée Steam lancerait l'installateur — le raisonnement déjà
+    écrit pour le .pkg de la PS4, mot pour mot.
     """
     vita = next((s for p in profiles.load_profiles(PROFILS).values()
                  for s in p.systems if s.id == "vita"), None)
@@ -1085,9 +1100,15 @@ def test_le_systeme_vita_couvre_les_deux_formes_de_bibliotheque():
         "le système Vita ne déclare pas à quoi se reconnaît une application "
         "installée : ses dossiers de jeux resteraient invisibles au scan"
     )
-    assert ".vpk" in vita.extensions, (
-        "le système Vita ne déclare pas .vpk : les jeux non installés "
-        "resteraient invisibles"
+    assert vita.extensions == (), (
+        f"le système Vita déclare des extensions ({vita.extensions}) : un "
+        ".vpk est un paquet d'installation, et le lancer réinstalle — donc "
+        "détruit — l'application déjà en place. Mesuré le 2026-08-30."
+    )
+    assert "{rom_id}" in vita.launch and "{rom}" not in vita.launch.replace(
+        "{rom_id}", ""), (
+        f"le gabarit Vita doit lancer par IDENTIFIANT et non par chemin : "
+        f"{vita.launch!r}"
     )
 
 

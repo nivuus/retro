@@ -1176,6 +1176,24 @@ static class RetroLaunch
             .Replace("{render}", rendu)
             .Replace("  ", " ")
             .Trim()
+            // {rom_id} : le NOM du jeu, sans son chemin ni son extension.
+            //
+            // Il existe pour les émulateurs qui ne se lancent PAS sur un
+            // chemin. Vita3K en est un, et l'apprendre a coûté cher : son
+            // argument positionnel signifie « installer ET lancer », si bien
+            // que lui passer le dossier d'une application DÉJÀ installée la
+            // réinstalle par-dessus elle-même. Mesuré le 2026-08-30 sur
+            // Uncharted: Golden Abyss — après ce lancement, l'application
+            // avait perdu son eboot.bin et son param.sfo, son titre était
+            // retombé sur son identifiant, et elle ne démarrait plus. Un
+            // lancement qui DÉTRUIT ce qu'il devait lancer.
+            //
+            // Sa vraie commande est « -r <identifiant de titre> », et cet
+            // identifiant est le nom du dossier sous ux0\app\ — donc, dans
+            // une bibliothèque qui suit la même convention, le nom du dossier
+            // inventorié. C'est ce que ce jeton rend.
+            .Replace("{rom_id}", Path.GetFileNameWithoutExtension(
+                rom.TrimEnd('\\', '/')))
             .Replace("{rom}", rom);
 
         Noter(cle + " | mode " + effectif + " (" + motif + ") | "

@@ -141,7 +141,21 @@ _SERIE_VITA = re.compile(rb"(PC[SA][ABCDEFGH])(\d{5})")
 
 
 def _serie_vita(chemin: pathlib.Path) -> str:
-    """Un .vpk est une archive zip ; sce_sys/param.sfo y porte le TITLE_ID."""
+    """Le TITLE_ID, lu dans sce_sys/param.sfo.
+
+    Une application Vita INSTALLÉE est un dossier — c'est la seule forme que
+    la bibliothèque porte depuis le 2026-08-30 — et son param.sfo s'y lit
+    directement. Un .vpk, lui, est une archive zip qu'il faut ouvrir. Les deux
+    cas sont traités : un dossier dont on ne lirait pas le param.sfo
+    retomberait sur son nom, qui est justement ce qu'on cherche à dépasser.
+    """
+    if chemin.is_dir():
+        sfo = chemin / "sce_sys" / "param.sfo"
+        try:
+            m = _SERIE_VITA.search(lecture.octets(sfo)) if sfo.is_file() else None
+        except OSError:
+            return ""
+        return f"{m.group(1).decode()}-{m.group(2).decode()}" if m else ""
     try:
         with zipfile.ZipFile(chemin) as z:
             for nom in z.namelist():
