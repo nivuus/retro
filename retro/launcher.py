@@ -75,13 +75,30 @@ def config_name(cle: str, mode: str) -> str:
 
 
 BOOTSTRAP = "bootstrap"
-# La seule stratégie d'écriture pour l'instant, et le champ existe déjà pour
-# qu'il y en ait une seconde : les configurations d'entrée du sous-projet E
-# écrivent dans les MÊMES fichiers, réécrites à chaque lancement avec les
-# manettes mesurées. Deux mécanismes distincts pour « un fichier de
-# configuration que retro pose sur la machine » divergeraient au premier
-# changement.
+
+# Les deux stratégies d'écriture d'une configuration d'émulateur. Le champ
+# existait déjà pour qu'il y en ait une seconde ; la voici.
+#
+# SI_ABSENT — poser le fichier s'il n'existe pas, ne jamais y revenir. C'est
+#   ce que fait `retro` depuis toujours, et ce que l'en-tête du fichier posé
+#   promet au propriétaire.
+#
+# FUSION — le propriétaire a AUTORISÉ `retro` à modifier un fichier qui
+#   existe déjà. Autorisé à MODIFIER, jamais à ÉCRASER : la fusion ne touche
+#   qu'aux clés qu'elle apporte, préserve tout le reste — clés inconnues,
+#   commentaires, ordre — sauvegarde avant d'écrire, et ne réécrit rien si le
+#   fichier est déjà conforme.
+#
+#   Elle existe parce que deux dettes butent sur le même mur : le remplissage
+#   de DuckStation (D2) et sa manette (D3) se règlent tous deux dans un
+#   settings.ini que « si-absent » ne rouvre jamais. Une stratégie par dette
+#   aurait fait deux mécanismes divergents sur le MÊME fichier, ce que ce
+#   dépôt s'interdit déjà pour les configurations d'entrée.
 SI_ABSENT = "si-absent"
+FUSION = "fusion"
+# L'ordre compte : `test_donnees` compare cette liste à ce que retro-launch.cs
+# sait faire, et le lanceur refuse toute stratégie qu'il ne connaît pas.
+STRATEGIES = (SI_ABSENT, FUSION)
 
 
 def bootstrap_name(profile_id: str, target: str) -> str:
@@ -153,7 +170,11 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
     lignes += [
         f"bootstrap_target={bootstrap.target if bootstrap else ''}",
         f"bootstrap_source={source}",
-        f"bootstrap_when={SI_ABSENT if bootstrap else ''}",
+        # La stratégie vient du PROFIL, elle n'est plus constante : c'est le
+        # profil qui sait si sa configuration doit être posée une fois ou
+        # fusionnée à chaque passage. Le lanceur ne la choisit pas, il
+        # l'applique — et refuse celle qu'il ne connaît pas.
+        f"bootstrap_when={bootstrap.strategy if bootstrap else ''}",
     ]
     return "\n".join(lignes) + "\n"
 

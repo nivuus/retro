@@ -445,3 +445,29 @@ def test_un_lanceur_sans_source_deposee_n_est_pas_dit_perime(tmp_path):
     dossier.mkdir(parents=True)
     (dossier / launcher.EXE).write_bytes(b"MZ")
     assert not launcher.lanceur_perime(tmp_path)
+
+
+# --- la seconde stratégie d'écriture : la fusion --------------------------
+
+def test_le_plan_porte_la_strategie_declaree(tmp_path):
+    """La stratégie est décidée ICI et lue là-bas : le lanceur n'en choisit
+    aucune, il applique celle que le plan nomme."""
+    p = tmp_path / "d.toml"
+    p.write_text(PROFIL_AMORCE.replace(
+        "[bootstrap]\n",
+        '[bootstrap]\nstrategy = "fusion"\n').replace(
+        "; Écrit par « retro » au premier lancement, parce que ce fichier "
+        "était absent.",
+        "; Écrit par « retro », qui MODIFIE ce fichier."), encoding="utf-8")
+    profil = profiles.load_profile(p)
+    texte = launcher.plan_systeme(
+        "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
+        "D:\\E\\_launcher\\systems", bootstrap=profil.bootstrap)
+    assert lignes(texte)["bootstrap_when"] == launcher.FUSION
+
+
+def test_les_deux_strategies_sont_distinctes_et_connues():
+    """Une stratégie que le lanceur ne connaît pas fait échouer l'amorçage sur
+    la console. Les deux listes doivent donc rester la même."""
+    assert launcher.STRATEGIES == (launcher.SI_ABSENT, launcher.FUSION)
+    assert launcher.SI_ABSENT != launcher.FUSION
