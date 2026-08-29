@@ -178,8 +178,12 @@ def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> str:
     # `install_all` capture cet échec comme les autres : les émulateurs
     # épinglés s'installent quand même.
     if not emu.sha256.strip():
+        # La version est vide elle aussi quand l'empreinte l'est : les deux
+        # décrivent la même archive et se relèvent ensemble. On ne laisse donc
+        # pas un blanc traîner au milieu du message.
         raise AcquireError(
-            f"{emu.name} {emu.version} : empreinte SHA256 non relevée dans le "
+            f"{emu.name} {emu.version}".strip()
+            + " : empreinte SHA256 non relevée dans le "
             "manifeste. Rien n'a été téléchargé — un binaire que rien ne "
             "vérifie ne s'installe pas. Relever l'empreinte revient à "
             "télécharger l'archive hors de la console et à passer son contenu "

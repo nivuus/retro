@@ -10,6 +10,8 @@ import re
 import subprocess
 import tomllib
 
+import pytest
+
 from retro import cli, install, manifest, profiles
 
 RACINE = pathlib.Path(__file__).parent.parent
@@ -29,6 +31,17 @@ PROFILS = DONNEES / "profiles"
 # change, le statut non.
 INTERDITS = ("ryujinx", "yuzu", "citron", "sudachi", "switch", "ryubing",
              "suyu", "torzu", "uzuy", "eden", "kefir", "strato", "skyline")
+
+# Les émulateurs QUE LE MANIFESTE CONNAÎT SANS LES ÉPINGLER. Leur empreinte
+# est vide, ce qui veut dire « pas encore relevée » : `acquire` les refuse
+# avant de télécharger quoi que ce soit, et `retro scan` ignore puis SIGNALE
+# leurs systèmes, faute d'émulateur installé.
+#
+# C'est une réponse, pas un oubli : une empreinte inventée passerait la revue
+# et casserait à l'installation, sur la console, sans que rien n'explique
+# pourquoi. La liste est gelée par test_le_garde_fou_ne_se_raccourcit_pas —
+# en allonger une est un acte explicite, qui se voit en revue.
+EMPREINTES_A_RELEVER = frozenset({"vita3k"})
 
 # Les documents qui ÉNONCENT la politique doivent pouvoir nommer ce qu'ils
 # excluent : sans cela, la raison de l'exclusion n'est écrite nulle part. Ce
@@ -125,11 +138,70 @@ def test_les_empreintes_ont_la_bonne_forme():
     empreinte fantaisiste y serait tout aussi aveugle.
     """
     for e in manifest.load_manifest(CORE).values():
+        if e.key in EMPREINTES_A_RELEVER:
+            # Non épinglé, et il le DIT : l'empreinte est vide, la version
+            # aussi. Les deux se relèvent ensemble, sur la même archive.
+            assert e.sha256 == "", (
+                f"{e.key} est déclaré à relever mais porte une empreinte : "
+                "la retirer de EMPREINTES_A_RELEVER"
+            )
+            assert e.version == "", (
+                f"{e.key} : empreinte à relever mais version épinglée. Les "
+                "deux décrivent la MÊME archive et se relèvent ensemble — une "
+                "version sans empreinte laisserait croire à un pinning."
+            )
+            continue
         for quoi, sha in [(e.key, e.sha256)] + [
             (f"{e.key} parts[{i}]", p.sha256) for i, p in enumerate(e.parts)
         ]:
             assert len(sha) == 64, f"{quoi} : sha256 de {len(sha)} caractères"
             assert all(c in "0123456789abcdef" for c in sha.lower()), quoi
+
+
+def test_une_entree_non_epinglee_ne_s_installe_pas():
+    """Le refus est mesuré sur le manifeste LIVRÉ, pas sur une fixture.
+
+    C'est la garantie qui rend l'entrée acceptable dans un dépôt public : un
+    binaire que rien ne vérifie ne s'installe pas, et rien n'est téléchargé.
+    """
+    from retro import acquire
+
+    m = manifest.load_manifest(CORE)
+    assert EMPREINTES_A_RELEVER <= set(m), (
+        f"EMPREINTES_A_RELEVER nomme des clés absentes du manifeste : "
+        f"{sorted(EMPREINTES_A_RELEVER - set(m))}"
+    )
+    for cle in sorted(EMPREINTES_A_RELEVER):
+        appels = []
+        with pytest.raises(acquire.AcquireError) as exc:
+            acquire.acquire(m[cle], pathlib.Path("/nexiste/pas"),
+                            fetch=lambda u: appels.append(u) or b"")
+        assert appels == [], f"{cle} : l'archive a été téléchargée"
+        assert "empreinte" in str(exc.value).lower()
+
+
+def test_une_entree_non_epinglee_dit_dans_le_manifeste_ce_qui_manque():
+    """Une empreinte vide sans un mot se lit comme une faute de frappe.
+
+    Le commentaire qui précède l'entrée doit dire ce qui manque et comment le
+    relever — sinon le prochain lecteur la « corrige » en recopiant une
+    empreinte trouvée sur une page, ce que ce manifeste s'interdit.
+    """
+    lignes = CORE.read_text(encoding="utf-8").splitlines()
+    for cle in sorted(EMPREINTES_A_RELEVER):
+        entete = f"[emulator.{cle}]"
+        i = next((n for n, l in enumerate(lignes) if l.strip() == entete), None)
+        assert i is not None, f"{entete} absent du manifeste noyau"
+        commentaire = []
+        n = i - 1
+        while n >= 0 and lignes[n].lstrip().startswith("#"):
+            commentaire.append(lignes[n])
+            n -= 1
+        texte = "\n".join(commentaire).lower()
+        assert "relev" in texte, (
+            f"{entete} : le commentaire qui la précède ne dit pas que "
+            "l'empreinte reste à relever, ni comment"
+        )
 
 
 def test_les_url_sont_en_https():
@@ -186,6 +258,7 @@ def test_le_garde_fou_ne_se_raccourcit_pas():
         "ryujinx", "yuzu", "citron", "sudachi", "switch", "ryubing",
         "suyu", "torzu", "uzuy", "eden", "kefir", "strato", "skyline",
     }
+    assert EMPREINTES_A_RELEVER == {"vita3k"}
     assert EXEMPTES == {
         "tests/test_donnees.py",
         "docs/superpowers/specs/2026-08-26-retro-console-design.md",
@@ -533,3 +606,27 @@ def test_chaque_profil_livre_dit_ou_en_est_son_amorcage():
             "mesurer sur la machine — sans quoi rien ne distingue « pas "
             "encore regardé » de « cet émulateur se débrouille »"
         )
+
+
+def test_le_systeme_vita_couvre_les_deux_formes_de_bibliotheque():
+    """Une bibliothèque PS Vita a DEUX formes, et il en faut les deux.
+
+    Les .vpk sont des fichiers, les applications installées sont des dossiers
+    (« ux0:app\\PCSE00123\\ »). N'en déclarer qu'une moitié ne se voit pas :
+    le scan rend simplement moins de jeux qu'il n'y en a, ce qui ressemble à
+    une bibliothèque plus petite.
+
+    Ce test suit le SYSTÈME, pas le profil : c'est la forme de la
+    bibliothèque Vita qui est en jeu, quel que soit l'émulateur qui la sert.
+    """
+    vita = next((s for p in profiles.load_profiles(PROFILS).values()
+                 for s in p.systems if s.id == "vita"), None)
+    assert vita is not None, "aucun profil livré ne couvre la PS Vita"
+    assert vita.app_dir_marker, (
+        "le système Vita ne déclare pas à quoi se reconnaît une application "
+        "installée : ses dossiers de jeux resteraient invisibles au scan"
+    )
+    assert ".vpk" in vita.extensions, (
+        "le système Vita ne déclare pas .vpk : les jeux non installés "
+        "resteraient invisibles"
+    )

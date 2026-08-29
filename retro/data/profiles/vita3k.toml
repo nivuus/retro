@@ -1,0 +1,165 @@
+# Vita3K — PlayStation Vita.
+#
+# ⚠ CET ÉMULATEUR NE S'INSTALLE PAS EN L'ÉTAT. Son entrée au manifeste ne
+# porte pas d'empreinte (voir core.toml, [emulator.vita3k]) : « retro install »
+# la refuse avant de télécharger quoi que ce soit, et « retro scan » ignore
+# puis SIGNALE le système Vita, faute d'émulateur installé. Ce profil est donc
+# écrit pour être VRAI le jour où l'empreinte sera relevée, pas pour faire
+# croire que la PS Vita est couverte.
+#
+# Ce qui vient d'une source sûre, et laquelle :
+#
+# - les options de ligne de commande sont lues dans vita3k/config/src/config.cpp
+#   du dépôt du projet, consulté le 2026-08-29. C'est une source plus faible
+#   que celle des neuf autres profils, dont les options sont lues DANS
+#   l'exécutable épinglé : il n'y a ici aucun exécutable épinglé à lire. À
+#   reprendre sur l'archive le jour du relevé.
+#     content-path  (positionnel) « Path to the app with a .vpk/.zip extension
+#                   or folder of content to install & run » — c'est lui qui
+#                   reçoit {rom}, et il accepte les DEUX formes d'une
+#                   bibliothèque Vita, le fichier comme le dossier ;
+#     --fullscreen, -F « Start the emulator in fullscreen mode. » ;
+#     --installed-path, -r « Path to the installed app to run » — l'autre voie
+#                   pour une application DÉJÀ installée dans le ux0: de
+#                   Vita3K ; sa forme exacte (identifiant de titre ou chemin)
+#                   reste à mesurer, et le profil ne s'en sert pas ;
+#     --firmware    « Path to the firmware file (.pup extension) to install »
+#                   — voir la section BIOS plus bas ;
+#     -c, --config-location « Default loaded: <Vita3K>/config.yml » : la
+#                   configuration de Vita3K vit À CÔTÉ de son exécutable.
+#
+# - ce qui reste À MESURER, et que rien ici n'invente : le nom de
+#   l'exécutable dans l'archive et un éventuel dossier racine (les neuf autres
+#   profils le savent parce que leur archive a été LISTÉE ; celle-ci ne l'a
+#   pas été), la liste complète des extensions acceptées, et la forme d'une
+#   bibliothèque Vita réelle — le propriétaire n'en a aucune aujourd'hui,
+#   mesuré le 2026-08-29 sur son partage (G:\Games, un dossier par
+#   constructeur puis par système, aucun dossier PS Vita).
+
+schema = 1
+id  = "vita3k"
+exe = 'Vita3K.exe'
+
+# Amorçage : pas de bloc [bootstrap], et deux raisons plutôt qu'une.
+#
+# La première est celle des autres profils : ce que Vita3K doit recevoir pour
+# lancer un jeu au lieu de son assistant de première configuration reste À
+# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir été
+# relevée dans un fichier que l'émulateur a lui-même écrit — une clé recopiée
+# d'une documentation est ignorée en silence, et le jeu ne démarre toujours
+# pas. Voir docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
+#
+# La seconde est propre à Vita3K et ne se lèvera pas par la seule mesure :
+# `target` est un chemin Windows ABSOLU, ou qui commence par une variable
+# d'environnement (profiles._lire_bootstrap). Or la configuration de Vita3K
+# est son config.yml, chargé par défaut depuis <Vita3K>\config.yml, c'est-à-
+# dire depuis son dossier d'INSTALLATION — dont l'emplacement est la racine
+# d'émulation, un paramètre de « retro scan », pas une constante. Aucun
+# `target` écrivable aujourd'hui ne le désigne. Il lui faudra un jeton
+# substitué à la synchronisation, sur le modèle de {render_config} dans
+# retro/launcher.py.
+#
+# Et une conséquence, la même que pour Cemu : une configuration qui vit sous
+# le dossier d'installation est supprimée à chaque montée de version par
+# « retro install ». L'amorçage devra donc se rejouer après chaque mise à
+# jour, la cible ayant disparu avec le dossier.
+
+[input]
+steam_input = "required"
+mode        = "xinput"
+
+[exit]
+# Rien de déclaré : aucune sortie manette n'a été mesurée, et l'annoncer
+# avant serait une promesse que la console ne tiendrait pas. Le repli Steam
+# Input reste la sortie garantie.
+native   = ""
+fallback = "alt+f4"
+
+[[system]]
+id         = "vita"
+name       = "PS Vita"
+# Le propriétaire range par constructeur puis par système (« Sony\Playstation
+# 1\ ») : ces noms sont ceux qu'il emploierait, pas une mesure. Il n'a aucune
+# bibliothèque Vita aujourd'hui — le jour où il en aura une, le nom qu'il aura
+# choisi se déclare ici, ou le dossier se renomme. « retro scan » nomme les
+# dossiers qu'aucun profil ne reconnaît, précisément pour ça.
+folders    = ["PSVita", "PS Vita", "PlayStation Vita", "Vita"]
+# Une bibliothèque Vita a DEUX formes, et il faut les deux :
+#
+#   .vpk               le paquet non installé, un FICHIER ;
+#   ux0:app\<TITLEID>\ l'application INSTALLÉE, un DOSSIER.
+#
+# `extensions` couvre la première, `app_dir_marker` la seconde. C'est le point
+# dur de la dette D5 : le scan comptait des fichiers, et une bibliothèque en
+# dossiers y rendait zéro jeu sans un mot. Le dossier est inventorié TEL QUEL
+# et n'est jamais ouvert — l'ouvrir ferait une entrée Steam par fichier du
+# jeu, ce que cette dette redoutait.
+#
+# .zip est écarté volontairement, bien que Vita3K l'accepte (« a .vpk/.zip
+# extension ») : un .zip dans un dossier de jeux est plus souvent une archive
+# de n'importe quoi qu'un jeu, et chacun deviendrait une entrée Steam. Même
+# raison que les .bin écartés du profil PlayStation.
+extensions = [".vpk"]
+# eboot.bin est l'exécutable qu'une application Vita porte à sa racine. C'est
+# LUI qui distingue une application d'un dossier de sauvegardes — sans
+# marqueur, « savedata » deviendrait une entrée de la bibliothèque. À
+# CONFIRMER sur une bibliothèque réelle : personne ici n'en a encore vu une.
+app_dir_marker = "eboot.bin"
+launch     = '--fullscreen "{rom}"'
+# Le titre affiché sera le NOM DU DOSSIER. Si le propriétaire garde les
+# identifiants de titre de la console (« PCSE00123 »), sa bibliothèque Steam
+# affichera des identifiants. Le vrai nom du jeu est dans
+# sce_sys\param.sfo, à l'intérieur du dossier ; le lire est un travail à part,
+# non fait, et c'est la limite connue de ce profil.
+#
+# BIOS : rien à déclarer, et ce n'est PAS que Vita3K se passe de firmware.
+#
+# Il en exige un, et sans lui les symptômes sont ceux de DuckStation sans
+# BIOS — le jeu apparaît, se lance, écran noir. Mais le mécanisme `bios` de ce
+# projet vérifie des FICHIERS DÉPOSÉS dans un dossier partagé, à leur
+# empreinte MD5, et pointe l'émulateur dessus ; le firmware Vita n'est pas de
+# cette nature. C'est un PUP qui s'INSTALLE une fois dans l'arborescence de
+# l'émulateur, exactement comme le PS3UPDAT.PUP de RPCS3, et son empreinte
+# change à chaque version de firmware sans que rien de publiquement citable
+# n'existe. Il n'y a donc rien de vérifiable à déclarer ici : ce profil ne
+# couvre pas le firmware, et le dit.
+#
+# Le patron est mesuré, lui, sur la console (2026-08-29, invité en
+# provision_version B1) : les BIOS-fichiers vivent dans G:\retro\bios\ et
+# l'émulateur y est POINTÉ par sa configuration (DuckStation,
+# [BIOS] SearchDirectory) ; un firmware, lui, est rangé à part, hors de
+# bios\, parce qu'il s'installe. RPCS3 n'a d'ailleurs à ce jour ni dev_flash
+# ni dev_hdd0 sur cette machine : son firmware n'a jamais été installé, et
+# personne ne s'en est aperçu.
+#
+# Ce que Vita3K a de plus que RPCS3, et qui rend la suite faisable sans
+# souris : « --firmware <chemin.pup> » installe le firmware depuis la ligne de
+# commande. Un amorçage pourra donc le poser, une fois tranché où le PUP est
+# rangé et comment on constate qu'il est déjà installé.
+bios       = []
+
+# Modes de rendu : aucun bloc, et c'est une réponse, pas un oubli. Des options
+# lues dans config.cpp, aucune n'est un réglage de rendu : --backend-renderer
+# choisit OpenGL ou Vulkan, ce qui n'est ni une résolution ni un cadrage. Le
+# multiplicateur de résolution de Vita3K vit dans son config.yml — donc
+# derrière l'amorçage, donc derrière le jeton de chemin qui manque ci-dessus.
+# `cost` n'est pas déclaré non plus : il ne sert qu'au mode `auto`, qui croise
+# ce coût avec la machine POUR CHOISIR ENTRE des modes déclarés. Sans modes,
+# ce serait une valeur que personne ne lit.
+
+# DETTE D4 — le mouvement, qui n'est pas traité ici et ne peut pas l'être.
+#
+# Une part notable du catalogue Vita se sert du gyroscope. La console n'en
+# transmet aucune donnée : Apollo annonce un Xbox 360, qui n'a ni gyroscope ni
+# tactile. C'est la dette D4, elle-même bloquée derrière D3, et elle se règle
+# côté invité — pas dans ce fichier.
+#
+# Ce qui restera à faire ICI le jour où D4 sera levée : les clés de mouvement
+# de la configuration d'entrée de Vita3K, dans son config.yml, avec
+# l'identifiant SDL substitué AU LANCEMENT par retro/launcher.py — jamais figé
+# dans ce profil, puisque changer le type de pad change le VID/PID donc le
+# GUID. Rien de tout cela n'est mesurable tant que le pad reste un X360.
+#
+# La PS Vita a aussi un écran tactile avant et un pavé tactile arrière, dont
+# aucune manette ne dispose. C'est un manque de plus, distinct du gyroscope,
+# et il n'est traité nulle part.
