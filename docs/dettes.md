@@ -796,13 +796,33 @@ en aura une.
 
 ## D6 — La console tourne sur un paquet périmé, et absolument rien ne le dit
 
-> **PARTIELLEMENT EXÉCUTÉE le 2026-08-29 — et TOUJOURS OUVERTE.** Le paquet
-> porte désormais une identité qui bouge (`0.1.0+<horodatage>.<empreinte>[.g<sha>]`,
-> gravée par un backend PEP 517 en arbre), `retro identite` la dit, et `scan`
-> comme `status` la citent en tête de leur rapport. **Le refus, lui, n'existe
-> pas encore** : il vit dans `nivuus/installer` et rien n'y a été touché. Tant
-> que ce point n'est pas fait, cette dette décrit toujours son propre défaut —
-> elle le rend seulement *visible* à qui pense à regarder.
+> **EXÉCUTÉE DES DEUX CÔTÉS le 2026-08-29 — et TOUJOURS OUVERTE, faute de
+> mesure.** Le paquet porte une identité qui bouge
+> (`0.1.0+<horodatage>.<empreinte>[.g<sha>]`, gravée par un backend PEP 517 en
+> arbre), `retro identite` la dit, et `scan` comme `status` la citent en tête
+> de leur rapport. **Le refus existe aussi**, dans `nivuus/installer`
+> (`retro-sync : l hote refuse de synchroniser un paquet qui n est pas le
+> sien`) : la clé `package=` est écrite par les deux écrivains du témoin,
+> `ecart_identite` est une fonction pure qui refuse en **code 8**, et
+> `--reinstaller-le-paquet` est le geste de sortie — sans lui, refuser rendrait
+> la console non synchronisable.
+>
+> **Ce qui manque pour clore, et ce n'est pas du code :** personne n'a vu `pip`
+> rapporter « Successfully installed retro-0.1.0+… » là où il disait
+> « Requirement already satisfied ». C'est l'assertion centrale de cette dette,
+> et elle ne se mesure que sur la console. Deux suppositions l'accompagnent :
+> `/var/lib/nivuus/guest/payload/retro/wheels/` n'a **jamais été vu peuplé** sur
+> l'hôte — le chemin est déduit, pas observé —, et aucun PowerShell n'a
+> réellement tourné.
+>
+> **Une correction rendue en revue, qui vaut d'être lue** : la garde d'identité
+> avait été placée **avant** la sonde de session de streaming. Or
+> `--reinstaller-le-paquet` lance un `pip install` dans l'invité, c'est-à-dire
+> une **mutation**, et la garde de session existe précisément pour qu'aucune
+> mutation n'ait lieu pendant qu'on joue. Dans cet ordre, le remède
+> s'exécutait, **puis** le script refusait en code 7 : un refus qui arrive
+> après coup, alors qu'un refus doit vouloir dire que rien ne s'est produit.
+> L'ordre est inversé et deux assertions l'épinglent, vues rouges sur l'ancien.
 >
 > **Le défaut est pire que ce que cette entrée disait**, et c'est mesuré :
 > `pip install --no-index --find-links … --upgrade retro` à version identique
