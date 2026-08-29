@@ -779,6 +779,18 @@ def _cles_ini(texte: str) -> list[tuple[str, str]]:
     return cles
 
 
+def _lignes_actives(fragment: str) -> list[str]:
+    """Les lignes d'un fragment qui RÈGLENT quelque chose, commentaires exclus.
+
+    Les deux syntaxes livrées sont écartées ensemble — « ; » de l'INI de
+    QSettings et « # » du YAML. Un fragment d'amorçage n'est pas toujours de
+    l'INI, et un garde qui ne saurait lire qu'un format se tairait sur l'autre
+    par accident de forme, ce qui se lit comme une absence de faute.
+    """
+    return [l.strip() for l in fragment.splitlines()
+            if l.strip() and not l.lstrip().startswith((";", "#"))]
+
+
 def test_duckstation_n_impose_que_ce_que_le_proprietaire_a_approuve():
     """Élargir ce que la console impose, c'est reprendre au propriétaire un
     réglage qu'il croyait sien — et il ne s'en apercevrait qu'en le voyant
@@ -872,8 +884,24 @@ def test_aucun_profil_livre_ne_pose_de_liaison_de_manette():
         if profil.input_mapping == profiles.MAPPING_AUTO:
             continue
         for b in profil.bootstraps:
-            actives = [l.strip() for l in b.content.splitlines()
-                       if l.strip() and not l.lstrip().startswith((";", "#"))]
+            actives = _lignes_actives(b.content)
+            if b.target.lower().endswith(".yml"):
+                # « bindings/… » est une forme d'INI : ce garde ne dirait RIEN
+                # d'un YAML, et se taire sur un format qu'on ne sait pas lire
+                # se lit comme une absence de faute. La seule entrée YAML
+                # livrée est celle de RPCS3, et l'exception est NOMMÉE : son
+                # contenu est gelé ligne à ligne (RPCS3_MANETTE, plus bas),
+                # donc toute liaison qu'on y glisserait se verrait ici.
+                assert f.stem == "rpcs3", (
+                    f"{f.name} : une cible YAML dont ce garde ne sait rien "
+                    "dire. L'exception de RPCS3 est nommée ; une seconde doit "
+                    "l'être aussi, ou le garde ne garde plus rien.")
+                assert tuple(actives) == RPCS3_MANETTE, (
+                    f"{f.name} : le contenu de {b.target} n'est plus celui qui "
+                    f"est gelé — reçu {actives}. Handler et Device ne sont pas "
+                    "des liaisons, ils CHOISISSENT le gestionnaire ; tout le "
+                    "reste en serait une, et serait faux.")
+                continue
             fautives = [l for l in actives if l.lower().startswith("bindings/")]
             assert fautives == [], (
                 f"{f.name} : le bloc [[bootstrap]] visant {b.target} pose des "
@@ -1178,6 +1206,93 @@ def test_rpcs3_impose_ses_modales():
     # à deux endroits, et rien dans le profil ne dirait lequel gagne.
     poses = set(_cles_ini(b.content)) & set(RPCS3_MODALES)
     assert poses == set(), poses
+
+
+# --- RPCS3 : le gestionnaire de manette, posé en bloc ----------------------
+#
+# LE FICHIER ENTIER, GELÉ LIGNE À LIGNE. Trois lignes suffisent parce que
+# `xinput_pad_handler::init_config()` renseigne les vingt-quatre `.def` puis
+# appelle `from_default()` : RPCS3 pose lui-même toute la mappe dès que le
+# gestionnaire est choisi. Sans le fichier, `cfg_player` vaut
+# `pad_handler::null` (Emu/Io/pad_config.h) — ce n'est pas une liaison fausse,
+# c'est l'ABSENCE de manette.
+#
+# ⚠ `Handler: XInput` EST UN ARBITRAGE, DATÉ ET RÉVERSIBLE — PAS UN FAIT
+# MESURÉ SUR L'ÉMULATEUR. Rendu le 2026-08-29 par la conduite de projet, entre
+# D7 qui prescrivait XInput (vu fonctionner : le propriétaire a confirmé que
+# les contrôles répondent) et D4 qui a relevé dans la source que `b_has_motion`
+# reste faux sous XInput, quel que soit le pad — donc que ce choix interdit le
+# mouvement. XInput l'emporte parce qu'il est la seule des deux valeurs qu'on
+# ait vue fonctionner, que `xinput_pad_handler.cpp` pose `b_has_rumble = true`
+# (il ne bloque donc pas D1), et que basculer sans mesure reviendrait à
+# déboguer deux inconnues à la fois. Ce qui n'a JAMAIS été mesuré ici :
+# `Handler: SDL`. Le jour où D4 l'aura mesuré — un bouton VU répondre, rien de
+# moins — cette ligne change, et le geste de sortie est écrit dans le profil.
+#
+# Les deux autres lignes, elles, sont des faits de source :
+#   - « XInput » avec ses deux majuscules — pad_config_types.cpp,
+#     `case pad_handler::xinput: return "XInput";` ;
+#   - « Device » CITÉ, parce qu'en YAML « # » ouvre un commentaire :
+#     `XInput Pad #1` non quoté devient `XInput Pad`, qui ne désigne rien. Le
+#     nom vient de xinput_pad_handler.cpp, `m_name_string = "XInput Pad #"`.
+RPCS3_MANETTE = (
+    "Player 1 Input:",
+    "Handler: XInput",
+    'Device: "XInput Pad #1"',
+)
+
+
+def test_rpcs3_pose_son_gestionnaire_de_manette_en_bloc():
+    """Posé UNE FOIS, jamais imposé — et les deux moitiés comptent.
+
+    `enforced` vide, parce que le reposer à chaque lancement serait ÉCRASER un
+    fichier que RPCS3 réécrit lui-même quand on configure un pad dans son
+    interface : toute liaison faite là disparaîtrait sans un mot. Le
+    propriétaire a autorisé « seulement les clés que la console doit imposer »
+    dans un INI qu'on FUSIONNE ; un remplacement intégral d'un YAML serait une
+    autorisation neuve, qu'il n'a pas donnée.
+
+    Et `content` gelé à la chaîne près : c'est la forme, et elle seule, qui
+    fait la différence entre une manette qui répond et un fichier d'apparence
+    posé qui ne fait rien.
+    """
+    b = _amorcage_visant("rpcs3", "Default.yml")
+    assert b.target.startswith(profiles.JETON_INSTALL), b.target
+    assert b.enforced == "", (
+        "rpcs3.toml : Default.yml n'est plus posé en bloc mais IMPOSÉ. La "
+        "fusion ne parle qu'INI et écraserait un YAML ; et même si elle le "
+        "lisait, reposer ce fichier à chaque lancement effacerait les "
+        "liaisons que le propriétaire aurait faites dans l'interface.")
+    actives = _lignes_actives(b.content)
+    assert tuple(actives) == RPCS3_MANETTE, actives
+    # Redit ici, hors du tuple, parce que c'est CE piège-là qui produirait un
+    # fichier lisible, posé, et sans effet : sans les guillemets, YAML coupe
+    # sur « # » et le périphérique s'appelle « XInput Pad », qui n'existe pas.
+    assert 'Device: "XInput Pad #1"' in b.content
+
+
+def test_rpcs3_dit_comment_sortir_du_regime_si_absent():
+    """La contrepartie de l'arbitrage du 2026-08-29, et elle est obligatoire.
+
+    « si-absent » copie des octets et ne réécrit JAMAIS. Le jour où D4 voudra
+    `Handler: SDL`, le fichier existera déjà, rien ne le remplacera, et la
+    bascule échouera EN SILENCE — le défaut exact que ce mécanisme existe pour
+    éviter. Le geste de sortie doit donc être écrit là où on le cherchera : à
+    côté de la valeur, dans le profil.
+    """
+    texte = (PROFILS / "rpcs3.toml").read_text(encoding="utf-8")
+    commentaires = "\n".join(l for l in texte.splitlines()
+                             if l.lstrip().startswith("#"))
+    assert "supprimer" in commentaires.lower(), (
+        "rpcs3.toml : le profil ne dit pas COMMENT sortir du régime "
+        "« si-absent ». Sans le geste — supprimer le fichier — la bascule "
+        "vers un autre gestionnaire ne se ferait jamais, sans un mot.")
+    assert "Default.yml" in commentaires
+    assert "sdl" in commentaires.lower(), (
+        "rpcs3.toml : le geste de sortie ne dit pas vers quoi on sort. "
+        "L'arbitrage du 2026-08-29 est réversible et nomme sa réversion : "
+        "Handler: SDL, dette D4.")
+    assert "d4" in commentaires.lower()
 
 
 # --- le lanceur C# lit-il ce que le plan écrit ? ---------------------------
