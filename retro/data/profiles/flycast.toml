@@ -33,6 +33,19 @@ exe = 'flycast.exe'
 # le sien, et sans ce réglage le rapport annonce « BIOS présent » alors que
 # l'émulateur ne les voit pas — le pire des états, un rapport qui ment.
 
+# Vibration : aucun réglage de rumble n'est posé ici, et ce n'est pas un
+# oubli. La manette ne vibre NULLE PART — ni dans cet émulateur, ni dans les
+# jeux Steam, ni depuis le client Moonlight — et aucun des trois maillons n'a
+# été mesuré : dette D1 de docs/dettes.md. Le rumble est un réglage de la
+# configuration d'entrée, pas de la ligne de commande : il ira dans le gabarit
+# d'entrée du sous-projet E, famille « générale », dont la cible SUPPOSÉE pour
+# Flycast est emu.cfg — hypothèse du plan des manettes, jamais mesurée. Le nom
+# de la clé, lui, n'a été relevé dans AUCUN fichier que Flycast a lui-même
+# écrit ; recopié d'une documentation, il serait ignoré en silence et la
+# manette resterait muette exactement comme aujourd'hui. Ce qui reste à
+# relever, sur la machine : ce que Flycast écrit de lui-même une fois la
+# vibration activée dans son interface — même méthode que pour l'identifiant
+# de manette (tâche 1 du sous-projet E), et pour la même raison.
 [input]
 steam_input = "required"
 mode        = "xinput"
