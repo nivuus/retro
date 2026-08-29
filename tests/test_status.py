@@ -606,3 +606,121 @@ def test_un_lanceur_a_jour_ne_produit_aucun_probleme():
         systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
         lanceur_perime=False)
     assert [p for p in rapport.problems if "plus ancien" in p.what] == []
+
+
+# --- la section « Rendu » : le remplissage -------------------------------
+
+def _profils_remplissage(tmp_path):
+    """Trois systèmes, un par état du troisième axe : réglé, non réglable
+    faute d'option, et jamais mesuré."""
+    (tmp_path / "q.toml").write_text("""
+schema = 1
+id = "q"
+exe = "q.exe"
+[[system]]
+id = "snes"
+name = "Super Nintendo"
+extensions = [".sfc"]
+launch = '{render} "{rom}"'
+cost = "light"
+bios = []
+[system.render.native]
+args = "-scale=1 -integer=yes"
+crt = "-shader=crt"
+fill = "entier"
+[system.render.full]
+args = "-scale=4 -integer=no"
+fill = "ajuste"
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '{render} "{rom}"'
+cost = "light"
+bios = []
+[system.render.native]
+args = ""
+note = "dix-sept arguments, aucun de rendu"
+crt_absent = "aucun shader en ligne de commande"
+[system.render.full]
+args = ""
+note = "même raison qu'en mode natif"
+[[system]]
+id = "n64"
+name = "Nintendo 64"
+extensions = [".z64"]
+launch = '{render} "{rom}"'
+cost = "medium"
+bios = []
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun shader"
+[system.render.full]
+args = "-scale=2"
+""", encoding="utf-8")
+    return {"q": profiles.load_profile(tmp_path / "q.toml")}
+
+
+def test_le_remplissage_de_chaque_mode_se_lit_dans_le_rapport(tmp_path):
+    """Le troisième axe suit la même règle que les deux autres : un réglage
+    qui s'appliquerait en silence est un défaut."""
+    from retro import render
+    etat = next(e for e in status.etat_rendu(_profils_remplissage(tmp_path))
+                if e.system_name == "Super Nintendo")
+    valeurs = {mode: valeur for mode, valeur, _ in etat.remplissage}
+    assert valeurs == {render.NATIVE: render.ENTIER,
+                       render.FULL: render.AJUSTE}
+    assert all(motif.strip() for _, _, motif in etat.remplissage)
+
+
+def test_un_systeme_dont_le_remplissage_n_est_pas_mesure_est_nomme(tmp_path):
+    """Sans cette ligne, l'image est ce que l'émulateur a décidé tout seul, et
+    rien ne dit que personne n'a regardé."""
+    etats = status.etat_rendu(_profils_remplissage(tmp_path))
+    problemes = status._probleme_remplissage_non_mesure(etats)
+    assert len(problemes) == 1
+    assert problemes[0].details == ("Nintendo 64",)
+
+
+def test_un_emulateur_qui_ne_pilote_rien_n_est_pas_un_remplissage_a_mesurer(tmp_path):
+    """DuckStation a déjà répondu : la question est tranchée, la réponse est
+    non. Le ranger parmi les mesures à faire ferait rouvrir l'enquête à
+    chaque passage."""
+    from retro import render
+    etat = next(e for e in status.etat_rendu(_profils_remplissage(tmp_path))
+                if e.system_name == "PlayStation")
+    assert all(valeur == render.NON_REGLABLE
+               for _, valeur, _ in etat.remplissage)
+    problemes = status._probleme_remplissage_non_mesure([etat])
+    assert problemes == []
+
+
+def test_le_rapport_imprime_le_remplissage(tmp_path):
+    etats = status.etat_rendu(_profils_remplissage(tmp_path))
+    lignes = "\n".join(status._lignes_rendu(status.Report(
+        emulators=[], systems=[], bios=[], problems=[],
+        bios_root=pathlib.Path("/BIOS"), render=etats)))
+    assert "remplissage" in lignes
+    assert "entier" in lignes and "ajuste" in lignes
+
+
+def test_la_politique_de_remplissage_est_citee_une_seule_fois(tmp_path):
+    """Écrite dans `render`, citée dans le rapport — mais en légende, pas par
+    système : les huit systèmes de RetroArch porteraient la même phrase, et
+    dix-huit lignes identiques se lisent zéro fois."""
+    from retro import render
+    lignes = status._lignes_rendu(status.Report(
+        emulators=[], systems=[], bios=[], problems=[],
+        bios_root=pathlib.Path("/BIOS"),
+        render=status.etat_rendu(_profils_remplissage(tmp_path))))
+    motif = render.motif_remplissage(render.NATIVE)
+    assert sum(motif in l for l in lignes) == 1
+
+
+def test_un_emulateur_sans_reglage_de_remplissage_dit_pourquoi_sur_sa_ligne(tmp_path):
+    """La légende explique la POLITIQUE ; elle ne peut rien dire d'un
+    émulateur qui n'expose aucun réglage. Ce motif-là reste sur sa ligne."""
+    lignes = status._lignes_remplissage(
+        (("native", "non-reglable", "aucun réglage — pas de clé Integer"),
+         ("full", "non-reglable", "aucun réglage — pas de clé Integer")))
+    assert sum("pas de clé Integer" in l for l in lignes) == 1

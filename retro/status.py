@@ -81,6 +81,12 @@ class SystemRender:
     crt_absent: str = ""
     auto: tuple[tuple[str, str], ...] = ()   # (classe de machine, mode retenu)
     notes: tuple[str, ...] = ()
+    # Le TROISIÈME axe, un triplet par mode déclaré : (mode, remplissage,
+    # motif). Le motif est là pour la même raison que celui de `auto` : des
+    # bandes noires sur les côtés sont soit le ratio d'époque correctement
+    # rendu, soit un remplissage entier, soit un cadrage que personne n'a
+    # réglé — et vues du canapé, les trois se ressemblent exactement.
+    remplissage: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -346,6 +352,12 @@ def etat_rendu(profils: dict) -> list[SystemRender]:
                 auto=tuple((classe, render_mod.arbitrer(classe, systeme.cost))
                            for classe in render_mod.CLASSES),
                 notes=notes,
+                remplissage=tuple(
+                    (nom, choix.remplissage, choix.motif)
+                    for nom, choix in (
+                        (n, render_mod.resoudre_remplissage(n, m))
+                        for n, m in ((render_mod.NATIVE, rendu.native),
+                                     (render_mod.FULL, rendu.full)))),
             ))
     return sorted(etats, key=lambda e: e.system_name)
 
@@ -365,6 +377,30 @@ def _probleme_sans_modes(etats: list[SystemRender]) -> list[Problem]:
         where="retro/data/profiles/*.toml",
         action="déclarer [system.render.native] et [system.render.full] pour "
                "ces systèmes, chaque option lue dans l'exécutable livré",
+        details=tuple(muets),
+    )]
+
+
+def _probleme_remplissage_non_mesure(etats: list[SystemRender]) -> list[Problem]:
+    """Les systèmes dont le TROISIÈME axe n'a jamais été mesuré.
+
+    Groupé, comme les modes manquants. Un système qui n'a pas de remplissage
+    RÉGLABLE — DuckStation — n'y figure pas : la question y a été tranchée et
+    la réponse est non. Les confondre ferait rouvrir l'enquête à chaque
+    passage sur un émulateur qui a déjà répondu.
+    """
+    muets = sorted({e.system_name for e in etats
+                    for _, valeur, _ in e.remplissage
+                    if valeur == render_mod.NON_MESURE})
+    if not muets:
+        return []
+    return [Problem(
+        what=f"{len(muets)} système(s) ne disent rien du remplissage de "
+             "l'écran : l'image y est celle que l'émulateur a choisie seul",
+        where="retro/data/profiles/*.toml",
+        action="déclarer 'fill' dans chaque mode — le remplissage que ses "
+               "arguments produisent — ou 'fill_absent', qui dit que cet "
+               "émulateur n'en expose aucun réglage",
         details=tuple(muets),
     )]
 
@@ -488,6 +524,7 @@ def build_report(
         problems=[*problemes_emulateurs,
                   *_problemes_bios(bios_status, bios_root),
                   *_probleme_sans_modes(rendu),
+                  *_probleme_remplissage_non_mesure(rendu),
                   *_probleme_steam_input(steam_input_muets, steam_input_echec),
                   *_probleme_lanceur_perime(lanceur_perime, emulation_root)],
         bios_root=bios_root,
@@ -568,7 +605,7 @@ def _lignes_rendu(report: Report) -> list[str]:
     if not report.render:
         return []
     largeur = max(len(e.system_name) for e in report.render)
-    lignes = []
+    lignes = [f"  {l}" for l in legende_remplissage()] + [""]
     for e in report.render:
         nom = e.system_name.ljust(largeur)
         if not e.declared:
@@ -587,9 +624,45 @@ def _lignes_rendu(report: Report) -> list[str]:
         lignes.append(f"  {nom}  {crt}  |  auto : {_resume_auto(e.auto)}")
         if not e.crt:
             lignes.append(f"  {' ' * largeur}    ({e.crt_absent})")
+        lignes += [f"  {' ' * largeur}    {l}"
+                   for l in _lignes_remplissage(e.remplissage)]
         for note in e.notes:
             lignes.append(f"  {' ' * largeur}    {note}")
     return lignes
+
+
+def legende_remplissage() -> list[str]:
+    """La politique de remplissage, citée UNE fois en tête de section.
+
+    Une fois, et pas par système : les huit systèmes de RetroArch porteraient
+    la même phrase, et dix-huit lignes identiques se lisent zéro fois — c'est
+    la règle qui vaut déjà pour les problèmes groupés. Mais elle doit être
+    quelque part : un cadrage qui s'appliquerait en silence serait un défaut,
+    et des bandes noires ont trois causes possibles que rien ne distingue vu
+    du canapé (le ratio d'époque, un agrandissement entier, un cadrage que
+    personne n'a réglé).
+    """
+    return [f"remplissage — {mode} : {render_mod.motif_remplissage(mode)}"
+            for mode in render_mod.MODES_DECLARES]
+
+
+def _lignes_remplissage(remplissage: tuple[tuple[str, str, str], ...]) -> list[str]:
+    """Le troisième axe d'UN système, mode par mode.
+
+    Le motif n'accompagne que ce que la légende n'explique pas : un émulateur
+    qui n'expose aucun réglage, ou un remplissage que personne n'a mesuré.
+    """
+    if not remplissage:
+        return []
+    valeurs = ", ".join(f"{mode} {valeur}" for mode, valeur, _ in remplissage)
+    lignes = [f"remplissage : {valeurs}"]
+    # Dédoublonné : les deux modes d'un émulateur qui n'expose rien portent la
+    # même phrase, et l'imprimer deux fois la fait lire zéro.
+    vus: list[str] = []
+    for _, valeur, motif in remplissage:
+        if valeur not in render_mod.REMPLISSAGES and motif not in vus:
+            vus.append(motif)
+    return lignes + [f"  ({m})" for m in vus]
 
 
 def _lignes_amorcage(report: Report) -> list[str]:
