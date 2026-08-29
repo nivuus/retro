@@ -716,3 +716,59 @@ def test_aucun_plan_ecrit_ne_porte_de_jeton_non_substitue(tmp_path):
                 fautives.append(f"{fichier.name} : {ligne}")
     assert fautives == [], (
         "des plans portent un jeton non substitué : " + " | ".join(fautives))
+
+
+# --- D11 : ce que le dépôt impose n'est PAS ce que la console applique -----
+#
+# `ecrire_plan` est le SEUL geste qui dépose ces fragments, et `retro scan` son
+# seul appelant. Changer `enforced` dans un profil, voir la suite verte et ne
+# pas re-scanner laisse donc la console fusionner l'ANCIEN fragment — sans un
+# mot, et avec pour symptôme le réglage d'origine, c'est-à-dire le défaut qu'on
+# croyait corrigé.
+
+def test_les_fragments_attendus_disent_les_deux_fichiers_d_une_entree(
+        profils_imposes):
+    """UNE seule définition de ce qu'une entrée d'amorçage dépose. Deux
+    divergeraient, et le contrôle finirait par bénir un fragment périmé."""
+    amorcage = profils_imposes["duckstation"].bootstraps[0]
+    noms = dict(launcher.fragments_attendus("duckstation", 1, amorcage))
+    assert set(noms) == {"duckstation.bootstrap.1.ini",
+                         "duckstation.impose.1.ini"}
+    assert "SetupWizardIncomplete" in noms["duckstation.impose.1.ini"]
+    assert "ConfirmPowerOff" in noms["duckstation.bootstrap.1.ini"]
+
+
+def test_le_fragment_attendu_est_exactement_celui_qui_est_depose(
+        tmp_path, profils_imposes):
+    """À l'octet près : c'est la comparaison que `retro status` fera, et une
+    différence de fin de ligne y crierait au loup à chaque passage."""
+    launcher.ecrire_plan(tmp_path, "D:\\E", profils_imposes,
+                         {"duckstation": "DS"})
+    dossier = launcher.local_dir(tmp_path) / launcher.PLAN
+    amorcage = profils_imposes["duckstation"].bootstraps[0]
+    for nom, attendu in launcher.fragments_attendus("duckstation", 1, amorcage):
+        assert (dossier / nom).read_text(encoding="utf-8") == attendu
+
+
+def test_une_entree_qui_n_impose_rien_n_attend_qu_un_fragment(profils_amorces):
+    amorcage = profils_amorces["duckstation"].bootstraps[0]
+    noms = [n for n, _ in launcher.fragments_attendus("duckstation", 1,
+                                                      amorcage)]
+    assert noms == ["duckstation.bootstrap.1.ini"]
+
+
+def test_les_fragments_deposes_se_relisent_par_leur_nom(tmp_path,
+                                                        profils_imposes):
+    launcher.ecrire_plan(tmp_path, "D:\\E", profils_imposes,
+                         {"duckstation": "DS"})
+    lus = launcher.lire_fragments(tmp_path)
+    assert "SetupWizardIncomplete" in lus["duckstation.impose.1.ini"]
+
+
+def test_aucun_plan_depose_ne_se_lit_pas_comme_un_dossier_vide(tmp_path):
+    """`None` et `{}` ne disent pas la même chose : le premier veut dire que
+    « retro scan » n'a jamais tourné ici — l'hôte qui consulte le rapport sans
+    voir le disque de la console est dans ce cas —, le second qu'il a tourné et
+    n'a rien eu à déposer. Les confondre ferait accuser tous les profils d'un
+    fragment périmé sur une machine où il n'y a rien à reprocher."""
+    assert launcher.lire_fragments(tmp_path) is None

@@ -1529,6 +1529,22 @@ def test_le_lanceur_lit_chaque_cle_d_amorcage_que_le_plan_ecrit():
     )
 
 
+# --- D11 : la marque de fusion est un COMMENTAIRE, et il s'efface ----------
+#
+# FAIT RAPPORTÉ, DATÉ, NON REJOUABLE ICI. Mesuré sur la console le 2026-08-29
+# et consigné en fin de D2 : DuckStation réécrit son settings.ini à une
+# fermeture propre depuis son interface et en EFFACE TOUS LES COMMENTAIRES —
+# 2187 octets devenus 985. Les clés survivent ; les commentaires, non. Ce dépôt
+# n'a ni console ni compilateur C# : cette mesure ne se rejoue pas d'ici, et
+# elle est prise pour acquise.
+#
+# Ce que cela cassait : `Fusionner` retire les marques à la lecture et les
+# repose à l'écriture, et l'appelant décidait « déjà conforme » en comparant le
+# texte fusionné au texte existant. Les marques effacées, les deux diffèrent
+# TOUJOURS — une sauvegarde horodatée et une réécriture à chaque lancement,
+# alors que pas une clé n'a bougé. La conformité doit donc se juger sur les
+# CLÉS, jamais sur les marques qui les commentent.
+
 def _source_lanceur() -> str:
     from retro import launcher
     return (launcher.SOURCES / launcher.SOURCE).read_text(encoding="utf-8-sig")
@@ -1589,4 +1605,44 @@ def test_le_lanceur_ne_pose_aucune_marque_de_ligne_dans_un_yaml():
     assert nues == [], (
         "ces poses de MARQUE_FUSION ne sont pas gardées par « !yaml » : "
         f"lignes {nues}"
+    )
+
+
+def test_la_fusion_ne_juge_pas_sa_conformite_sur_ses_propres_marques():
+    """Sans cela, la promesse « déjà conforme, rien ne sera réécrit » ne tient
+    que tant que personne n'ouvre l'interface de l'émulateur."""
+    brutes = [f"ligne {n + 1} : {l.strip()}"
+              for n, l in enumerate(_source_lanceur().splitlines())
+              if re.search(r"\bfusionne\s*==\s*existant\b", l)]
+    assert brutes == [], (
+        "la conformité est jugée sur le texte BRUT : une marque effacée par "
+        "l'interface de l'émulateur ferait sauvegarder et réécrire le fichier "
+        "du propriétaire à chaque lancement — " + " | ".join(brutes)
+    )
+
+
+def test_les_deux_juges_de_conformite_disent_la_meme_chose():
+    """Il y en a DEUX : celui qui décide d'écrire, et celui de `--explain`, qui
+    est la seule façon de vérifier à distance ce que la fusion ferait. Les
+    laisser diverger rendrait « rien ne sera réécrit » à un propriétaire dont
+    le fichier est réécrit à chaque clic — un oracle qui ment."""
+    source = _source_lanceur()
+    juges = re.findall(r"SansMarques\(fusionne\) == SansMarques\(existant\)",
+                       source)
+    assert len(juges) == 2, (
+        "les deux décisions de conformité — l'écriture et --explain — doivent "
+        f"passer par le même juge ; {len(juges)} trouvée(s)"
+    )
+
+
+def test_le_juge_de_conformite_retire_la_marque_que_la_fusion_repose():
+    """Une seconde constante, ou un littéral recopié, se désaccorderait de
+    `MARQUE_FUSION` au premier changement de formulation — et le juge cesserait
+    en silence de retirer ce que la fusion pose."""
+    source = _source_lanceur()
+    corps = source[source.index("static string SansMarques("):]
+    corps = corps[:corps.index("\n    }")]
+    assert "MARQUE_FUSION" in corps, (
+        "SansMarques ne se réfère pas à MARQUE_FUSION : il retirerait autre "
+        "chose que ce que la fusion repose"
     )

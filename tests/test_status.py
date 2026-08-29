@@ -1372,3 +1372,84 @@ def test_une_licence_absente_est_un_probleme_qui_nomme_son_geste():
     fautifs = [p for p in r.problems if "licence" in p.what.lower()]
     assert len(fautifs) == 1, r.problems
     assert "work.bin" in fautifs[0].action
+
+# --- D11 : le fragment déposé n'est plus celui que le profil décrit -------
+#
+# Le symptôme est le RÉGLAGE D'ORIGINE, c'est-à-dire le défaut qu'on croyait
+# corrigé : indiscernable, vu du canapé, d'un correctif qui serait faux. Seul
+# `retro scan` redépose ces fichiers, et rien ne faisait le lien.
+
+def _rapport_fragments(tmp_path, profils, fragments):
+    return status.build_report(
+        install_dirs={}, emulation_root=tmp_path, systems=[], bios_status=[],
+        bios_root=pathlib.Path("/BIOS"), profils=profils,
+        fragments=fragments)
+
+
+def _fragments_conformes(profils):
+    from retro import launcher
+    return {nom: texte
+            for pid, profil in profils.items()
+            for rang, amorcage in enumerate(profil.bootstraps, 1)
+            for nom, texte in launcher.fragments_attendus(pid, rang, amorcage)}
+
+
+def test_un_fragment_conforme_ne_produit_aucun_probleme(tmp_path):
+    profils = _profils_imposes(tmp_path, enforced=True)
+    r = _rapport_fragments(tmp_path, profils, _fragments_conformes(profils))
+    assert not any("amorçage" in p.what.lower() for p in r.problems)
+
+
+def test_un_fragment_impose_perime_devient_un_probleme_nomme(tmp_path):
+    """C'est la dette D11 elle-même : `enforced` a changé dans le profil, la
+    suite est verte, et personne n'a re-scanné. La console fusionne encore
+    l'ancien fragment, sans un mot."""
+    profils = _profils_imposes(tmp_path, enforced=True)
+    fragments = _fragments_conformes(profils)
+    fragments["d.impose.1.ini"] = "[Main]\nSetupWizardIncomplete = true\n"
+    r = _rapport_fragments(tmp_path, profils, fragments)
+    fautifs = [p for p in r.problems if "d.impose.1.ini" in " ".join(p.details)]
+    assert len(fautifs) == 1
+    assert "retro scan" in fautifs[0].action
+
+
+def test_un_fragment_absent_alors_que_le_scan_a_tourne_est_un_probleme(
+        tmp_path):
+    """Un `enforced` ajouté à un profil dont le fragment n'a jamais été
+    déposé : le lanceur lève « fichier introuvable » devant la télévision,
+    au clic, et le rapport ne le voyait pas venir."""
+    profils = _profils_imposes(tmp_path, enforced=True)
+    fragments = _fragments_conformes(profils)
+    del fragments["d.impose.1.ini"]
+    r = _rapport_fragments(tmp_path, profils, fragments)
+    assert any("d.impose.1.ini" in " ".join(p.details) for p in r.problems)
+
+
+def test_un_fragment_pose_une_fois_est_controle_lui_aussi(tmp_path):
+    """`content` vieillit exactement comme `enforced` — il sera posé tel quel
+    sur la prochaine console neuve, avec le contenu d'un autre âge."""
+    profils = _profils_imposes(tmp_path, enforced=True)
+    fragments = _fragments_conformes(profils)
+    fragments["d.bootstrap.1.ini"] = "; d'un autre âge\n"
+    r = _rapport_fragments(tmp_path, profils, fragments)
+    assert any("d.bootstrap.1.ini" in " ".join(p.details) for p in r.problems)
+
+
+def test_sans_plan_depose_aucun_fragment_n_est_reproche(tmp_path):
+    """`retro scan` n'a jamais tourné ici — l'hôte qui consulte le rapport
+    sans voir le disque de la console est dans ce cas. Accuser dix profils
+    apprendrait au lecteur à ignorer la section Problèmes."""
+    profils = _profils_imposes(tmp_path, enforced=True)
+    r = _rapport_fragments(tmp_path, profils, None)
+    assert not any("amorçage" in p.what.lower() for p in r.problems)
+
+
+def test_les_fragments_perimes_tiennent_dans_UN_seul_probleme(tmp_path):
+    """Dix lignes pour une seule cause — un scan à rejouer — noieraient les
+    autres problèmes du rapport. Même groupement que les modes de rendu."""
+    profils = _profils_imposes(tmp_path, enforced=True)
+    fragments = {nom: "; périmé\n" for nom in _fragments_conformes(profils)}
+    r = _rapport_fragments(tmp_path, profils, fragments)
+    groupes = [p for p in r.problems if "d.impose.1.ini" in " ".join(p.details)]
+    assert len(groupes) == 1
+    assert "d.bootstrap.1.ini" in " ".join(groupes[0].details)

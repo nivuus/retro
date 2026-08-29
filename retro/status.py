@@ -160,6 +160,87 @@ def etat_amorcage(profils: dict,
     return etats
 
 
+# Les trois états d'un fragment déposé à côté des plans. « conforme » n'est PAS
+# dit dans le rapport : un fragment à jour est le cas normal, et le dire dix
+# fois noierait celui qui, lui, est périmé.
+FRAGMENT_CONFORME = "conforme"
+FRAGMENT_ECART = "ne correspond plus au profil"
+FRAGMENT_ABSENT = "jamais déposé"
+
+
+@dataclasses.dataclass(frozen=True)
+class Fragment:
+    """Un fichier que `ecrire_plan` dépose, confronté à ce que le profil dit.
+
+    C'est la dette D11 : ces fichiers ne sont écrits que par « retro scan ».
+    Changer le champ `enforced` d'un profil, voir la suite verte et ne pas
+    re-scanner laisse la console fusionner l'ANCIEN fragment. Rien ne le disait,
+    et le symptôme est le réglage d'origine — c'est-à-dire, vu du canapé, un
+    correctif qui « ne marche pas ».
+    """
+    profile_id: str
+    nom: str
+    etat: str
+
+
+def etat_fragments(profils: dict,
+                   fragments: dict[str, str] | None) -> list[Fragment]:
+    """Ce que le dépôt impose, confronté à ce que la console porte.
+
+    `fragments` à `None` veut dire que le dossier des plans n'existe pas —
+    « retro scan » n'a jamais tourné sur cette machine, ou l'hôte consulte le
+    rapport sans voir le disque de la console. Rien n'est alors reprochable, et
+    accuser dix profils apprendrait au lecteur à ignorer la section Problèmes.
+
+    La comparaison est faite À L'OCTET PRÈS, contre `fragments_attendus` — la
+    fonction même dont `ecrire_plan` se sert pour écrire. Comparer les seules
+    clés laisserait passer une VALEUR changée, qui est le cas le plus courant
+    d'un `enforced` corrigé ; et une seconde définition de « ce qui devrait être
+    là » divergerait de l'écriture au premier changement de convention.
+    """
+    if fragments is None:
+        return []
+    etats = []
+    for pid in sorted(profils):
+        for rang, amorcage in enumerate(profils[pid].bootstraps, 1):
+            for nom, attendu in launcher_mod.fragments_attendus(
+                    pid, rang, amorcage):
+                depose = fragments.get(nom)
+                etats.append(Fragment(
+                    profile_id=pid, nom=nom,
+                    etat=(FRAGMENT_ABSENT if depose is None
+                          else FRAGMENT_CONFORME if depose == attendu
+                          else FRAGMENT_ECART)))
+    return etats
+
+
+def _probleme_fragments(fragments: list[Fragment],
+                        emulation_root: pathlib.Path) -> list[Problem]:
+    """UN seul problème groupé — la cause est unique : un scan à rejouer.
+
+    Une ligne par fragment noierait les autres problèmes du rapport, et dix
+    lignes disant la même chose se lisent comme dix pannes. Même groupement que
+    les modes de rendu et que Steam Input.
+    """
+    fautifs = [f for f in fragments if f.etat != FRAGMENT_CONFORME]
+    if not fautifs:
+        return []
+    return [Problem(
+        what=f"{len(fautifs)} fichier(s) d'amorçage posés sur cette machine ne "
+             "sont plus ceux que les profils décrivent : la console applique "
+             "un réglage d'un autre âge, et le symptôme sera le défaut qu'on "
+             "croyait corrigé",
+        where=_joindre(str(emulation_root), launcher_mod.DIR,
+                       launcher_mod.PLAN),
+        # Le geste, nommé : « retro scan » est le SEUL qui redépose ces
+        # fichiers, et rien dans le rapport ne le disait. Le propriétaire
+        # cherchait la panne dans le profil, qui était pourtant juste.
+        action="lancer « retro scan » sur cette machine : c'est le seul geste "
+               "qui redépose ces fichiers",
+        details=tuple(f"{f.nom} — {f.etat}" for f in fautifs),
+    )]
+
+
 # La page que `retro status` fait ouvrir au propriétaire quand une manette
 # reste à relever. Le chemin est relatif à la racine du dépôt : c'est la seule
 # forme qui vaille depuis la console comme depuis l'hôte.
@@ -757,6 +838,7 @@ def build_report(
     paquet: str = "",
     dossiers_de_mise_a_jour: Sequence[str] = (),
     licences: Sequence[licence_mod.EtatLicence] = (),
+    fragments: dict[str, str] | None = None,
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -799,6 +881,14 @@ def build_report(
     à opposer — savoir quelle identité DEVRAIT être là est le travail de
     l'hôte qui a livré la roue, pas celui d'un rapport.
 
+    `fragments` est le contenu RÉEL des fichiers déposés à côté des plans, lus
+    sur le disque de cette machine par `launcher.lire_fragments`. Seul
+    « retro scan » les écrit : sans cette confrontation, un `enforced` corrigé
+    ici pouvait rester sans le moindre effet là-bas, et le message obtenu
+    décrivait le symptôme d'origine — exactement comme si le correctif était
+    faux. `None` veut dire que le dossier des plans n'existe pas, et rien n'est
+    alors reproché.
+
     `amorcages` est le témoin que le lanceur écrit sur la machine — profil →
     [(date, cible), …], une entrée par cible posée. `retro status` tourne sur l'hôte, qui n'atteint ni
     `C:\\Users` ni `%APPDATA%` de la console : c'est la seule trace dont il
@@ -809,6 +899,7 @@ def build_report(
     rendu = etat_rendu(profils) if profils else []
     manettes = etat_manettes(profils) if profils else []
     vibrations = etat_vibrations(profils) if profils else []
+    deposes = etat_fragments(profils, fragments) if profils else []
     return Report(
         emulators=emulateurs,
         systems=list(systems),
@@ -823,7 +914,8 @@ def build_report(
                   *_probleme_dossiers_de_mise_a_jour(
                       dossiers_de_mise_a_jour),
                   *_probleme_vibrations(vibrations),
-                  *_probleme_licences(licences)],
+                  *_probleme_licences(licences),
+                  *_probleme_fragments(deposes, emulation_root)],
         bios_root=bios_root,
         render_mode=render_mode,
         paquet=paquet,
