@@ -303,3 +303,52 @@ def test_un_basculement_entre_volumes_ne_depend_pas_du_menage(
     assert acquire.acquire(e, racine, fetch=lambda u: blob) == "installé"
     assert (racine / "Truc" / "truc.exe").read_text() == "binaire"
     assert (racine / "Truc" / ".retro-version").read_text().strip() == "2.4.0"
+
+
+# --- une empreinte qui n'a pas encore été relevée --------------------------
+
+def test_une_empreinte_non_relevee_refuse_avant_de_telecharger(tmp_path):
+    """Un émulateur peut être connu du manifeste sans être encore épinglé.
+
+    Le refus vient AVANT le téléchargement, et il nomme la cause. Sans lui,
+    l'empreinte vide était comparée à celle de l'archive : cent mégaoctets
+    téléchargés pour rien, et un message « attendue :  » qui ne dit à personne
+    qu'il manque un relevé.
+
+    Ce qui est exclu, c'est d'installer un binaire non vérifié : une empreinte
+    inventée pour faire passer la revue casse à l'installation, sur la console,
+    sans que rien n'explique pourquoi.
+    """
+    appels = []
+
+    def fetch(url):
+        appels.append(url)
+        return b"peu importe"
+
+    racine = tmp_path / "Emulation"
+    with pytest.raises(acquire.AcquireError) as exc:
+        acquire.acquire(emu(""), racine, fetch=fetch)
+    assert appels == [], "l'archive a été téléchargée alors que rien ne la vérifie"
+    assert "empreinte" in str(exc.value).lower()
+    assert not (racine / "Truc").exists()
+
+
+def test_les_autres_emulateurs_s_installent_quand_meme(tmp_path):
+    """Un émulateur non épinglé ne doit pas priver le propriétaire des autres.
+
+    `install_all` capture déjà chaque échec ; ce test l'ancre pour CETTE
+    cause-là, qui est la seule à être connue d'avance.
+    """
+    from retro import install
+
+    blob = faire_zip(tmp_path / "src.zip", {"truc.exe": "binaire"})
+    manifeste = {
+        "truc": emu(hashlib.sha256(blob).hexdigest()),
+        "arelever": dataclasses.replace(emu(""), key="arelever", name="À relever",
+                                        install_dir="ARelever"),
+    }
+    resultats = dict(install.install_all(manifeste, tmp_path / "Emulation",
+                                         fetch=lambda u: blob))
+    assert resultats["truc"] == "installé"
+    assert resultats["arelever"].startswith("ÉCHEC")
+    assert (tmp_path / "Emulation" / "Truc" / "truc.exe").is_file()
