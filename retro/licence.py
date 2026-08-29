@@ -34,6 +34,7 @@ import pathlib
 from collections.abc import Sequence
 
 from retro import install as install_mod
+from retro import lecture
 
 # LA STRUCTURE, ET D'OÙ CHAQUE NOMBRE VIENT.
 #
@@ -222,8 +223,14 @@ def etat_licences(jeux: Sequence[tuple[str, pathlib.Path]],
         if fichier is None:
             continue
         try:
-            attendue = chemin_relatif(fichier.read_bytes())
-        except LicenceError as exc:
+            attendue = chemin_relatif(lecture.octets(fichier))
+        except (LicenceError, OSError) as exc:
+            # OSError AUSSI, et pas seulement LicenceError. `lecture.octets`
+            # lève quand le partage rend moins d'octets que le fichier n'en
+            # déclare, et Windows lève là où Linux se tait (mesuré le
+            # 2026-08-29 : [WinError 31] en descendant sous une ROM Game Boy).
+            # Sans cette branche, le seul écran de ce paquet fait pour être lu
+            # mourrait tout entier sur une licence illisible.
             etats.append(EtatLicence(jeu=titre, etat=ILLISIBLE,
                                      detail=str(exc)))
             continue

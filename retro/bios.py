@@ -21,6 +21,8 @@ import dataclasses
 import hashlib
 import pathlib
 
+from retro import lecture
+
 
 @dataclasses.dataclass(frozen=True)
 class BiosFile:
@@ -133,7 +135,7 @@ def check_bios(profils: dict, bios_root: pathlib.Path) -> list[SystemBios]:
                     etat = "absent"
                 else:
                     try:
-                        obtenu = hashlib.md5(chemin.read_bytes()).hexdigest()
+                        obtenu = lecture.md5(chemin)
                     except OSError:
                         # Présent mais illisible — permissions refusées, partage
                         # qui répond sans servir. « Corrompu » est exactement ce
@@ -336,15 +338,15 @@ def place_bios(profils: dict, bios_root: pathlib.Path,
                         if f.subdir else dossier)
                 cible = sous / f.name
                 try:
-                    if cible.is_file() and hashlib.md5(
-                            cible.read_bytes()).hexdigest() == f.expected_md5:
+                    if cible.is_file() and \
+                            lecture.md5(cible) == f.expected_md5:
                         resultats.append(Portage(name=f.name, profile=pid,
                                                  state=DEJA_PORTE,
                                                  detail=str(sous)))
                         continue
                     sous.mkdir(parents=True, exist_ok=True)
                     provisoire = sous / (f.name + ".partiel")
-                    provisoire.write_bytes(source.read_bytes())
+                    provisoire.write_bytes(lecture.octets(source))
                     provisoire.replace(cible)
                 except OSError as exc:
                     resultats.append(Portage(
