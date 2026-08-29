@@ -228,3 +228,30 @@ def test_un_echec_est_retenu_pour_le_rapport(tmp_path):
     assert len(client.erreurs) == 1
     assert "401 Unauthorized" in client.erreurs[0]
     assert "Un Jeu" in client.erreurs[0]
+
+
+def test_un_titre_a_barre_oblique_ne_coupe_pas_l_adresse(tmp_path):
+    """MESURE le 2026-08-29, des que les jeux ont porte leur VRAI titre :
+    « Metal Slug 2 - Super Vehicle-001/II » contient une barre oblique, qui
+    coupait l'adresse en deux segments et rendait 404 — donc aucune jaquette,
+    precisement sur le jeu qui en manquait.
+
+    Le defaut dormait depuis toujours : aucun nom de FICHIER n'en portait.
+    """
+    fj, fb, appels = faux_reseau()
+    client = artwork.ArtworkClient(api_key="cle", fetch_json=fj, fetch_bytes=fb)
+    client.fetch_for("Metal Slug 2 - Super Vehicle-001/II", 2398962978, tmp_path)
+    recherche = next(u for u in appels if "search" in u)
+    apres = recherche.split("/search/autocomplete/", 1)[1]
+    assert "/" not in apres, f"le titre coupe l'adresse : {recherche}"
+    assert "%2F" in apres
+
+
+def test_un_titre_a_diese_ou_interrogation_est_encode(tmp_path):
+    """Meme famille : « ? » ouvrirait une chaine de requete, « # » un fragment,
+    et la recherche porterait sur un titre tronque sans que rien ne le dise."""
+    fj, fb, appels = faux_reseau()
+    client = artwork.ArtworkClient(api_key="cle", fetch_json=fj, fetch_bytes=fb)
+    client.fetch_for("Where in the World? #1", 2398962978, tmp_path)
+    apres = next(u for u in appels if "search" in u).split("autocomplete/", 1)[1]
+    assert "?" not in apres and "#" not in apres

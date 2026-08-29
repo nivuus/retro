@@ -95,7 +95,16 @@ class ArtworkClient:
             return []
         entetes = {"Authorization": f"Bearer {self.api_key}"}
         try:
-            recherche = self._fetch_json(f"{BASE}/search/autocomplete/{title}", entetes)
+            # LE TITRE EST UN SEGMENT D'URL, PAS UN MORCEAU DE TEXTE. Mesuré
+            # le 2026-08-29, dès que les jeux ont porté leur vrai titre :
+            # « Metal Slug 2 - Super Vehicle-001/II » contient une barre
+            # oblique, qui coupait l'adresse en deux segments et rendait 404.
+            # Le défaut dormait depuis toujours — aucun nom de fichier n'en
+            # portait — et il aurait aussi mordu sur un « ? » ou un « # ».
+            # `safe=""` encode la barre elle-même ; sans lui, quote() la
+            # laisse passer, ce qui est précisément le cas à fermer.
+            terme = urllib.parse.quote(title, safe="")
+            recherche = self._fetch_json(f"{BASE}/search/autocomplete/{terme}", entetes)
             resultats = recherche.get("data") or []
             if not resultats:
                 return []
