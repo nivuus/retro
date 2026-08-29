@@ -253,3 +253,261 @@ def test_un_fichier_de_reglages_perime_est_retire(tmp_path, profils_config):
     launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_config,
                          {"retroarch": "RetroArch"})
     assert not (dossier / "vieux.sys.native.cfg").exists()
+
+
+# --- l'amorçage -----------------------------------------------------------
+
+# La chaîne Python est délimitée par des guillemets doubles triples, et le
+# `content` du TOML par des guillemets SIMPLES triples : la chaîne littérale
+# de TOML, qui n'interprète aucun échappement. C'est ce qu'il faut pour un
+# fichier de configuration Windows, plein d'antislashs.
+PROFIL_AMORCE = PROFIL + """
+[bootstrap]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+[Main]
+SetupWizardIncomplete = false
+'''
+"""
+
+
+@pytest.fixture
+def profils_amorces(tmp_path):
+    p = tmp_path / "duckstation-amorce.toml"
+    p.write_text(PROFIL_AMORCE, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(p)}
+
+
+def test_le_plan_porte_les_trois_lignes_d_amorcage(profils_amorces):
+    """Le lanceur ne reconstruit ni le chemin de la source ni la stratégie :
+    les deux sont décidées ici."""
+    systeme = profils_amorces["duckstation"].systems[0]
+    texte = launcher.plan_systeme(
+        "duckstation", systeme, "D:\\Emulation\\DS\\duckstation-qt.exe",
+        "D:\\Emulation\\DS", "D:\\Emulation\\_launcher\\systems",
+        bootstrap=profils_amorces["duckstation"].bootstrap)
+    l = lignes(texte)
+    assert l["bootstrap_target"] == (
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
+    assert l["bootstrap_source"] == (
+        "D:\\Emulation\\_launcher\\systems\\duckstation.bootstrap.ini")
+    assert l["bootstrap_when"] == launcher.SI_ABSENT
+
+
+def test_un_profil_sans_amorcage_porte_les_lignes_vides(profils):
+    """Vides, jamais absentes : le lanceur traite une clé manquante comme une
+    faute du plan, et c'est une propriété qu'on garde."""
+    l = lignes(plan(profils))
+    assert l["bootstrap_target"] == ""
+    assert l["bootstrap_source"] == ""
+    assert l["bootstrap_when"] == ""
+
+
+def test_le_nom_du_fichier_suit_l_extension_de_la_cible():
+    """Un émulateur dont la configuration est un .toml ne reçoit pas un .ini :
+    le nom du fichier déposé porte l'extension de sa cible."""
+    assert launcher.bootstrap_name(
+        "duckstation", "%USERPROFILE%\\Documents\\DuckStation\\settings.ini"
+    ) == "duckstation.bootstrap.ini"
+    assert launcher.bootstrap_name(
+        "xemu", "%APPDATA%\\xemu\\xemu.toml") == "xemu.bootstrap.toml"
+
+
+def test_le_fichier_d_amorcage_est_ecrit(tmp_path, profils_amorces):
+    """Le contenu du profil arrive tel quel à côté des plans, là où le lanceur
+    ira le chercher."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    depose = (tmp_path / launcher.DIR / launcher.PLAN
+              / "duckstation.bootstrap.ini")
+    assert "SetupWizardIncomplete = false" in depose.read_text(encoding="utf-8")
+
+
+def test_un_amorcage_perime_est_retire(tmp_path, profils_amorces):
+    """Un amorçage resté là après qu'un profil a disparu réécrirait la
+    configuration d'un émulateur que plus rien ne décrit."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    dossier = tmp_path / launcher.DIR / launcher.PLAN
+    (dossier / "ancien.bootstrap.toml").write_text("x", encoding="utf-8")
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    assert not (dossier / "ancien.bootstrap.toml").exists()
+    assert (dossier / "duckstation.bootstrap.ini").exists()
+
+
+# --- l'ordre de ré-amorçage ----------------------------------------------
+
+def test_l_ordre_de_reamorcage_est_ecrit(tmp_path, profils_amorces):
+    """« retro » n'atteint pas C:\\Users : forcer n'est pas une écriture, c'est
+    un ordre que le lanceur exécutera là où il est."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    fichier = launcher.ordonner_reamorcage(tmp_path, "duckstation")
+    assert fichier.read_text(encoding="utf-8").split() == ["duckstation"]
+
+
+def test_un_ordre_ne_s_ecrit_pas_deux_fois(tmp_path, profils_amorces):
+    """Deux ordres pour le même profil feraient deux sauvegardes et une
+    réécriture de plus, sans rien apporter."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    launcher.ordonner_reamorcage(tmp_path, "duckstation")
+    fichier = launcher.ordonner_reamorcage(tmp_path, "duckstation")
+    assert fichier.read_text(encoding="utf-8").split() == ["duckstation"]
+
+
+def test_reamorcer_un_profil_inconnu_est_refuse(tmp_path, profils_amorces):
+    """Un ordre qui nomme un profil sans amorçage ne serait jamais consommé :
+    il resterait dans le fichier, et le propriétaire attendrait un effet qui
+    ne vient pas."""
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils_amorces,
+                         {"duckstation": "DS"})
+    with pytest.raises(launcher.AmorcageError) as e:
+        launcher.ordonner_reamorcage(tmp_path, "pcsx2")
+    assert "duckstation" in str(e.value)
+
+
+# --- le témoin d'amorçage --------------------------------------------------
+
+def test_le_temoin_d_amorcage_est_relu(tmp_path):
+    """Le lanceur écrit ce qu'il a posé ; l'hôte, qui n'atteint pas C:\\Users,
+    n'a que ça pour le savoir."""
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.TEMOIN_BOOTSTRAP).write_text(
+        "duckstation\t2026-08-28 10:27:26\tC:\\Users\\A\\settings.ini\n",
+        encoding="utf-8")
+    assert launcher.lire_amorcages(tmp_path) == {
+        "duckstation": ("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini")}
+
+
+def test_un_temoin_absent_ne_fait_pas_echouer(tmp_path):
+    """Aucun jeu n'a encore été lancé : c'est un état normal, pas une panne."""
+    assert launcher.lire_amorcages(tmp_path) == {}
+
+
+# --- un lanceur périmé rend toute la fonctionnalité inerte -----------------
+
+def test_un_lanceur_plus_vieux_que_sa_source_est_perime(tmp_path):
+    """Le binaire est LÀ, `est_installe` dit oui, et pourtant il ignore en
+    silence les lignes de plan qu'il ne connaît pas : ni erreur, ni amorçage.
+    C'est l'état du jour même de la livraison."""
+    import os
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    os.utime(dossier / launcher.EXE, (1_000_000, 1_000_000))
+    (dossier / launcher.SOURCE).write_text("// neuf", encoding="utf-8")
+    os.utime(dossier / launcher.SOURCE, (2_000_000, 2_000_000))
+    assert launcher.est_installe(tmp_path)
+    assert launcher.lanceur_perime(tmp_path)
+
+
+def test_un_lanceur_recompile_n_est_plus_perime(tmp_path):
+    """Le constat doit s'éteindre tout seul après `compiler.cmd`, sinon
+    personne ne le lira plus."""
+    import os
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.SOURCE).write_text("// neuf", encoding="utf-8")
+    os.utime(dossier / launcher.SOURCE, (1_000_000, 1_000_000))
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    os.utime(dossier / launcher.EXE, (2_000_000, 2_000_000))
+    assert not launcher.lanceur_perime(tmp_path)
+
+
+def test_redeposer_la_source_ne_perime_pas_un_lanceur_a_jour(tmp_path):
+    """`deposer_source` copie la source AVEC sa date : sans cela, chaque
+    dépôt réestampillait la source à l'instant présent et déclarait périmé un
+    lanceur qu'on venait de recompiler — un avertissement qui crie à tort est
+    un avertissement qu'on cesse de lire."""
+    import os
+    launcher.deposer_source(tmp_path)
+    dossier = tmp_path / launcher.DIR
+    # La source livrée avec le paquet, et un binaire compilé une seconde après
+    # elle : ce lanceur est à jour, définitivement.
+    livree = (launcher.SOURCES / launcher.SOURCE).stat().st_mtime
+    assert (dossier / launcher.SOURCE).stat().st_mtime == livree, (
+        "la source déposée doit garder la date de celle du paquet")
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    os.utime(dossier / launcher.EXE, (livree + 1, livree + 1))
+    launcher.deposer_source(tmp_path)   # un second passage, plus tard
+    assert not launcher.lanceur_perime(tmp_path)
+
+
+def test_un_lanceur_sans_source_deposee_n_est_pas_dit_perime(tmp_path):
+    """Sans source à côté, il n'y a rien à comparer : `est_installe` dit déjà
+    l'absence du binaire, et inventer une péremption ferait réclamer une
+    recompilation que rien ne motive."""
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    assert not launcher.lanceur_perime(tmp_path)
+
+
+# --- les clés imposées : le second régime ---------------------------------
+
+PROFIL_IMPOSE = PROFIL + """
+[bootstrap]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé UNE FOIS, et le reste, qui est à vous.
+[Main]
+ConfirmPowerOff = false
+'''
+enforced = '''
+[Main]
+SetupWizardIncomplete = false
+'''
+"""
+
+
+@pytest.fixture
+def profils_imposes(tmp_path):
+    p = tmp_path / "duckstation-impose.toml"
+    p.write_text(PROFIL_IMPOSE, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(p)}
+
+
+def test_le_plan_porte_le_fichier_des_cles_imposees(profils_imposes):
+    """Deux fichiers pour une seule cible : celui qu'on pose si elle est
+    absente, celui qu'on refusionne à chaque lancement."""
+    profil = profils_imposes["duckstation"]
+    l = lignes(launcher.plan_systeme(
+        "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
+        "D:\\E\\_launcher\\systems", bootstrap=profil.bootstrap))
+    assert l["bootstrap_source"] == (
+        "D:\\E\\_launcher\\systems\\duckstation.bootstrap.ini")
+    assert l["bootstrap_enforced"] == (
+        "D:\\E\\_launcher\\systems\\duckstation.impose.ini")
+    assert l["bootstrap_when"] == launcher.SI_ABSENT
+
+
+def test_un_profil_qui_n_impose_rien_porte_la_ligne_vide(profils_amorces):
+    """Vide, jamais absente : une clé manquante est une faute du plan, et
+    c'est cette propriété qui attrape les plans d'une version antérieure."""
+    profil = profils_amorces["duckstation"]
+    l = lignes(launcher.plan_systeme(
+        "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
+        "D:\\E\\_launcher\\systems", bootstrap=profil.bootstrap))
+    assert l["bootstrap_enforced"] == ""
+
+
+def test_le_fichier_des_cles_imposees_est_depose(tmp_path, profils_imposes):
+    dossier = launcher.local_dir(tmp_path) / launcher.PLAN
+    launcher.ecrire_plan(tmp_path, "D:\\E", profils_imposes,
+                         {"duckstation": "DS"})
+    impose = dossier / "duckstation.impose.ini"
+    assert impose.is_file()
+    assert "SetupWizardIncomplete" in impose.read_text(encoding="utf-8")
+    # Et le fichier « posé une fois » reste à côté, distinct.
+    assert "ConfirmPowerOff" in (
+        dossier / "duckstation.bootstrap.ini").read_text(encoding="utf-8")
+
+
+def test_les_deux_fichiers_d_un_profil_ne_se_confondent_pas():
+    assert launcher.enforced_name("duckstation", "x.ini") \
+        != launcher.bootstrap_name("duckstation", "x.ini")

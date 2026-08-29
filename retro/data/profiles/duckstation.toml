@@ -24,9 +24,261 @@ schema = 1
 id  = "duckstation"
 exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 
+# Amorçage : mesuré le 2026-08-28, voir
+# docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
+#
+# Sans [Main] SetupWizardIncomplete = false, DuckStation ouvre son assistant
+# de première configuration AVANT d'honorer sa ligne de commande, et aucun de
+# ses dix-sept arguments (énumérés dans qthost.cpp, voir plus bas) ne le
+# saute. C'est la cause mesurée du défaut d'origine : cinq lancements de Crash
+# Team Racing depuis Steam, ligne de commande correcte à chaque fois, et
+# pourtant aucun fichier de données créé — une instance est même restée
+# plusieurs heures sur cet assistant sans que personne ne le termine depuis
+# un canapé. Le même lancement, ce settings.ini posé au préalable, a démarré
+# le jeu et écrit playtime.dat avec SCES-02105, le serial PAL de Crash Team
+# Racing.
+#
+# [AutoUpdater] CheckAtStartup = false ferme une SECONDE cause du même
+# symptôme, découverte le même jour : même l'assistant désactivé, DuckStation
+# ouvrait une fenêtre modale « Mise à jour disponible » (71,31 Mo) par-dessus
+# tout, qu'aucune manette ne peut fermer — elle bloquait le lancement
+# exactement comme l'assistant. La raison de fond justifie de la couper
+# plutôt que de l'accepter : `retro` épingle la version de chaque émulateur
+# dans son manifeste, avec son empreinte SHA256, et `acquire` écrit un témoin
+# `.retro-version` à côté ; une mise à jour appliquée par l'émulateur
+# lui-même ferait diverger l'installation de ce que le manifeste atteste, en
+# silence.
+#
+# Chaque clé ci-dessous a été VÉRIFIÉE PAR SON EFFET dans l'interface de
+# DuckStation v0.1-11609 (captures à l'appui), et c'est la seule preuve
+# retenue : la simple survie d'une clé dans le fichier ne prouve rien
+# d'elle-même — mesuré, une clé volontairement inventée
+# (`CetteClefNExistePas`) survit tout aussi bien à un aller-retour,
+# DuckStation préservant ce qu'il ne comprend pas. Chaque valeur ici a donc
+# été posée, la fenêtre de réglages ouverte et photographiée, et la case
+# vérifiée dans l'état attendu.
+#
+# Le chemin des BIOS ([BIOS] SearchDirectory) a lui aussi été mesuré — la
+# clé existe, et l'interface affiche bien « Répertoire du BIOS » avec la
+# valeur posée, les trois régions restant en « Détection automatique » —
+# mais il n'entre DÉLIBÉRÉMENT PAS ici : sa valeur (le dossier que le propriétaire a choisi, sur la
+# machine de mesure) est propre à chaque installation, alors que ce profil
+# est livré, donc public. Il lui faudra un jeton substitué à la
+# synchronisation, sur le modèle de {render_config} dans retro/launcher.py,
+# alimenté par une option de « retro scan ». Ce que son absence coûte
+# aujourd'hui : `retro status --bios` vérifie le dossier que le propriétaire
+# a choisi pendant que DuckStation cherche dans le sien, donc le rapport peut
+# annoncer « BIOS présent » sur un émulateur qui n'en voit aucun.
+# DEUX RÉGIMES SUR CE FICHIER, arbitrés par le propriétaire le 2026-08-29.
+#
+# `enforced` — ce que la console IMPOSE, reposé à chaque lancement. Trois clés
+# de démarrage, et la section [Pad1] : sans elles, un jeu ne démarre pas sans
+# clavier, ou démarre sans qu'aucun bouton ne réponde. L'assistant de première
+# configuration s'ouvre par-dessus (SetupWizard), ou une fenêtre « Mise à jour
+# disponible » qu'aucune manette ne ferme (AutoUpdater), ou le jeu s'ouvre en
+# fenêtre sur la télévision (StartFullscreen), ou la manette reste muette
+# (Pad1). Ce sont les causes mesurées d'un lancement qui échoue, pas des
+# préférences.
+#
+# `content` — tout le reste, posé UNE FOIS parce que le fichier n'existait
+# pas, et plus jamais retouché. Ce sont des préférences : le propriétaire les
+# change dans l'interface de DuckStation, et son choix TIENT. C'est ce qu'il a
+# explicitement demandé — la console n'a pas à lui reprendre ConfirmPowerOff.
+#
+# Le reste du fichier — son [BIOS] SearchDirectory, ses réglages, ses
+# commentaires — n'est jamais touché : la fusion ne connaît que les clés
+# qu'elle apporte.
+#
+# REMPLISSAGE (dette D2) — la clé de rendu rejoindra `enforced` DÈS QU'ELLE
+# SERA RELEVÉE, et elle ne l'est pas. Le binaire épinglé porte bien de quoi
+# remplir en entier — le type DisplayScalingMode, les valeurs NearestInteger
+# et BilinearInteger, étiquetées « Nearest-Neighbor (Integer) » et
+# « Bilinear (Integer) » — mais son couple section/clé n'apparaît nulle part
+# sous une forme lisible : ces littéraux sont assemblés dans le code. Or une
+# clé qui ne correspond à rien est ignorée EN SILENCE — mesuré sur cet
+# émulateur même (2026-08-28, une clé inventée survit à un aller-retour sans
+# rien faire). En écrire une plausible produirait exactement ce que la dette
+# D2 combat : un réglage qui a l'air posé et qui ne fait rien.
+#
+# LE GESTE POUR LA RELEVER, et il revient au propriétaire : sous
+# « -batch -nogui » — le seul mode que la console emploie — DuckStation ne
+# réécrit JAMAIS son settings.ini. Il faut donc l'ouvrir UNE fois hors du
+# chemin de la console, changer le réglage de mise à l'échelle dans son
+# interface, quitter, puis lire la section [Display] du fichier qu'il vient
+# d'écrire.
+#
+# CE QUI SE PASSE ALORS, et qu'il ne faut pas prendre pour un sabotage : ce
+# relevé — comme celui de la manette (D3), qui exige de repasser
+# SetupWizardIncomplete à `true` — se fait DuckStation lancé hors de la
+# console. La console ne réaffirme rien pendant ce temps. Mais le PROCHAIN
+# lancement par la console remettra SetupWizardIncomplete à `false`, et c'est
+# VOULU : c'est précisément le rôle de `enforced`. Le relevé n'est pas perdu
+# pour autant — la clé relevée se recopie dans ce profil, où elle devient à
+# son tour une clé imposée.
+
+[bootstrap]
+target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
+
+# Les clés que la console IMPOSE. Pas de commentaires dans ce fragment — la
+# fusion ne reporte que les clés, et un commentaire y serait un texte que
+# personne ne lirait jamais. Ce qu'il faut en savoir se lit donc ici.
+#
+# [Pad1] — LES VINGT-SEPT LIAISONS DE LA MANETTE, relevées le 2026-08-29 sur
+# l'invité NIVUUS-WIN (provision_version B1), DuckStation v0.1-11609, le pad
+# virtuel d'Apollo créé par ViGEmBus. Elles n'ont pas été recopiées d'une
+# recette : elles ont été ÉCRITES PAR L'ASSISTANT DE DUCKSTATION lui-même,
+# après un appariement automatique, puis relues dans le settings.ini qu'il
+# venait d'écrire. C'est le seul relevé valide — une liaison qui ne correspond
+# à rien est ignorée EN SILENCE, donc une valeur inventée est indiscernable de
+# l'absence de valeur, à l'œil comme au journal. La procédure jouée est
+# docs/releve-manettes.md.
+#
+# Ce que le relevé a tranché, et qui était ouvert jusque-là : les clés sont
+# NUES (« Cross », « LLeft »…) et non « Bindings/… » — cette dernière forme
+# est celle de PCSX2 ; l'identifiant est « SDL-0 » et non « XInput-0 » ; les
+# axes portent un préfixe « + » ou « - » ; et DuckStation n'écrit AUCUNE clé
+# « Type ». Elle n'est donc pas ajoutée : ce fragment est ce que l'émulateur
+# a produit, pas ce qu'on aurait cru bon d'y mettre.
+#
+# POURQUOI `enforced` ET NON `content`. Sous « -batch -nogui » — le seul mode
+# que la console emploie — DuckStation ne rouvre JAMAIS ce fichier (mesuré :
+# settings.ini du 28/08 13:21, playtime.dat du 28/08 18:55, cinq heures et
+# demie de jeu sans une écriture). Un régime « si-absent » ne poserait donc
+# ces liaisons sur AUCUNE console déjà jouée — le fichier y existe. C'est
+# exactement le cas d'usage pour lequel les deux régimes ont été séparés.
+#
+# FRAGILITÉ 1 — « SDL-0 » EST UN INDEX, PAS UN GUID. Le premier champ numérote
+# les manettes dans l'ordre où SDL les énumère ; il ne dit rien du
+# périphérique. Si un autre pad s'énumère avant celui d'Apollo — une DualShock
+# 4 laissée branchée, une manette du client, un pad virtuel de plus — le pad
+# d'Apollo devient SDL-1, et les vingt-sept liaisons ci-dessous visent un
+# périphérique qui n'est pas là. DuckStation ne le dira PAS : elles seront
+# ignorées en silence, et le symptôme sera exactement celui d'avant ce relevé,
+# manette muette et rien dans le journal. C'est le contraire de la fragilité
+# de D4 : un changement de type de pad ne casse pas ces liaisons (aucun GUID
+# n'y figure), mais un pad de PLUS les casse toutes.
+#
+# FRAGILITÉ 2 — LE PROPRIÉTAIRE NE PEUT PLUS REMAPPER SA MANETTE DANS
+# DUCKSTATION. `enforced` repose ces liaisons à CHAQUE lancement : un
+# remappage fait dans l'interface de DuckStation sera écrasé au lancement
+# suivant, sans message. C'est le prix assumé d'un émulateur jouable — sans
+# ces lignes, aucun bouton ne répond du tout — mais c'est un prix, et il est
+# écrit ici pour être vu plutôt que subi. Pour remapper vraiment, il faut
+# changer CE fragment ; pour rendre le remappage au propriétaire, il faut
+# déplacer [Pad1] dans `content` et accepter qu'il ne soit jamais posé sur une
+# console déjà jouée.
+#
+# LargeMotor et SmallMotor sont les deux liaisons de VIBRATION, et elles
+# étaient absentes jusqu'ici : c'est un maillon de la dette D1 qui devient
+# actionnable sans nouvelle mesure.
+enforced = '''
+[Main]
+SetupWizardIncomplete = false
+StartFullscreen = true
+
+[AutoUpdater]
+CheckAtStartup = false
+
+[Pad1]
+Analog = SDL-0/Guide
+Circle = SDL-0/B
+Cross = SDL-0/A
+Down = SDL-0/DPadDown
+L1 = SDL-0/LeftShoulder
+L2 = SDL-0/+LeftTrigger
+L3 = SDL-0/LeftStick
+LDown = SDL-0/+LeftY
+LLeft = SDL-0/-LeftX
+LRight = SDL-0/+LeftX
+LUp = SDL-0/-LeftY
+LargeMotor = SDL-0/LargeMotor
+Left = SDL-0/DPadLeft
+R1 = SDL-0/RightShoulder
+R2 = SDL-0/+RightTrigger
+R3 = SDL-0/RightStick
+RDown = SDL-0/+RightY
+RLeft = SDL-0/-RightX
+RRight = SDL-0/+RightX
+RUp = SDL-0/-RightY
+Right = SDL-0/DPadRight
+Select = SDL-0/Back
+SmallMotor = SDL-0/SmallMotor
+Square = SDL-0/X
+Start = SDL-0/Start
+Triangle = SDL-0/Y
+Up = SDL-0/DPadUp
+'''
+
+content = '''
+; Écrit par « retro ». Ce fichier porte TROIS choses, et elles n'obéissent pas
+; aux mêmes règles :
+;
+;   1. les clés que la console IMPOSE, reposées à chaque lancement — elles
+;      portent la marque « posé par « retro » ». Sans elles, un jeu ne démarre
+;      pas sans clavier, ou démarre sans qu'aucun bouton ne réponde : les
+;      liaisons de manette de [Pad1] en font partie. Les changer ici ne sert à
+;      rien, y compris depuis l'interface de DuckStation : elles reviennent.
+;   2. les clés ci-dessous, posées UNE FOIS parce que ce fichier n'existait
+;      pas, et que « retro » ne retouche plus jamais. Ce sont des préférences :
+;      changez-les dans DuckStation, votre choix tient.
+;   3. tout le reste du fichier, qui vous appartient entièrement et que
+;      « retro » ne lit même pas.
+;
+; Une sauvegarde horodatée est faite avant chaque modification.
+[Main]
+; « Confirmer la fermeture du jeu », décochée : une confirmation est une
+; boîte de plus à fermer sans souris.
+ConfirmPowerOff = false
+; « Mettre en pause lors de la perte de focus », décochée : sur une session
+; distante, le focus se perd sans que le joueur ait rien fait.
+PauseOnFocusLoss = false
+; « Enregistrer l'état lors de la fermeture du jeu », décochée.
+SaveStateOnExit = false
+; « Désactiver l'économiseur d'écran », cochée : une console de salon ne
+; doit pas voir l'écran de veille tomber pendant une partie.
+InhibitScreensaver = true
+
+[Display]
+; « Masquer le curseur en plein écran », cochée.
+HideCursorInFullscreen = true
+'''
+
+# DETTE — la manette ne répond pas dans DuckStation, constaté le 2026-08-28,
+# APRÈS les correctifs de manette du même jour (le lanceur retire
+# SDL_GAMECONTROLLER_IGNORE_DEVICES, la synchronisation éteint
+# UseSteamControllerConfig). Le jeu démarre — Crash Team Racing, c'était le
+# défaut d'origine, et il est réglé — mais aucun bouton ne fait rien.
+#
+# Ce que cela contredit : le plan des manettes range DuckStation parmi les
+# émulateurs qui « détectent bien tout seuls » leur manette. C'est faux ici, ou
+# ne vaut que d'un pad physique — le pad d'Apollo n'existe que pendant la
+# session.
+#
+# LES LIAISONS ONT ÉTÉ RELEVÉES le 2026-08-29, et elles sont dans `enforced`
+# ci-dessus : vingt-sept lignes écrites par l'assistant de DuckStation
+# lui-même. La procédure jouée, ses pièges et son coût sont dans
+# docs/releve-manettes.md.
+#
+# `mapping` RESTE « a-relever », et ce n'est pas un oubli. La procédure pose
+# trois conditions pour tenir un relevé pour bon : la section existe et porte
+# des clés qui n'y étaient pas (fait) ; ces lignes ont été écrites par
+# DuckStation et non à la main (fait) ; ET un jeu lancé depuis Steam répond à
+# la manette — CELLE-LÀ N'EST PAS VÉRIFIÉE. L'invité a été restauré après le
+# relevé, il ne porte plus de [Pad1], et rien n'a été joué depuis. « auto »
+# dirait que DuckStation trouve sa manette seul : c'est faux, il ne la trouve
+# que parce que la console lui impose ces vingt-sept liaisons. Tant qu'aucun
+# bouton n'a été VU répondre, l'état vrai reste celui d'une panne dont le
+# relevé n'est pas clos. Voir docs/dettes.md, D3.
+#
+# `mapping_where` n'est pas décoratif : c'est le « où » du problème que le
+# rapport énonce, et sans lui le propriétaire lirait « la manette restera
+# muette » sans savoir quel fichier ouvrir. C'est le fichier que l'amorçage
+# écrit, à l'endroit exact où DuckStation le lira.
 [input]
 steam_input = "required"
 mode        = "xinput"
+mapping       = "a-relever"
+mapping_where = '%USERPROFILE%\Documents\DuckStation\settings.ini, section [Pad1]'
 
 [exit]
 # DuckStation ne lie AUCUN bouton de manette par défaut à « Open Pause Menu » :
@@ -46,10 +298,14 @@ folders    = ["Playstation", "PS1", "PSX", "Playstation 1"]
 # jeu. Même raison que dans le profil RetroArch d'origine.
 extensions = [".cue", ".chd", ".pbp", ".m3u", ".ccd", ".ecm", ".mds", ".iso"]
 launch     = '-batch -nogui -fullscreen {render} "{rom}"'
-# DuckStation n'a pas de BIOS de remplacement utilisable : sans l'un de ces
-# trois fichiers il retombe sur OpenBIOS, dont la compatibilité est partielle
-# et échoue jeu par jeu — le genre de panne qu'on ne diagnostique pas depuis un
-# canapé. Un des trois suffit, celui de la région des jeux.
+# Sans l'un de ces trois fichiers, cette révision ne joue RIEN. Elle ne
+# retombe pas sur OpenBIOS — ce profil l'a affirmé et c'était faux, mesuré le
+# 2026-08-28 sur la machine, journal de l'émulateur à l'appui : il charge le
+# jeu, reconnaît « CTR - Crash Team Racing | SCES-02105 », détecte la région
+# PAL, écrit « Searching for a PAL BIOS in ... », puis éteint son thread vidéo
+# et quitte. Avec `-batch`, cela rend la main à Steam en trois secondes : vu du
+# canapé, le jeu « ne se lance pas », sans un mot. Un des trois BIOS suffit,
+# celui de la région des jeux.
 #
 # C'est ce que dit `group` : les trois portent le même, donc le rapport les
 # traite comme UN besoin — « aucun des trois n'est présent, un seul suffit »

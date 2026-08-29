@@ -54,3 +54,10 @@ def test_chemins_derives(tmp_path):
     assert compte.shortcuts_path.name == "shortcuts.vdf"
     assert compte.grid_dir.name == "grid"
     assert compte.grid_dir.parent == compte.config_dir
+
+
+def test_le_compte_designe_son_localconfig(tmp_path):
+    """C'est là que vit Steam Input, à côté de shortcuts.vdf."""
+    config = _faire_compte(tmp_path, "123")
+    compte = accounts.discover_accounts(tmp_path)[0]
+    assert compte.localconfig_path == config / "localconfig.vdf"

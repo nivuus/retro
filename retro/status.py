@@ -38,6 +38,8 @@ import re
 from collections.abc import Sequence
 
 from retro import install as install_mod
+from retro import launcher as launcher_mod
+from retro import profiles as profiles_mod
 from retro import render as render_mod
 from retro.bios import BiosNeed, SystemBios
 from retro.scan import IgnoredSystem
@@ -80,6 +82,119 @@ class SystemRender:
     crt_absent: str = ""
     auto: tuple[tuple[str, str], ...] = ()   # (classe de machine, mode retenu)
     notes: tuple[str, ...] = ()
+    # Le TROISIÈME axe, un triplet par mode déclaré : (mode, remplissage,
+    # motif). Le motif est là pour la même raison que celui de `auto` : des
+    # bandes noires sur les côtés sont soit le ratio d'époque correctement
+    # rendu, soit un remplissage entier, soit un cadrage que personne n'a
+    # réglé — et vues du canapé, les trois se ressemblent exactement.
+    remplissage: tuple[tuple[str, str, str], ...] = ()
+
+
+@dataclasses.dataclass(frozen=True)
+class Amorcage:
+    """Ce qu'un émulateur a reçu comme configuration, ou n'a pas reçu.
+
+    Trois états, et ils appellent trois lectures différentes : configuration
+    posée (avec sa date), profil qui en déclare une mais dont aucun jeu n'a
+    encore été lancé, et profil qui n'en déclare aucune. Le dernier n'est une
+    anomalie que s'il n'est pas dit : « cet émulateur démarre nu » et « le
+    bloc a été oublié » se ressemblent exactement, vus du canapé.
+    """
+    profile_id: str
+    declare: bool
+    date: str = ""
+    target: str = ""
+    # Combien de clés la console IMPOSE dans ce fichier — reposées à chaque
+    # lancement, donc rendues à cette valeur chaque fois que le propriétaire
+    # les changerait dans l'interface de son émulateur. Il doit le lire AVANT,
+    # pas le découvrir après. Zéro pour les profils qui n'imposent rien.
+    imposees: int = 0
+
+
+def etat_amorcage(profils: dict,
+                  amorcages: dict[str, tuple[str, str]]) -> list[Amorcage]:
+    """L'état d'amorçage de chaque profil, croisé avec le témoin du lanceur.
+
+    Le témoin ne peut renseigner que les profils qui DÉCLARENT un amorçage :
+    un profil sans bloc `[bootstrap]` n'aura jamais de ligne dans le témoin,
+    et ce n'est pas une panne — c'est cet émulateur qui se règle seul.
+    """
+    etats = []
+    for pid in sorted(profils):
+        declare = getattr(profils[pid], "bootstrap", None) is not None
+        date, cible = amorcages.get(pid, ("", ""))
+        amorcage = getattr(profils[pid], "bootstrap", None)
+        etats.append(Amorcage(
+            profile_id=pid, declare=declare,
+            date=date if declare else "",
+            target=cible if declare else "",
+            imposees=(len(profiles_mod.cles_ini(amorcage.enforced))
+                      if declare else 0)))
+    return etats
+
+
+# La page que `retro status` fait ouvrir au propriétaire quand une manette
+# reste à relever. Le chemin est relatif à la racine du dépôt : c'est la seule
+# forme qui vaille depuis la console comme depuis l'hôte.
+PROCEDURE_RELEVE = "docs/releve-manettes.md"
+
+
+@dataclasses.dataclass(frozen=True)
+class Manette:
+    """Où en est le relevé de la manette d'un émulateur.
+
+    Trois états, et il faut les trois : « il trouve sa manette seul », « il ne
+    la trouve pas et rien n'a été relevé », « personne n'a mesuré ». Réduits à
+    deux, le troisième se confondrait avec l'un des deux autres — et c'est
+    précisément cette confusion qui a laissé DuckStation muet sur Crash Team
+    Racing, le plan des manettes le rangeant parmi ceux qui « détectent bien
+    tout seuls » sans que ce soit vrai.
+
+    `where` n'est jamais un identifiant : c'est le fichier, et la section, que
+    le propriétaire ouvrira. Aucun identifiant relevé ailleurs que sur la
+    machine n'a le droit d'entrer dans ce projet.
+    """
+    profile_id: str
+    etat: str
+    where: str = ""
+
+
+def etat_manettes(profils: dict) -> list[Manette]:
+    """L'état de relevé de chaque profil, tel qu'il se déclare."""
+    return [Manette(profile_id=pid,
+                    etat=getattr(profils[pid], "input_mapping",
+                                 profiles_mod.MAPPING_INCONNU),
+                    where=getattr(profils[pid], "input_mapping_where", ""))
+            for pid in sorted(profils)]
+
+
+def _probleme_manettes(manettes: list[Manette]) -> list[Problem]:
+    """Un problème par émulateur dont la manette est MESURÉE muette.
+
+    Un seul problème groupé — la forme retenue pour les modes de rendu et pour
+    Steam Input — serait ici le mauvais choix : le fichier à ouvrir et la
+    section à remplir diffèrent d'un émulateur à l'autre, et un problème sans
+    son chemin est une accusation. Ils sont rares par construction : seul un
+    émulateur dont quelqu'un a CONSTATÉ la manette muette y figure.
+
+    `inconnu` n'en est pas un : personne n'a regardé, ce n'est pas une panne.
+    Il est dit dans la section Manettes, et nulle part ailleurs.
+    """
+    return [Problem(
+        what=f"{m.profile_id} : aucune liaison de manette n'a été relevée — "
+             "la manette restera muette, et l'émulateur ne le dira pas",
+        where=m.where,
+        action=f"jouer la procédure de relevé ({PROCEDURE_RELEVE}) sur la "
+               "console, session ouverte et manette branchée, puis reporter "
+               "dans le profil ce que l'émulateur a écrit lui-même",
+        # La phrase qui empêche la « correction » qui n'en est pas une. Sans
+        # elle, le prochain lecteur recopie un identifiant trouvé dans une
+        # recette, relance, et constate le MÊME symptôme qu'avant sans
+        # comprendre que sa valeur est simplement ignorée.
+        details=("une liaison qui ne correspond à aucun périphérique est "
+                 "ignorée en silence : le symptôme est identique avant et "
+                 "après une valeur inventée",),
+    ) for m in manettes if m.etat == profiles_mod.MAPPING_A_RELEVER]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -93,6 +208,8 @@ class Report:
     # rapport d'avant, à l'identique.
     render_mode: str = ""
     render: list[SystemRender] = dataclasses.field(default_factory=list)
+    amorcages: list[Amorcage] = dataclasses.field(default_factory=list)
+    manettes: list[Manette] = dataclasses.field(default_factory=list)
 
 
 def _joindre(racine: str, *parties: str) -> str:
@@ -310,6 +427,12 @@ def etat_rendu(profils: dict) -> list[SystemRender]:
                 auto=tuple((classe, render_mod.arbitrer(classe, systeme.cost))
                            for classe in render_mod.CLASSES),
                 notes=notes,
+                remplissage=tuple(
+                    (nom, choix.remplissage, choix.motif)
+                    for nom, choix in (
+                        (n, render_mod.resoudre_remplissage(n, m))
+                        for n, m in ((render_mod.NATIVE, rendu.native),
+                                     (render_mod.FULL, rendu.full)))),
             ))
     return sorted(etats, key=lambda e: e.system_name)
 
@@ -333,6 +456,90 @@ def _probleme_sans_modes(etats: list[SystemRender]) -> list[Problem]:
     )]
 
 
+def _probleme_remplissage_non_mesure(etats: list[SystemRender]) -> list[Problem]:
+    """Les systèmes dont le TROISIÈME axe n'a jamais été mesuré.
+
+    Groupé, comme les modes manquants. Un système qui n'a pas de remplissage
+    RÉGLABLE — DuckStation — n'y figure pas : la question y a été tranchée et
+    la réponse est non. Les confondre ferait rouvrir l'enquête à chaque
+    passage sur un émulateur qui a déjà répondu.
+    """
+    muets = sorted({e.system_name for e in etats
+                    for _, valeur, _ in e.remplissage
+                    if valeur == render_mod.NON_MESURE})
+    if not muets:
+        return []
+    return [Problem(
+        what=f"{len(muets)} système(s) ne disent rien du remplissage de "
+             "l'écran : l'image y est celle que l'émulateur a choisie seul",
+        where="retro/data/profiles/*.toml",
+        action="déclarer 'fill' dans chaque mode — le remplissage que ses "
+               "arguments produisent — ou 'fill_absent', qui dit que cet "
+               "émulateur n'en expose aucun réglage",
+        details=tuple(muets),
+    )]
+
+
+def _probleme_lanceur_perime(perime: bool,
+                             emulation_root: pathlib.Path) -> list[Problem]:
+    """Le binaire en place est plus vieux que la source déposée à côté.
+
+    Un lanceur compilé avant une évolution du plan ignore EN SILENCE les
+    lignes qu'il ne connaît pas : rien n'échoue, rien n'est posé, et ce
+    rapport annoncerait « pas encore amorcé » après cinquante lancements. La
+    section Amorçage, seule, enverrait alors chercher la panne du mauvais
+    côté — c'est ici, et pas dans le profil, qu'elle se corrige.
+    """
+    if not perime:
+        return []
+    return [Problem(
+        what="le lanceur en place est plus ancien que sa source : il ignore "
+             "en silence ce que les plans portent de nouveau (l'amorçage des "
+             "émulateurs, notamment) — aucune erreur ne le signale",
+        # Le chemin, comme pour tout problème de ce rapport : « recompiler »
+        # sans dire OÙ envoie chercher un script dans une arborescence que le
+        # propriétaire ne connaît pas par cœur.
+        where=_joindre(str(emulation_root), launcher_mod.DIR, launcher_mod.EXE),
+        action="le recompiler depuis Windows : "
+               + _joindre(str(emulation_root), launcher_mod.DIR,
+                          launcher_mod.RECOMPILER),
+    )]
+
+
+def _probleme_steam_input(muets: Sequence[str], echec: str = "") -> list[Problem]:
+    """Un seul problème groupé, comme pour les modes de rendu.
+
+    Steam Input masque la manette au jeu qu'il lance — mesuré sur la console
+    le 2026-08-28 — et il se désactive jeu par jeu. Un jeu oublié est un jeu
+    dont la manette ne répond pas, sans qu'aucun journal, ni celui de Steam ni
+    celui de l'émulateur, n'en dise un mot. C'est la panne la plus coûteuse de
+    cette console : elle se constate le pad en main, devant la télévision.
+    """
+    if echec:
+        # Ne pas pouvoir vérifier n'est pas « tout va bien ». Se taire ici
+        # laisserait croire que les manettes sont réglées alors que rien n'a
+        # été lu — le rapport mentirait par omission sur le seul point qui se
+        # constate le pad en main.
+        return [Problem(
+            what="Steam Input n'a pas pu être vérifié : des manettes peuvent "
+                 "rester muettes sans que rien ne le signale",
+            where="userdata/<compte>/config/localconfig.vdf",
+            action="vérifier le chemin donné à --steam-root, puis lancer "
+                   "`retro sync` Steam fermé",
+            details=(echec,),
+        )]
+    if not muets:
+        return []
+    return [Problem(
+        what=f"{len(muets)} jeu(x) ont encore Steam Input actif : leur manette "
+             "restera muette dans l'émulateur",
+        where="userdata/<compte>/config/localconfig.vdf",
+        action="lancer `retro sync` Steam fermé — il éteint Steam Input sur "
+               "les jeux qu'il écrit",
+        details=tuple(muets),
+    )]
+
+
 def build_report(
     install_dirs: dict[str, str],
     emulation_root: pathlib.Path,
@@ -343,6 +550,10 @@ def build_report(
     emulator_exes: dict[str, str] | None = None,
     profils: dict | None = None,
     render_mode: str = "",
+    steam_input_muets: Sequence[str] = (),
+    steam_input_echec: str = "",
+    amorcages: dict[str, tuple[str, str]] | None = None,
+    lanceur_perime: bool = False,
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -358,23 +569,46 @@ def build_report(
     `scan` le lit, plutôt que de le déduire — les deux commandes se
     contredisaient sur les émulateurs dont le propriétaire n'a aucun jeu.
 
+    `steam_input_muets` porte les titres dont Steam Input est resté actif.
+    Facultatif : il faut la racine Steam pour le savoir, et `retro status` ne
+    l'exige pas — un rapport qui deviendrait impossible sans Steam ne se
+    rendrait plus du tout sur une machine où l'on veut juste voir les BIOS.
+
     `bios_root` n'est pas décoratif : c'est le dossier que le propriétaire a
     donné à `--bios`, et le seul endroit où il puisse déposer ce qui manque.
     Sans lui, le rapport nommait un fichier sans jamais dire où le mettre.
+
+    `lanceur_perime` dit que le binaire en place est plus ancien que la
+    source déposée à côté de lui. Un lanceur d'avant ignore en silence ce que
+    les plans portent de nouveau : le rapport le dit, sans quoi la section
+    Amorçage ci-dessous accuserait les profils d'une panne qui n'est pas la
+    leur.
+
+    `amorcages` est le témoin que le lanceur écrit sur la machine — profil →
+    (date, cible). `retro status` tourne sur l'hôte, qui n'atteint ni
+    `C:\\Users` ni `%APPDATA%` de la console : c'est la seule trace dont il
+    dispose pour dire qu'une configuration a bien été posée.
     """
     emulateurs, problemes_emulateurs = _etat_emulateurs(
         install_dirs, emulation_root, ignored_systems, emulator_exes)
     rendu = etat_rendu(profils) if profils else []
+    manettes = etat_manettes(profils) if profils else []
     return Report(
         emulators=emulateurs,
         systems=list(systems),
         bios=list(bios_status),
         problems=[*problemes_emulateurs,
                   *_problemes_bios(bios_status, bios_root),
-                  *_probleme_sans_modes(rendu)],
+                  *_probleme_sans_modes(rendu),
+                  *_probleme_remplissage_non_mesure(rendu),
+                  *_probleme_steam_input(steam_input_muets, steam_input_echec),
+                  *_probleme_lanceur_perime(lanceur_perime, emulation_root),
+                  *_probleme_manettes(manettes)],
         bios_root=bios_root,
         render_mode=render_mode,
         render=rendu,
+        amorcages=etat_amorcage(profils, amorcages or {}) if profils else [],
+        manettes=manettes,
     )
 
 
@@ -449,7 +683,7 @@ def _lignes_rendu(report: Report) -> list[str]:
     if not report.render:
         return []
     largeur = max(len(e.system_name) for e in report.render)
-    lignes = []
+    lignes = [f"  {l}" for l in legende_remplissage()] + [""]
     for e in report.render:
         nom = e.system_name.ljust(largeur)
         if not e.declared:
@@ -468,8 +702,103 @@ def _lignes_rendu(report: Report) -> list[str]:
         lignes.append(f"  {nom}  {crt}  |  auto : {_resume_auto(e.auto)}")
         if not e.crt:
             lignes.append(f"  {' ' * largeur}    ({e.crt_absent})")
+        lignes += [f"  {' ' * largeur}    {l}"
+                   for l in _lignes_remplissage(e.remplissage)]
         for note in e.notes:
             lignes.append(f"  {' ' * largeur}    {note}")
+    return lignes
+
+
+def legende_remplissage() -> list[str]:
+    """La politique de remplissage, citée UNE fois en tête de section.
+
+    Une fois, et pas par système : les huit systèmes de RetroArch porteraient
+    la même phrase, et dix-huit lignes identiques se lisent zéro fois — c'est
+    la règle qui vaut déjà pour les problèmes groupés. Mais elle doit être
+    quelque part : un cadrage qui s'appliquerait en silence serait un défaut,
+    et des bandes noires ont trois causes possibles que rien ne distingue vu
+    du canapé (le ratio d'époque, un agrandissement entier, un cadrage que
+    personne n'a réglé).
+    """
+    return [f"remplissage — {mode} : {render_mod.motif_remplissage(mode)}"
+            for mode in render_mod.MODES_DECLARES]
+
+
+def _lignes_remplissage(remplissage: tuple[tuple[str, str, str], ...]) -> list[str]:
+    """Le troisième axe d'UN système, mode par mode.
+
+    Le motif n'accompagne que ce que la légende n'explique pas : un émulateur
+    qui n'expose aucun réglage, ou un remplissage que personne n'a mesuré.
+    """
+    if not remplissage:
+        return []
+    valeurs = ", ".join(f"{mode} {valeur}" for mode, valeur, _ in remplissage)
+    lignes = [f"remplissage : {valeurs}"]
+    # Dédoublonné : les deux modes d'un émulateur qui n'expose rien portent la
+    # même phrase, et l'imprimer deux fois la fait lire zéro.
+    vus: list[str] = []
+    for _, valeur, motif in remplissage:
+        if valeur not in render_mod.REMPLISSAGES and motif not in vus:
+            vus.append(motif)
+    return lignes + [f"  ({m})" for m in vus]
+
+
+def _lignes_amorcage(report: Report) -> list[str]:
+    """Ce que chaque profil a reçu — ou pas — comme configuration.
+
+    Trois formulations, une par état de `Amorcage` : le propriétaire doit
+    pouvoir vérifier qu'une configuration a bien été posée sans ouvrir
+    l'émulateur, et un profil qui n'en déclare aucune doit être NOMMÉ pour ne
+    pas se confondre avec un bloc oublié.
+    """
+    lignes = []
+    for a in report.amorcages:
+        if not a.declare:
+            lignes.append(f"  · {a.profile_id} : aucune configuration à "
+                          "poser (voir son profil)")
+        elif a.date:
+            lignes.append(f"  · {a.profile_id} : amorcé le {a.date} "
+                          f"({a.target})")
+        else:
+            lignes.append(f"  · {a.profile_id} : pas encore amorcé — sa "
+                          "configuration sera posée au premier lancement "
+                          "d'un de ses jeux")
+        # Dit à CHAQUE état, y compris « déjà amorcé » : c'est justement
+        # l'émulateur déjà amorcé dont le fichier sera rouvert, et le taire
+        # là serait le taire au seul endroit où ça compte.
+        #
+        # Le COMPTE, et pas seulement le fait : « impose 3 clés » et « impose
+        # tout le fichier » n'appellent pas la même réaction, et sans le
+        # nombre il faudrait ouvrir le profil pour savoir laquelle des deux
+        # on lit.
+        if a.imposees:
+            lignes.append(
+                f"      la console y impose {a.imposees} clé(s), reposée(s) à "
+                "chaque lancement ; tout le reste du fichier vous appartient "
+                "et n'est jamais touché, et une sauvegarde précède chaque "
+                "modification")
+    return lignes
+
+
+def _lignes_manettes(report: Report) -> list[str]:
+    """Où en est la manette de chaque émulateur.
+
+    Trois formulations, une par état, sur le modèle de la section Amorçage.
+    Celle de `a-relever` NOMME le fichier : c'est là que le propriétaire ira,
+    et un rapport qui dit « à relever » sans dire où ne fait que déplacer la
+    question.
+    """
+    lignes = []
+    for m in report.manettes:
+        if m.etat == profiles_mod.MAPPING_AUTO:
+            lignes.append(f"  · {m.profile_id} : trouve sa manette seul "
+                          "(mesuré)")
+        elif m.etat == profiles_mod.MAPPING_A_RELEVER:
+            lignes.append(f"  · {m.profile_id} : manette muette, liaison à "
+                          f"relever — {m.where}")
+        else:
+            lignes.append(f"  · {m.profile_id} : jamais mesuré — personne n'a "
+                          "vérifié que sa manette répond")
     return lignes
 
 
@@ -501,6 +830,23 @@ def format_report(report: Report) -> str:
         f"Rendu — mode « {report.render_mode} »" if report.render_mode
         else "Rendu",
         _lignes_rendu(report), "aucun système chargé")
+
+    # INCONDITIONNELLE, comme BIOS et Rendu : une section qui disparaît se lit
+    # comme une panne d'affichage, et le repli est la seule chose qui
+    # distingue « rien à dire » de « rien n'a été lu ». Il est atteignable —
+    # `build_report` rend une liste vide dès qu'on ne lui passe pas de
+    # profils, ce que fait tout appelant qui n'a pas pu les charger.
+    sections += _section(
+        "Amorçage", _lignes_amorcage(report),
+        "aucun profil chargé : l'amorçage se lit profil par profil")
+
+    # INCONDITIONNELLE, comme BIOS, Rendu et Amorçage. Elle l'est ici pour une
+    # raison de plus : une manette muette ne se constate que le pad en main,
+    # devant la télévision, et une section absente serait lue comme « rien à
+    # signaler » par quelqu'un qui vient justement de ne pas pouvoir jouer.
+    sections += _section(
+        "Manettes", _lignes_manettes(report),
+        "aucun profil chargé : l'état des manettes se lit profil par profil")
 
     nb = len(report.problems)
     # 0 et 1 prennent le singulier en français : « Problème (1) », pas

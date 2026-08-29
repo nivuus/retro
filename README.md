@@ -20,7 +20,13 @@ vous voulez :
   chaque jeu : il mesure la session au moment du clic, compose la ligne de
   commande de l'émulateur, et le lance **sans fenêtre de console**. Sa source
   est versionnée (`retro/data/launcher/`) et se compile avec le `csc.exe` que
-  tout Windows porte — aucun binaire n'est livré tout fait.
+  tout Windows porte — aucun binaire n'est livré tout fait. C'est lui, aussi,
+  qui pose la configuration d'un émulateur qui n'en a aucune : sans elle,
+  certains ouvrent leur assistant de première configuration au lieu du jeu.
+  `retro launcher --reamorcer <profil>` n'écrit rien lui-même — il ne le peut
+  pas, cette configuration vit dans le profil Windows de la console — mais
+  laisse un **ordre** que le lanceur exécutera **une fois**, au prochain jeu de
+  cet émulateur : sauvegarde de l'existant, puis réécriture.
 - **`retro scan`** parcourt votre disque de ROMs et écrit l'inventaire JSON,
   ainsi que le plan de lancement que lit le lanceur.
   Ce sont les profils (`retro/data/profiles/*.toml`) qui disent quel dossier
@@ -78,9 +84,37 @@ nom du système.
   vos ROMs et vos BIOS. `retro install` ne redistribue pas les émulateurs non
   plus : il télécharge chacun depuis le site de son propre projet, à l'URL et
   sous l'empreinte que porte le manifeste.
+- **Ça ne retouche la configuration d'un émulateur que si vous l'avez
+  autorisé.** Par défaut — la stratégie `si-absent` — le fichier n'est posé
+  que s'il est **absent** : un émulateur que vous avez réglé vous appartient,
+  et le seul chemin qui écrase est `retro launcher --reamorcer`, qui
+  sauvegarde d'abord.
+  Un profil peut en outre déclarer un petit nombre de clés **imposées**,
+  reposées à chaque lancement : celles sans lesquelles un jeu ne démarre pas
+  sans clavier — un assistant de première configuration qui s'ouvre
+  par-dessus, une fenêtre de mise à jour, un plein écran manquant. Pour
+  DuckStation, c'est **trois clés**, et le reste de son fichier suit le
+  régime ordinaire : ce que vous changez dans l'émulateur tient.
+  **Modifier n'y est jamais écraser** : seules ces clés-là sont réécrites,
+  tout le reste — vos clés, vos commentaires, l'ordre du fichier — est
+  préservé, une sauvegarde horodatée est faite avant chaque écriture, et un
+  fichier déjà conforme n'est **pas** réécrit du tout. Les lignes posées par
+  `retro` sont marquées comme telles, `retro status` dit combien de clés
+  chaque profil impose, et l'en-tête du fichier doit distinguer les trois
+  catégories — le chargement refuse un profil qui imposerait des clés en
+  promettant le contraire.
 - **Ça n'arrête pas Steam.** `retro sync` refuse de s'exécuter tant que Steam
   tourne — il réécrirait le fichier à sa fermeture et le travail serait perdu,
   sans le moindre message. Fermez Steam d'abord.
+
+### Ce qui manque, et qui est écrit quelque part
+
+Cinq manques constatés sont consignés dans `docs/dettes.md`, chacun avec ce
+qu'il coûte vu du canapé et où il se joue dans le code : aucune vibration nulle
+part, rien qui garantisse une image maximale sans déformation, la manette muette
+dans DuckStation, ni capteur de mouvement ni manette PlayStation, et aucun
+émulateur PS Vita. Les deux derniers débordent sur l'invité Windows, qui a son
+propre fichier dans `nivuus/installer` : `docs/console-dettes.md`.
 
 ## Utilisation
 
@@ -194,10 +228,33 @@ max_scale     = 12         # au-delà, l'émulateur refuse ou rame
 [system.render.native]
 args = '--config GFX.Settings.InternalResolution=1'
 crt  = '...'               # OU crt_absent = "pourquoi il n'y en a pas"
+fill = "entier"            # OU fill_absent = "cet émulateur n'en expose aucun"
 
 [system.render.full]
 args = '--config GFX.Settings.InternalResolution={scale}'
+fill = "ajuste"
 ```
+
+**Trois axes, et ils ne se remplacent pas.** La *résolution interne* dit
+combien de pixels l'émulateur calcule ; le *ratio d'époque* dit la forme de
+l'image — un 4:3 correctement rendu sur un 16:9 laisse des bandes noires sur
+les côtés, **c'est voulu, ce n'est pas de la déformation** ; le *remplissage*
+dit comment l'image produite est posée sur l'écran. C'est ce troisième axe, et
+lui seul, qui répond à « occuper le plus possible de l'écran **sans étirer
+l'image** ». Il n'a que deux valeurs, parce que ce sont les deux seules façons
+d'agrandir sans déformer :
+
+| `fill` | ce que ça fait |
+|---|---|
+| `entier` | multiple **entier** seulement : chaque pixel d'origine reste un carré de pixels identiques, le reste est de la bande noire |
+| `ajuste` | le plus grand agrandissement qui **tienne**, ratio conservé, au prix d'un facteur non entier |
+
+L'étirement n'est pas une troisième valeur qu'on n'aurait pas retenue : il
+n'est pas sur cet axe. La **politique** — `native` remplit `entier`, `full`
+remplit `ajuste` — est écrite dans `retro/render.py`, et `retro status` la
+cite. Un profil qui la contredit est refusé au chargement : la contradiction
+ne se verrait sinon que sur l'écran, sur une image floue qu'on croirait
+normale.
 
 Trois variables sont disponibles, substituées **au lancement** : `{width}` et
 `{height}`, la résolution de la session en cours, et `{scale}`, combien de fois
@@ -321,6 +378,27 @@ bibliothèque Steam de quelqu'un. Quatre protections :
   l'inventaire**, parce qu'alors le paquet ne reconnaît plus ses propres
   entrées et recrée les mêmes raccourcis à chaque passage en rapportant des
   ajouts réussis.
+
+`shortcuts.vdf` n'est plus le seul fichier écrit hors de la racine
+d'émulation. Pour qu'un émulateur fraîchement installé lance un jeu plutôt que
+son assistant de première configuration, le **lanceur** pose sa configuration
+là où cet émulateur la lit — dans le profil Windows du propriétaire
+(`%USERPROFILE%\Documents\...`), le seul endroit qui survive à une mise à
+jour. Trois règles l'encadrent, et ce sont les mêmes que ci-dessus :
+
+- **seulement si le fichier est absent.** Une configuration existante n'est ni
+  lue, ni fusionnée, ni corrigée ;
+- **le seul chemin qui écrase est un ordre explicite** — `retro launcher
+  --reamorcer <profil>` — et il **sauvegarde** l'existant en
+  `<nom>.bak-<horodatage>` avant de réécrire, puis ne vaut qu'une fois ;
+- **écriture atomique**, comme celle de `shortcuts.vdf` : une écriture
+  interrompue ne laisse pas une configuration à moitié posée — qui, elle, ne
+  serait plus jamais réparée, puisqu'elle *existerait*.
+
+C'est le lanceur qui écrit, sur la console, parce que `retro` tourne depuis un
+hôte qui n'atteint ni `C:\Users` ni `%APPDATA%`. Ce qu'il pose vient du profil
+de l'émulateur, et `retro status` dit, par émulateur, ce qui a été posé, quand
+et où.
 
 ## Développement
 

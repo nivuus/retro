@@ -74,8 +74,65 @@ def config_name(cle: str, mode: str) -> str:
     return f"{cle}.{mode}.cfg"
 
 
+BOOTSTRAP = "bootstrap"
+
+# Les deux régimes d'écriture d'une configuration d'émulateur. Ils portent
+# sur LE MÊME fichier et ne se déclarent pas : le profil les distingue par
+# STRUCTURE — `content` pour l'un, `enforced` pour l'autre — de sorte qu'on ne
+# puisse pas mettre le régime annoncé en contradiction avec ce qu'il contient.
+#
+# SI_ABSENT — le fichier est posé s'il n'existe pas, et plus jamais retouché.
+#   Ce sont des préférences : le propriétaire les change dans l'interface de
+#   son émulateur, et son choix tient.
+#
+# FUSION — les clés que la console IMPOSE, reposées à chaque lancement. Le
+#   propriétaire l'a autorisé le 2026-08-29, et pour ces clés-là seulement :
+#   sans elles, un jeu ne démarre pas sans clavier — assistant de première
+#   configuration, fenêtre de mise à jour, plein écran manquant. Autorisé à
+#   MODIFIER, jamais à ÉCRASER : la fusion ne touche qu'aux clés qu'elle
+#   apporte, préserve tout le reste — clés inconnues, commentaires, ordre —
+#   sauvegarde avant d'écrire, et ne réécrit rien si le fichier est déjà
+#   conforme.
+#
+#   Un seul mécanisme pour deux dettes, délibérément : le remplissage de
+#   DuckStation (D2) et sa manette (D3) se règlent tous deux dans un
+#   settings.ini que « si-absent » ne rouvre jamais. Un mécanisme par dette
+#   aurait divergé sur le MÊME fichier, ce que ce dépôt s'interdit déjà pour
+#   les configurations d'entrée. D3 n'a qu'à ajouter sa section [Pad1] au
+#   champ `enforced` du profil : rien d'autre à écrire.
+SI_ABSENT = "si-absent"
+FUSION = "fusion"
+STRATEGIES = (SI_ABSENT, FUSION)
+
+
+IMPOSE = "impose"
+
+
+def enforced_name(profile_id: str, target: str) -> str:
+    """Le nom du fragment des clés IMPOSÉES, déposé à côté des plans.
+
+    Un fichier SÉPARÉ de celui de l'amorçage, et non un second bloc dans le
+    même : les deux ont des durées de vie différentes — l'un n'est lu qu'une
+    fois, l'autre à chaque lancement — et le lanceur doit pouvoir prendre le
+    second sans rouvrir le premier.
+    """
+    suffixe = pathlib.PureWindowsPath(target).suffix or ".txt"
+    return f"{profile_id}.{IMPOSE}{suffixe}"
+
+
+def bootstrap_name(profile_id: str, target: str) -> str:
+    """Le nom du fichier d'amorçage déposé à côté des plans.
+
+    L'extension est celle de la CIBLE : un `.toml` déposé sous un nom en
+    `.ini` se lirait comme un fichier d'un autre format, et le premier
+    lecteur du dossier n'aurait aucun moyen de savoir ce qu'il regarde.
+    """
+    suffixe = pathlib.PureWindowsPath(target).suffix or ".txt"
+    return f"{profile_id}.{BOOTSTRAP}{suffixe}"
+
+
 def plan_systeme(profile_id: str, systeme, emulator_exe: str,
-                 workdir: str, plan_dir: str = "") -> str:
+                 workdir: str, plan_dir: str = "", bootstrap=None) -> str:
     """Tout ce que le lanceur doit savoir de CE système, table d'arbitrage
     comprise.
 
@@ -122,7 +179,107 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
         lignes.append(f"auto_{classe}={choix}")
     for nom, vram, coeurs in render_mod.SEUILS:
         lignes.append(f"threshold_{nom}={vram},{coeurs}")
+
+    # L'amorçage, s'il y en a un. Les trois lignes sont TOUJOURS écrites :
+    # `Valeur()` traite une clé absente comme une faute du plan, et c'est
+    # cette propriété qui a déjà attrapé des plans écrits par une version
+    # antérieure. Vides, elles disent « cet émulateur n'a rien à recevoir ».
+    source = (f"{plan_dir}\\{bootstrap_name(profile_id, bootstrap.target)}"
+              if bootstrap else "")
+    # Le fragment des clés imposées, s'il y en a. Vide sinon : c'est ce qui
+    # distingue un profil qui n'impose rien — les huit autres — de celui qui
+    # impose, sans que le lanceur ait à ouvrir quoi que ce soit pour le
+    # savoir.
+    impose = (f"{plan_dir}\\{enforced_name(profile_id, bootstrap.target)}"
+              if bootstrap and bootstrap.enforced else "")
+    lignes += [
+        f"bootstrap_target={bootstrap.target if bootstrap else ''}",
+        f"bootstrap_source={source}",
+        f"bootstrap_when={SI_ABSENT if bootstrap else ''}",
+        # Les DEUX régimes visent la même cible, et le lanceur les applique
+        # dans cet ordre : poser le fichier s'il est absent, puis y refondre
+        # les clés imposées. L'ordre compte — sur une console neuve, la
+        # seconde étape doit trouver le fichier que la première vient de
+        # poser.
+        f"bootstrap_enforced={impose}",
+    ]
     return "\n".join(lignes) + "\n"
+
+
+REAMORCER = "reamorcer.txt"
+
+
+class AmorcageError(RuntimeError):
+    """L'ordre n'a pas été écrit, et le propriétaire sait pourquoi."""
+
+
+def profils_amorcables(emulation_root_local) -> list[str]:
+    """Les profils dont un amorçage est DÉPOSÉ, lus sur le disque.
+
+    Lire le dossier plutôt que recharger les profils : c'est l'état réel de
+    la console qui décide, et un profil dont l'amorçage n'a pas encore été
+    déposé par « retro scan » ne peut pas être ré-amorcé — l'ordre serait
+    donné pour un fichier que le lanceur ne trouverait pas.
+    """
+    dossier = local_dir(emulation_root_local) / PLAN
+    try:
+        noms = [p.name for p in dossier.iterdir() if p.is_file()]
+    except OSError:
+        return []
+    marque = f".{BOOTSTRAP}"
+    return sorted({n[:n.index(marque)] for n in noms if marque in n})
+
+
+def ordonner_reamorcage(emulation_root_local, profile_id: str) -> pathlib.Path:
+    """Demande au lanceur de reposer l'amorçage de ce profil, une fois.
+
+    L'ordre, et pas l'écriture : la configuration d'un émulateur vit dans le
+    profil de l'utilisateur Windows, que la machine qui pilote n'atteint pas.
+    Le lanceur sauvegardera l'existant avant de le remplacer, puis consommera
+    la ligne — un ordre ne vaut qu'un passage.
+    """
+    connus = profils_amorcables(emulation_root_local)
+    if profile_id not in connus:
+        raise AmorcageError(
+            f"« {profile_id} » n'a pas d'amorçage déposé. "
+            + (f"Profils amorçables : {', '.join(connus)}." if connus else
+               "Aucun profil n'en a : lancer « retro scan » d'abord.")
+        )
+    dossier = local_dir(emulation_root_local)
+    dossier.mkdir(parents=True, exist_ok=True)
+    fichier = dossier / REAMORCER
+    try:
+        deja = fichier.read_text(encoding="utf-8").split()
+    except OSError:
+        deja = []
+    if profile_id not in deja:
+        deja.append(profile_id)
+    fichier.write_text("\n".join(deja) + "\n", encoding="utf-8")
+    return fichier
+
+
+TEMOIN_BOOTSTRAP = "bootstrap.txt"
+
+
+def lire_amorcages(emulation_root_local) -> dict[str, tuple[str, str]]:
+    """Ce que le lanceur a posé : profil → (date, cible).
+
+    Une TRACE, pas une source de vérité : c'est la cible sur le disque de la
+    console qui décide, et le lanceur ne consulte jamais ce fichier pour
+    savoir s'il doit écrire. Un témoin effacé fait donc dire au rapport « pas
+    encore amorcé » d'un émulateur qui l'est — sans que rien ne soit réécrit.
+    """
+    fichier = local_dir(emulation_root_local) / TEMOIN_BOOTSTRAP
+    try:
+        texte = fichier.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    amorces = {}
+    for ligne in texte.splitlines():
+        parts = ligne.split("\t")
+        if len(parts) == 3 and parts[0].strip():
+            amorces[parts[0].strip()] = (parts[1].strip(), parts[2].strip())
+    return amorces
 
 
 def local_dir(emulation_root_local) -> pathlib.Path:
@@ -139,6 +296,40 @@ def est_installe(emulation_root_local) -> bool:
     — parce que le coût d'une absence est ici plus grand encore.
     """
     return (local_dir(emulation_root_local) / EXE).is_file()
+
+
+def lanceur_perime(emulation_root_local) -> bool:
+    """Le binaire en place est-il plus ancien que la source déposée à côté ?
+
+    Un `retro-launch.exe` compilé avant une évolution du plan ne DIT RIEN : il
+    lit les clés qu'il connaît et ignore les autres. Les trois lignes
+    `bootstrap_*` d'un plan tout neuf ne produisent alors aucun amorçage,
+    aucune erreur, et `retro status` annonce « pas encore amorcé » après
+    cinquante lancements — la fonctionnalité entière est inerte, sans un mot.
+    C'est l'état du jour même de la livraison : `deposer_source` pose une
+    source plus récente que le binaire, que personne n'a encore recompilé.
+
+    La comparaison porte sur les dates de modification parce que c'est la
+    seule preuve dont l'hôte dispose : il ne peut ni exécuter le binaire ni
+    l'inspecter. `deposer_source` copie donc la source AVEC sa date (copy2) —
+    autrement chaque dépôt rendrait périmé un lanceur qu'on vient de
+    recompiler.
+
+    L'absence de l'un ou de l'autre n'est pas une péremption : `est_installe`
+    dit déjà l'absence du binaire, et une source manquante se corrige par
+    `retro launcher`.
+    """
+    dossier = local_dir(emulation_root_local)
+    try:
+        return (dossier / SOURCE).stat().st_mtime > (dossier / EXE).stat().st_mtime
+    except OSError:
+        return False
+
+
+# Le geste, écrit une seule fois : `retro launcher` et `retro status` le
+# nomment tous les deux, et deux formulations du même geste feraient douter
+# qu'il s'agisse du même.
+RECOMPILER = "compiler.cmd"
 
 
 def lire_mode(emulation_root_local) -> str:
@@ -191,7 +382,8 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
         for systeme in profil.systems:
             cle = system_key(pid, systeme.id)
             (dossier / f"{cle}.ini").write_text(
-                plan_systeme(pid, systeme, exe, workdir, plan_dir),
+                plan_systeme(pid, systeme, exe, workdir, plan_dir,
+                             bootstrap=profil.bootstrap),
                 encoding="utf-8")
             fichiers.add(f"{cle}.ini")
             ecrits.append(cle)
@@ -206,9 +398,24 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
                         mode.config, encoding="utf-8")
                     fichiers.add(config_name(cle, nom))
 
-    # Un plan ou un réglage resté là après qu'un système a changé d'émulateur
-    # ferait lancer l'ANCIEN, avec l'ancienne configuration.
-    for perime in sorted([*dossier.glob("*.ini"), *dossier.glob("*.cfg")]):
+        # Un seul fichier par PROFIL : la configuration d'un émulateur ne
+        # change pas selon la console qu'il émule.
+        if profil.bootstrap:
+            nom = bootstrap_name(pid, profil.bootstrap.target)
+            (dossier / nom).write_text(profil.bootstrap.content,
+                                       encoding="utf-8")
+            fichiers.add(nom)
+            if profil.bootstrap.enforced:
+                impose = enforced_name(pid, profil.bootstrap.target)
+                (dossier / impose).write_text(
+                    profil.bootstrap.enforced + "\n", encoding="utf-8")
+                fichiers.add(impose)
+
+    # Tout fichier que ce passage n'a pas écrit s'en va : ce dossier
+    # appartient entièrement à « retro scan », et un amorçage d'un format
+    # qu'on n'aurait pas pensé à énumérer réécrirait la configuration d'un
+    # émulateur à chaque lancement, avec le contenu d'un autre âge.
+    for perime in sorted(p for p in dossier.iterdir() if p.is_file()):
         if perime.name not in fichiers:
             perime.unlink()
     return ecrits
@@ -242,6 +449,12 @@ def deposer_source(emulation_root_local) -> list[pathlib.Path]:
                 "peut pas être compilé sans sa source."
             )
         cible = dossier / nom
-        shutil.copyfile(origine, cible)
+        # copy2 et non copyfile : la date de modification est COPIÉE, parce
+        # que c'est elle que `lanceur_perime` compare au binaire. Avec
+        # copyfile, chaque dépôt réestampillait la source à l'instant présent
+        # et un lanceur fraîchement recompilé se serait annoncé périmé au
+        # premier `retro launcher` suivant — un avertissement qui crie à tort
+        # est un avertissement qu'on cesse de lire.
+        shutil.copy2(origine, cible)
         deposes.append(cible)
     return deposes

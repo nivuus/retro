@@ -3,7 +3,7 @@ import pathlib
 
 import pytest
 
-from retro import bios, install, scan, status
+from retro import bios, install, profiles, scan, status
 
 
 def test_un_emulateur_installe_est_signale_avec_sa_version(tmp_path):
@@ -468,3 +468,438 @@ def test_le_resume_de_l_auto_groupe_par_mode():
 def test_le_resume_d_un_auto_uniforme_est_court():
     assert status._resume_auto((("modeste", "full"), ("moyenne", "full"),
                                 ("solide", "full"))) == "full sur toute machine"
+
+
+def test_les_jeux_dont_steam_input_reste_actif_sont_un_probleme():
+    """Steam Input masque la manette à l'émulateur : ces jeux sont muets, et
+    rien d'autre ne le dit — ni l'émulateur, ni Steam, ni aucun journal."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/bios"),
+        steam_input_muets=["Un jeu", "Un autre"],
+    )
+    probleme = [p for p in rapport.problems if "Steam Input" in p.what]
+    assert len(probleme) == 1
+    assert probleme[0].details == ("Un jeu", "Un autre")
+    assert "retro sync" in probleme[0].action
+
+
+def test_sans_jeu_muet_aucun_probleme_de_steam_input():
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/bios"),
+        steam_input_muets=[],
+    )
+    assert [p for p in rapport.problems if "Steam Input" in p.what] == []
+
+
+# --- ce qui est amorcé, et ce qui ne l'est pas encore ----------------------
+
+PROFIL_STATUS_AMORCE = """
+schema = 1
+id = "duckstation"
+exe = 'duckstation-qt.exe'
+[bootstrap]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+[Main]
+SetupWizardIncomplete = false
+'''
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
+
+
+@pytest.fixture
+def profils_amorces_status(tmp_path):
+    p = tmp_path / "duckstation.toml"
+    p.write_text(PROFIL_STATUS_AMORCE, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(p)}
+
+
+@pytest.fixture
+def profils_sans_amorcage_status(tmp_path):
+    texte = (PROFIL_STATUS_AMORCE[:PROFIL_STATUS_AMORCE.index("[bootstrap]")]
+             + PROFIL_STATUS_AMORCE[PROFIL_STATUS_AMORCE.index("[[system]]"):])
+    p = tmp_path / "duckstation.toml"
+    p.write_text(texte, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(p)}
+
+
+def test_le_rapport_dit_ce_qui_est_amorce(profils_amorces_status):
+    """« amorcé le … » : le propriétaire doit pouvoir vérifier qu'une
+    configuration a bien été posée sans ouvrir l'émulateur."""
+    etats = status.etat_amorcage(
+        profils_amorces_status,
+        {"duckstation": ("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini")})
+    assert [(e.profile_id, e.declare, e.date) for e in etats] == [
+        ("duckstation", True, "2026-08-28 10:27:26")]
+
+
+def test_le_rapport_dit_ce_qui_n_est_pas_encore_amorce(profils_amorces_status):
+    """Aucun jeu de cet émulateur n'a encore été lancé. Ce n'est pas un
+    problème — c'est un état à dire, pas à taire."""
+    etats = status.etat_amorcage(profils_amorces_status, {})
+    assert etats[0].declare and etats[0].date == ""
+
+
+def test_un_profil_sans_bloc_est_nomme(profils_sans_amorcage_status):
+    """« cet émulateur se débrouille » et « le bloc a été oublié » ne se
+    distinguent que si le rapport nomme les profils sans amorçage."""
+    etats = status.etat_amorcage(profils_sans_amorcage_status, {})
+    assert etats[0].declare is False
+
+
+def test_la_section_amorcage_figure_dans_le_texte(profils_amorces_status):
+    """Un état que le rapport calcule sans l'imprimer ne sert à personne."""
+    rapport = status.build_report(
+        install_dirs={"duckstation": "DS"},
+        emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        profils=profils_amorces_status,
+        amorcages={"duckstation": ("2026-08-28 10:27:26",
+                                   "C:\\Users\\A\\settings.ini")},
+    )
+    texte = status.format_report(rapport)
+    assert "Amorçage" in texte and "2026-08-28 10:27:26" in texte
+
+
+def test_la_section_amorcage_s_affiche_meme_sans_profil():
+    """Les sections BIOS et Rendu s'affichent toujours, avec un texte de
+    repli ; l'Amorçage disparaissait quand la liste était vide. Une section
+    qui disparaît se lit comme une panne d'affichage, et son repli — jamais
+    atteignable tant qu'elle était conditionnelle — est la seule chose qui
+    distingue « rien à dire » de « rien n'a été lu »."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"))
+    assert rapport.amorcages == []
+    texte = status.format_report(rapport)
+    assert "Amorçage" in texte and "aucun profil chargé" in texte
+
+
+def test_un_lanceur_perime_est_un_probleme():
+    """Un binaire compilé avant les plans qu'il lit n'échoue pas : il ignore
+    les lignes qu'il ne connaît pas. Sans ce problème, la section Amorçage
+    dirait « pas encore amorcé » indéfiniment et enverrait chercher la panne
+    dans les profils."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        lanceur_perime=True)
+    perimes = [p for p in rapport.problems if "plus ancien que sa source" in p.what]
+    assert len(perimes) == 1
+    # Le geste ET le chemin, pas seulement le constat : c'est la règle du
+    # module, et « recompiler » sans dire où n'aide personne.
+    assert "compiler.cmd" in perimes[0].action
+    assert "D:\\Emulation\\_launcher\\compiler.cmd" in perimes[0].action
+    assert "/" not in perimes[0].where, perimes[0].where
+
+
+def test_un_lanceur_a_jour_ne_produit_aucun_probleme():
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        lanceur_perime=False)
+    assert [p for p in rapport.problems if "plus ancien" in p.what] == []
+
+
+# --- la section « Rendu » : le remplissage -------------------------------
+
+def _profils_remplissage(tmp_path):
+    """Trois systèmes, un par état du troisième axe : réglé, non réglable
+    faute d'option, et jamais mesuré."""
+    (tmp_path / "q.toml").write_text("""
+schema = 1
+id = "q"
+exe = "q.exe"
+[[system]]
+id = "snes"
+name = "Super Nintendo"
+extensions = [".sfc"]
+launch = '{render} "{rom}"'
+cost = "light"
+bios = []
+[system.render.native]
+args = "-scale=1 -integer=yes"
+crt = "-shader=crt"
+fill = "entier"
+[system.render.full]
+args = "-scale=4 -integer=no"
+fill = "ajuste"
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '{render} "{rom}"'
+cost = "light"
+bios = []
+[system.render.native]
+args = ""
+note = "dix-sept arguments, aucun de rendu"
+crt_absent = "aucun shader en ligne de commande"
+[system.render.full]
+args = ""
+note = "même raison qu'en mode natif"
+[[system]]
+id = "n64"
+name = "Nintendo 64"
+extensions = [".z64"]
+launch = '{render} "{rom}"'
+cost = "medium"
+bios = []
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun shader"
+[system.render.full]
+args = "-scale=2"
+""", encoding="utf-8")
+    return {"q": profiles.load_profile(tmp_path / "q.toml")}
+
+
+def test_le_remplissage_de_chaque_mode_se_lit_dans_le_rapport(tmp_path):
+    """Le troisième axe suit la même règle que les deux autres : un réglage
+    qui s'appliquerait en silence est un défaut."""
+    from retro import render
+    etat = next(e for e in status.etat_rendu(_profils_remplissage(tmp_path))
+                if e.system_name == "Super Nintendo")
+    valeurs = {mode: valeur for mode, valeur, _ in etat.remplissage}
+    assert valeurs == {render.NATIVE: render.ENTIER,
+                       render.FULL: render.AJUSTE}
+    assert all(motif.strip() for _, _, motif in etat.remplissage)
+
+
+def test_un_systeme_dont_le_remplissage_n_est_pas_mesure_est_nomme(tmp_path):
+    """Sans cette ligne, l'image est ce que l'émulateur a décidé tout seul, et
+    rien ne dit que personne n'a regardé."""
+    etats = status.etat_rendu(_profils_remplissage(tmp_path))
+    problemes = status._probleme_remplissage_non_mesure(etats)
+    assert len(problemes) == 1
+    assert problemes[0].details == ("Nintendo 64",)
+
+
+def test_un_emulateur_qui_ne_pilote_rien_n_est_pas_un_remplissage_a_mesurer(tmp_path):
+    """DuckStation a déjà répondu : la question est tranchée, la réponse est
+    non. Le ranger parmi les mesures à faire ferait rouvrir l'enquête à
+    chaque passage."""
+    from retro import render
+    etat = next(e for e in status.etat_rendu(_profils_remplissage(tmp_path))
+                if e.system_name == "PlayStation")
+    assert all(valeur == render.NON_REGLABLE
+               for _, valeur, _ in etat.remplissage)
+    problemes = status._probleme_remplissage_non_mesure([etat])
+    assert problemes == []
+
+
+def test_le_rapport_imprime_le_remplissage(tmp_path):
+    etats = status.etat_rendu(_profils_remplissage(tmp_path))
+    lignes = "\n".join(status._lignes_rendu(status.Report(
+        emulators=[], systems=[], bios=[], problems=[],
+        bios_root=pathlib.Path("/BIOS"), render=etats)))
+    assert "remplissage" in lignes
+    assert "entier" in lignes and "ajuste" in lignes
+
+
+def test_la_politique_de_remplissage_est_citee_une_seule_fois(tmp_path):
+    """Écrite dans `render`, citée dans le rapport — mais en légende, pas par
+    système : les huit systèmes de RetroArch porteraient la même phrase, et
+    dix-huit lignes identiques se lisent zéro fois."""
+    from retro import render
+    lignes = status._lignes_rendu(status.Report(
+        emulators=[], systems=[], bios=[], problems=[],
+        bios_root=pathlib.Path("/BIOS"),
+        render=status.etat_rendu(_profils_remplissage(tmp_path))))
+    motif = render.motif_remplissage(render.NATIVE)
+    assert sum(motif in l for l in lignes) == 1
+
+
+def test_un_emulateur_sans_reglage_de_remplissage_dit_pourquoi_sur_sa_ligne(tmp_path):
+    """La légende explique la POLITIQUE ; elle ne peut rien dire d'un
+    émulateur qui n'expose aucun réglage. Ce motif-là reste sur sa ligne."""
+    lignes = status._lignes_remplissage(
+        (("native", "non-reglable", "aucun réglage — pas de clé Integer"),
+         ("full", "non-reglable", "aucun réglage — pas de clé Integer")))
+    assert sum("pas de clé Integer" in l for l in lignes) == 1
+
+
+# --- la section « Amorçage » : ce que la console IMPOSE --------------------
+
+def _profils_imposes(tmp_path, enforced: bool):
+    bloc = """
+enforced = '''
+[Main]
+SetupWizardIncomplete = false
+StartFullscreen = true
+'''
+""" if enforced else ""
+    (tmp_path / "d.toml").write_text('''
+schema = 1
+id = "d"
+exe = "d.exe"
+[bootstrap]
+target = 'C:\\d\\settings.ini'
+content = """
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé UNE FOIS, et le reste, qui est à vous.
+[Main]
+ConfirmPowerOff = false
+"""''' + bloc + '''
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '"{rom}"'
+''', encoding="utf-8")
+    return {"d": profiles.load_profile(tmp_path / "d.toml")}
+
+
+def _texte_amorcage(profils):
+    return "\n".join(status._lignes_amorcage(status.Report(
+        emulators=[], systems=[], bios=[], problems=[],
+        bios_root=pathlib.Path("/BIOS"),
+        amorcages=status.etat_amorcage(profils, {}))))
+
+
+def test_le_rapport_dit_combien_de_cles_la_console_impose(tmp_path):
+    """Le propriétaire doit lire AVANT, pas découvrir après, que deux de ses
+    réglages reviendront à chaque lancement. Le compte évite d'avoir à ouvrir
+    le profil pour savoir si c'est « une clé » ou « tout le fichier »."""
+    texte = _texte_amorcage(_profils_imposes(tmp_path, enforced=True))
+    assert "impose" in texte.lower()
+    assert "2" in texte
+
+
+def test_un_profil_qui_n_impose_rien_ne_le_dit_pas(tmp_path):
+    """Huit profils livrés n'imposent rien : leur ajouter une ligne muette
+    noierait celui qui, lui, impose."""
+    texte = _texte_amorcage(_profils_imposes(tmp_path, enforced=False))
+    assert "impose" not in texte.lower()
+
+
+# --- Manettes : la panne qui ne se voit que le pad en main ----------------
+#
+# Dette D3. « Le seul émulateur PlayStation de la console est injouable, et
+# rien dans `retro status` ne le dit. » L'émulateur, lui, ne dira jamais rien :
+# une liaison qui ne correspond à aucun périphérique est ignorée EN SILENCE, et
+# la manette reste muette exactement comme si le fichier était vide.
+
+_PROFIL_MANETTE = """
+schema = 1
+id = "{pid}"
+exe = '{pid}.exe'
+
+[input]
+mapping = "{mapping}"
+{ou}
+
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{{rom}}"'
+"""
+
+
+def _profil_manette(tmp_path, pid, mapping, ou=""):
+    ligne = f"mapping_where = '{ou}'" if ou else ""
+    p = tmp_path / f"{pid}.toml"
+    p.write_text(_PROFIL_MANETTE.format(pid=pid, mapping=mapping, ou=ligne),
+                 encoding="utf-8")
+    return {pid: profiles.load_profile(p)}
+
+
+def _rapport_manette(profils):
+    return status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        profils=profils)
+
+
+def test_une_manette_a_relever_est_un_probleme(tmp_path):
+    """C'est le constat de D3 : le jeu démarre, la manette ne répond pas, et
+    aucun journal — ni celui de Steam, ni celui de l'émulateur — n'en dit un
+    mot. Si le rapport se tait aussi, la panne n'existe nulle part ailleurs
+    que devant la télévision."""
+    profils = _profil_manette(
+        tmp_path, "duckstation", "a-relever",
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]")
+    problemes = [p for p in _rapport_manette(profils).problems
+                 if "duckstation" in p.what]
+    assert len(problemes) == 1
+    # Le constat, le chemin, le geste : la règle du module. Un « la manette ne
+    # répond pas » sans le fichier à ouvrir ni la procédure à jouer est une
+    # accusation, pas un diagnostic.
+    assert "[Pad1]" in problemes[0].where
+    assert "releve-manettes" in problemes[0].action
+
+
+def test_un_emulateur_qui_trouve_sa_manette_seul_est_dit_sans_etre_accuse(tmp_path):
+    """Deux moitiés du même fait, et aucune ne se suffit : ne pas accuser sans
+    rien dire laisserait ce profil invisible, indiscernable d'un profil oublié.
+    """
+    profils = _profil_manette(tmp_path, "retroarch", "auto")
+    rapport = _rapport_manette(profils)
+    assert [p for p in rapport.problems if "manette" in p.what] == []
+    assert [(m.profile_id, m.etat) for m in rapport.manettes] == [
+        ("retroarch", profiles.MAPPING_AUTO)]
+
+
+def test_un_mapping_jamais_mesure_est_nomme_sans_etre_accuse(tmp_path):
+    """« personne n'a regardé » n'est pas « c'est cassé ». Le confondre ferait
+    huit accusations sans mesure, et noierait la seule qui en a une — mais le
+    taire ferait croire que ces huit émulateurs ont été vérifiés."""
+    profils = _profil_manette(tmp_path, "cemu", "inconnu")
+    rapport = _rapport_manette(profils)
+    assert [p for p in rapport.problems if "manette" in p.what] == []
+    assert [(m.profile_id, m.etat) for m in rapport.manettes] == [
+        ("cemu", profiles.MAPPING_INCONNU)]
+
+
+def test_les_trois_etats_de_manette_se_lisent_dans_le_texte(tmp_path):
+    """Trois formulations, comme la section Amorçage : un état calculé sans
+    être imprimé ne sert à personne, et « jamais mesuré » doit se distinguer
+    de « il se débrouille »."""
+    profils = {}
+    profils.update(_profil_manette(tmp_path, "retroarch", "auto"))
+    profils.update(_profil_manette(tmp_path, "cemu", "inconnu"))
+    profils.update(_profil_manette(
+        tmp_path, "duckstation", "a-relever",
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]"))
+    texte = status.format_report(_rapport_manette(profils))
+    assert "Manettes" in texte
+    ligne = {l.strip().split(" : ")[0].lstrip("· ").strip(): l
+             for l in texte.splitlines() if " : " in l}
+    assert "trouve sa manette seul" in ligne["retroarch"]
+    assert "jamais mesuré" in ligne["cemu"]
+    assert "[Pad1]" in ligne["duckstation"]
+
+
+def test_la_section_manettes_s_affiche_meme_sans_profil():
+    """Comme BIOS, Rendu et Amorçage : une section qui disparaît se lit comme
+    une panne d'affichage, et son repli est la seule chose qui distingue
+    « rien à dire » de « rien n'a été lu »."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"))
+    assert rapport.manettes == []
+    texte = status.format_report(rapport)
+    assert "Manettes" in texte and "aucun profil chargé" in texte
+
+
+def test_le_probleme_de_manette_dit_qu_une_liaison_fausse_est_muette(tmp_path):
+    """La garde de D3. Sans cette phrase, le prochain lecteur recopiera un
+    identifiant trouvé dans une recette et croira avoir corrigé la panne : le
+    symptôme est le MÊME — manette muette — avant et après."""
+    profils = _profil_manette(
+        tmp_path, "duckstation", "a-relever",
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]")
+    problemes = [p for p in _rapport_manette(profils).problems
+                 if "duckstation" in p.what]
+    assert len(problemes) == 1
+    dit = " ".join((problemes[0].what, problemes[0].action,
+                    *problemes[0].details)).lower()
+    assert "silence" in dit

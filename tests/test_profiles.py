@@ -784,3 +784,474 @@ config = 'video_shader_enable = "true"'
 args = "-y"
 """)))
     assert 'video_shader_enable' in p.systems[0].render.native.config
+
+
+# --- le bloc [bootstrap] ------------------------------------------------
+
+# `content` est déclaré avec les guillemets simples triples de TOML : la
+# chaîne LITTÉRALE, qui n'interprète aucun échappement. C'est le format à
+# employer dans les profils livrés — un fichier de configuration Windows est
+# plein d'antislashs, et une chaîne TOML de base les mangerait.
+BOOTSTRAP_VALIDE = """
+schema = 1
+id = "duckstation"
+exe = 'duckstation-qt.exe'
+[bootstrap]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+[Main]
+SetupWizardIncomplete = false
+'''
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
+
+
+def test_le_bloc_bootstrap_est_lu(tmp_path):
+    """Le contenu vit dans le profil, jamais dans le code : c'est lui que le
+    lanceur posera tel quel."""
+    profil = profiles.load_profile(ecrire(tmp_path, "duckstation.toml", BOOTSTRAP_VALIDE))
+    assert profil.bootstrap is not None
+    assert profil.bootstrap.target == (
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
+    assert "SetupWizardIncomplete = false" in profil.bootstrap.content
+
+
+def test_un_profil_sans_bootstrap_reste_valide(tmp_path):
+    """Un émulateur qui démarre nu n'a pas de bloc, et son profil doit
+    continuer de se charger."""
+    sans = BOOTSTRAP_VALIDE[:BOOTSTRAP_VALIDE.index("[bootstrap]")] + \
+        BOOTSTRAP_VALIDE[BOOTSTRAP_VALIDE.index("[[system]]"):]
+    assert profiles.load_profile(ecrire(tmp_path, "duckstation.toml", sans)).bootstrap is None
+
+
+def test_une_cible_sans_contenu_est_refusee(tmp_path):
+    """La moitié d'un amorçage n'amorce rien, et se lirait pourtant comme un
+    profil complet."""
+    texte = BOOTSTRAP_VALIDE.replace(
+        BOOTSTRAP_VALIDE[BOOTSTRAP_VALIDE.index("content ="):
+                         BOOTSTRAP_VALIDE.index("[[system]]")], "")
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
+    assert "content" in str(e.value) and "duckstation.toml" in str(e.value)
+
+
+def test_un_contenu_sans_cible_est_refuse(tmp_path):
+    """Un contenu sans cible n'a nulle part où aller."""
+    texte = BOOTSTRAP_VALIDE.replace(
+        "target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'\n", "")
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
+    assert "target" in str(e.value)
+
+
+def test_une_cible_relative_est_refusee(tmp_path):
+    """Un chemin relatif s'écrirait dans le dossier de travail de l'émulateur,
+    qui n'est pas celui de sa configuration — et le fichier posé ne serait lu
+    par personne."""
+    texte = BOOTSTRAP_VALIDE.replace(
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini",
+        "settings.ini")
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
+    assert "absolu" in str(e.value)
+
+
+def test_un_contenu_sans_marque_est_refuse(tmp_path):
+    """Une configuration écrite par un outil et qui ne le dit pas est un piège
+    pour le prochain lecteur — et pour le propriétaire qui la modifierait."""
+    texte = BOOTSTRAP_VALIDE.replace(
+        "; Écrit par « retro » au premier lancement, parce que ce fichier "
+        "était absent.\n", "")
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "duckstation.toml", texte))
+    assert profiles.MARQUE_BOOTSTRAP in str(e.value)
+
+
+def test_le_profil_duckstation_livre_ferme_les_deux_causes_mesurees():
+    """Le profil livré n'est pas un exemple : c'est lui que `retro scan` lira.
+
+    Mesuré le 2026-08-28 : DEUX causes distinctes ouvraient l'assistant de
+    DuckStation à la place d'un jeu — l'assistant de première configuration
+    lui-même, et une fenêtre de mise à jour qui bloquait le lancement même
+    l'assistant désactivé. Un profil qui n'en fermerait qu'une laisserait le
+    symptôme intact pour la moitié des propriétaires qui l'installent.
+
+    Ces deux clés sont désormais IMPOSÉES et non plus seulement posées : le
+    propriétaire l'a arbitré le 2026-08-29. La différence n'est pas
+    théorique — une seule case recochée par curiosité dans l'interface de
+    DuckStation rendait auparavant toute la bibliothèque injouable, sans
+    aucun moyen de le deviner."""
+    chemin = (pathlib.Path(__file__).parent.parent / "retro" / "data"
+              / "profiles" / "duckstation.toml")
+    profil = profiles.load_profile(chemin)
+    assert profil.bootstrap is not None
+    assert profil.bootstrap.target == (
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini")
+    # La première cause mesurée : sans elle, l'assistant de première
+    # configuration s'ouvre avant tout jeu et rien n'est jamais écrit.
+    assert "SetupWizardIncomplete = false" in profil.bootstrap.enforced
+    # La seconde, découverte le même jour : sans elle, une fenêtre « Mise à
+    # jour disponible » bloque le lancement aussi sûrement que l'assistant.
+    assert "CheckAtStartup = false" in profil.bootstrap.enforced
+    # Et elles ne sont plus dans le fichier « posé une fois » : les y laisser
+    # aurait fait décider le même réglage à deux endroits.
+    assert "SetupWizardIncomplete" not in profil.bootstrap.content
+
+
+# --- l'identifiant d'un profil se découpe et nomme un fichier --------------
+
+def _avec_id(identifiant: str) -> str:
+    return BOOTSTRAP_VALIDE.replace('id = "duckstation"',
+                                    f'id = "{identifiant}"', 1)
+
+
+def test_un_identifiant_de_profil_avec_un_espace_est_refuse(tmp_path):
+    """`ordonner_reamorcage` relit reamorcer.txt avec `split()`, qui découpe
+    sur les BLANCS : « duck station » y devient deux ordres, dont aucun ne
+    désigne un profil. L'ordre serait écrit, rapporté comme posé, et le
+    lanceur ne le verrait jamais."""
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "x.toml", _avec_id("duck station")))
+    assert "duckstation.toml" not in str(e.value)
+    assert "x.toml" in str(e.value) and "espace" in str(e.value)
+    # Et ce que la correction COÛTE : renommer un profil déjà synchronisé
+    # change la clé de système, donc les options du raccourci, donc
+    # l'identifiant Steam de chaque jeu. Obéir sans le savoir, c'est perdre
+    # ses entrées et tout son artwork.
+    assert "artwork" in str(e.value) and "Steam fermé" in str(e.value)
+
+
+def test_un_identifiant_de_profil_avec_un_point_est_refuse(tmp_path):
+    """Le lanceur retrouve le profil dans « <profil>.<système> » en coupant au
+    premier point : un identifiant qui en porte un désignerait un autre
+    profil, et l'amorçage viserait la configuration d'un autre émulateur."""
+    with pytest.raises(profiles.ProfileError) as e:
+        profiles.load_profile(ecrire(tmp_path, "x.toml", _avec_id("duck.station")))
+    assert "point" in str(e.value)
+
+
+def test_un_identifiant_qui_porte_bootstrap_est_refuse(tmp_path):
+    """`profils_amorcables` retrouve l'identifiant en coupant le nom de
+    fichier sur « .bootstrap » : un identifiant qui porte cette chaîne se
+    couperait au mauvais endroit, et « retro launcher --reamorcer » refuserait
+    un profil pourtant amorçable."""
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(
+            ecrire(tmp_path, "x.toml", _avec_id("duck.bootstrap")))
+
+
+def test_un_identifiant_ordinaire_reste_accepte(tmp_path):
+    """La règle ne doit pas fermer la porte aux identifiants normaux — tiret
+    et souligné compris, que les profils du propriétaire emploient."""
+    profil = profiles.load_profile(
+        ecrire(tmp_path, "x.toml", _avec_id("duck-station_2")))
+    assert profil.id == "duck-station_2"
+
+
+def test_l_exemple_de_bootstrap_de_la_specification_se_charge(tmp_path):
+    """La spec est le point de départ de la tâche qui mesurera les huit autres
+    émulateurs : un exemple que le validateur refuse ferait démarrer cette
+    tâche sur un ProfileError, et son auteur corrigerait le validateur.
+
+    L'exemple est extrait du document, pas recopié ici : recopié, il aurait
+    cessé de dire quoi que ce soit du document le jour où celui-ci change.
+    """
+    import tomllib
+    spec = (pathlib.Path(__file__).parent.parent / "docs" / "superpowers"
+            / "specs" / "2026-08-28-amorcage-emulateurs-design.md")
+    # [1:] : le premier morceau est la PROSE qui précède la première clôture,
+    # et elle nomme le bloc sans le montrer.
+    blocs = [b.split("```")[0] for b in
+             spec.read_text(encoding="utf-8").split("```toml\n")[1:]]
+    exemple = [b for b in blocs if "[bootstrap]" in b]
+    assert exemple, "la spec ne montre plus d'exemple de bloc [bootstrap]"
+    for bloc in exemple:
+        assert profiles._lire_bootstrap(
+            spec, tomllib.loads(bloc)["bootstrap"]) is not None
+
+
+# --- le troisième axe : le remplissage -----------------------------------
+
+REMPLI = """
+[system.render.native]
+args = "-scale=1 -integer=yes"
+crt_absent = "aucun shader"
+fill = "entier"
+[system.render.full]
+args = "-scale=4 -integer=no"
+fill = "ajuste"
+"""
+
+
+def test_un_remplissage_declare_se_charge(tmp_path):
+    from retro import render
+    p = profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu(REMPLI)))
+    assert p.systems[0].render.native.fill == render.ENTIER
+    assert p.systems[0].render.full.fill == render.AJUSTE
+
+
+def test_un_emulateur_sans_reglage_de_remplissage_le_declare(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun shader"
+fill_absent = "aucune clé de mise à l'échelle entière dans cette révision"
+[system.render.full]
+args = "-scale=4"
+fill_absent = "aucune clé de mise à l'échelle entière dans cette révision"
+""")))
+    assert "entière" in p.systems[0].render.full.fill_absent
+
+
+def test_un_remplissage_inconnu_est_refuse(tmp_path):
+    """« integer », « ajusté », « fit » : une valeur qu'aucune politique ne
+    connaît ne serait comparée à rien, et le mode partirait sans son
+    troisième axe sans qu'un mot le dise."""
+    with pytest.raises(profiles.ProfileError, match="remplissage inconnu"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun"
+fill = "integer"
+[system.render.full]
+args = "-y"
+fill = "ajuste"
+""")))
+
+
+def test_un_remplissage_contraire_a_la_politique_est_refuse(tmp_path):
+    """Un mode natif qui remplirait « au plus grand » rééchantillonnerait la
+    trame que le mode natif existe pour préserver — et la contradiction ne se
+    verrait que sur l'écran, sur une image floue qu'on croirait normale."""
+    with pytest.raises(profiles.ProfileError, match="la politique de remplissage"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun"
+fill = "ajuste"
+[system.render.full]
+args = "-y"
+fill = "ajuste"
+""")))
+
+
+def test_le_remplissage_et_son_absence_a_la_fois_sont_refuses(tmp_path):
+    with pytest.raises(profiles.ProfileError, match="SOIT 'fill'"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = "-scale=1"
+crt_absent = "aucun"
+fill = "entier"
+fill_absent = "rien à régler"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_un_remplissage_declare_sur_un_mode_vide_est_refuse(tmp_path):
+    """Un mode sans le moindre argument ne passe RIEN à l'émulateur : y
+    déclarer un remplissage serait un réglage que rien n'appliquerait."""
+    with pytest.raises(profiles.ProfileError, match="Rien ne l'appliquerait"):
+        profiles.load_profile(ecrire(tmp_path, "e.toml", profil_rendu("""
+[system.render.native]
+args = ""
+note = "aucun réglage en ligne de commande"
+crt_absent = "aucun"
+fill = "entier"
+[system.render.full]
+args = "-y"
+""")))
+
+
+def test_un_profil_qui_ne_tranche_pas_sur_le_remplissage_reste_valide(tmp_path):
+    """Le troisième axe se remplit émulateur par émulateur, comme les deux
+    autres. Ce qui est interdit, c'est qu'un profil muet ait l'air tranché :
+    c'est `retro status` qui nomme ceux qui ne le sont pas."""
+    p = profiles.load_profile(ecrire(tmp_path, "e.toml",
+                                     profil_rendu(RENDU_VALIDE)))
+    assert p.systems[0].render.native.fill == ""
+    assert p.systems[0].render.native.fill_absent == ""
+
+
+# --- les deux régimes d'un amorçage ---------------------------------------
+#
+# Un même fichier cible porte deux choses qui ne se gouvernent pas pareil :
+# ce que la console IMPOSE (sans quoi un jeu ne démarre pas sans clavier) et
+# ce qu'elle a POSÉ UNE FOIS parce que le fichier n'existait pas (des
+# préférences, qui appartiennent au propriétaire dès la seconde suivante).
+#
+# Le régime est STRUCTUREL : deux champs distincts, `content` et `enforced`.
+# Il ne se déclare pas dans un mode qu'on pourrait mettre en contradiction
+# avec ce que le bloc contient — et il se lit d'un coup d'œil dans le profil.
+
+ENTETE_TROIS = """; Écrit par « retro », qui distingue trois choses ici : ce qu'il IMPOSE et
+; repose à chaque lancement, ce qu'il a posé UNE FOIS et ne retouche plus, et
+; tout le reste, qui vous appartient."""
+
+
+def _amorcage(content_keys: str, enforced: str = "",
+              entete: str = ENTETE_TROIS) -> str:
+    bloc = f"""
+schema = 1
+id = "duckstation"
+exe = 'duckstation-qt.exe'
+[bootstrap]
+target = '%USERPROFILE%\\\\Documents\\\\DuckStation\\\\settings.ini'
+content = '''
+{entete}
+{content_keys}
+'''
+"""
+    if enforced:
+        bloc += f"enforced = '''\n{enforced}\n'''\n"
+    return bloc + """
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
+
+
+# --- [input] mapping : ce que le profil SAIT de sa manette ---------------
+#
+# Dette D3 : la manette reste muette dans DuckStation, et rien ne le disait.
+# Le champ ne porte JAMAIS un identifiant : il porte l'état du RELEVÉ, seule
+# chose qu'on puisse écrire sans mesurer. Un identifiant recopié d'ailleurs
+# est un défaut muet — l'émulateur ignore une liaison qui ne correspond à rien
+# sans un mot, et la manette reste muette comme si le fichier était vide.
+
+_SANS_INPUT = """
+schema = 1
+id = "duckstation"
+exe = "duckstation.exe"
+
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
+
+
+def test_un_amorcage_sans_cles_imposees_reste_valide(tmp_path):
+    """Huit profils livrés n'imposent rien : ne rien déclarer doit continuer
+    de vouloir dire « posé une fois, jamais retouché »."""
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+        "[Main]\nConfirmPowerOff = false")))
+    assert p.bootstrap.enforced == ""
+
+
+def test_les_cles_imposees_se_declarent_a_part(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+        "[Main]\nConfirmPowerOff = false",
+        enforced="[Main]\nSetupWizardIncomplete = false")))
+    assert "SetupWizardIncomplete" in p.bootstrap.enforced
+    assert "ConfirmPowerOff" not in p.bootstrap.enforced
+
+
+def test_une_cle_dans_les_deux_regimes_est_refusee(tmp_path):
+    """Le même réglage décidé à deux endroits : l'un des deux perdrait
+    toujours — le fusionné écrase le posé — et personne, en lisant le profil,
+    ne pourrait dire lequel gagne. C'est la faute que ce dépôt refuse partout
+    ailleurs, et elle serait ici parfaitement muette."""
+    with pytest.raises(profiles.ProfileError, match="DEUX régimes"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+            "[Main]\nStartFullscreen = true",
+            enforced="[Main]\nStartFullscreen = true")))
+
+
+def test_la_meme_cle_dans_deux_sections_differentes_est_permise(tmp_path):
+    """« Enabled » sous [Pad1] et sous [Display] ne sont pas le même réglage :
+    la comparaison porte sur le couple section/clé, pas sur le nom seul."""
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+        "[Display]\nEnabled = true",
+        enforced="[Pad1]\nEnabled = true")))
+    assert p.bootstrap.enforced
+
+
+def test_un_amorcage_qui_impose_doit_distinguer_les_trois_categories(tmp_path):
+    """L'en-tête PROMET quelque chose. « Vos réglages ne sont jamais
+    retouchés » était vrai quand rien n'était imposé ; il devient faux pour
+    les clés reposées. Mais dire « tout est reposé » serait faux aussi, pour
+    les préférences. Les trois catégories doivent se lire."""
+    with pytest.raises(profiles.ProfileError, match="TROIS"):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+            "[Main]\nConfirmPowerOff = false",
+            enforced="[Main]\nSetupWizardIncomplete = false",
+            entete="; Écrit par « retro ». Vos réglages ne sont jamais "
+                   "retouchés.")))
+
+
+def test_un_amorcage_qui_n_impose_rien_garde_l_ancienne_promesse(tmp_path):
+    """La garde ne se déclenche QUE s'il y a des clés imposées : les profils
+    qui n'en ont pas gardent leur en-tête, qui reste vrai."""
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _amorcage(
+        "[Main]\nConfirmPowerOff = false",
+        entete="; Écrit par « retro » : ce fichier n'est posé que s'il est "
+               "absent, vos réglages ne sont jamais retouchés.")))
+    assert p.bootstrap is not None
+
+
+def _avec_input(bloc: str) -> str:
+    return _SANS_INPUT.replace("[[system]]", bloc + "\n[[system]]", 1)
+
+
+def test_un_profil_muet_sur_sa_manette_vaut_inconnu(tmp_path):
+    """Le défaut ne peut être ni « auto » ni « à relever ».
+
+    « auto » ferait dire au rapport que neuf émulateurs trouvent leur manette
+    seuls, ce que personne n'a mesuré — c'est exactement le mensonge de
+    `steam_input = "required"`, que le code lisait sans jamais l'appliquer.
+    « à relever » accuserait de la même façon huit émulateurs d'une panne que
+    personne n'a constatée. « inconnu » est le seul état vrai d'un profil qui
+    se tait.
+    """
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _SANS_INPUT))
+    assert p.input_mapping == profiles.MAPPING_INCONNU
+
+
+def test_un_profil_declare_que_sa_manette_reste_a_relever(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+        '[input]\nmapping = "a-relever"\n'
+        "mapping_where = '%USERPROFILE%\\\\Documents\\\\D\\\\settings.ini, "
+        "section [Pad1]'\n")))
+    assert p.input_mapping == profiles.MAPPING_A_RELEVER
+    assert "[Pad1]" in p.input_mapping_where
+
+
+def test_un_profil_peut_declarer_que_l_emulateur_trouve_seul(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+        '[input]\nmapping = "auto"\n')))
+    assert p.input_mapping == profiles.MAPPING_AUTO
+
+
+def test_un_etat_de_mapping_inconnu_du_code_est_refuse(tmp_path):
+    """Une faute de frappe — « arelever » — retomberait sinon sur le défaut et
+    ferait taire le rapport sur l'émulateur précisément concerné."""
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nmapping = "arelever"\n')))
+
+
+def test_un_mapping_a_relever_sans_ou_est_refuse(tmp_path):
+    """« un constat sans chemin ni action n'aide personne » : c'est la règle
+    de `retro status`, et un profil qui déclare sa manette à relever sans dire
+    OÙ produirait exactement l'accusation sans diagnostic qu'elle interdit."""
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nmapping = "a-relever"\n')))
+
+
+def test_mapping_where_reste_facultatif_quand_rien_n_est_a_relever(tmp_path):
+    """Un émulateur qui trouve sa manette seul n'a aucun fichier à nommer, et
+    un profil qui n'a jamais été mesuré ne sait pas où regarder."""
+    for etat in ("auto", "inconnu"):
+        p = profiles.load_profile(ecrire(tmp_path, f"{etat}.toml", _avec_input(
+            f'[input]\nmapping = "{etat}"\n')))
+        assert p.input_mapping_where == ""

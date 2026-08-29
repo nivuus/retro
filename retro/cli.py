@@ -11,7 +11,7 @@ from retro import launcher as launcher_mod
 from retro import render as render_mod
 from retro import bios, install as install_mod
 from retro import manifest, profiles, scan, status
-from retro.steam import accounts, artwork, entry, sync, writer
+from retro.steam import accounts, artwork, entry, steam_input, sync, vdf_io, writer
 
 DEFAULT_STEAM_ROOT = "D:\\Steam"
 DEFAULT_EMULATION_ROOT = "D:\\Emulation"
@@ -434,6 +434,30 @@ def _cmd_status(args) -> int:
             pathlib.Path(args.emulation_root),
         )
         etat_bios = bios.check_bios(profils, pathlib.Path(args.bios))
+
+        # Steam Input, et seulement si la racine Steam est donnée. Un rapport
+        # qui l'exigerait ne se rendrait plus du tout sur une machine où l'on
+        # veut juste voir ce qui manque comme BIOS — or c'est justement là
+        # qu'on le consulte, loin de la console.
+        #
+        # La source est shortcuts.vdf, pas l'inventaire : ce qui compte est ce
+        # que Steam a RÉELLEMENT dans sa bibliothèque, et le réglage porte sur
+        # l'appid d'un raccourci existant. Un jeu scanné mais jamais
+        # synchronisé n'a pas encore de manette à régler.
+        muets, echec_steam_input = [], ""
+        if getattr(args, "steam_root", None):
+            try:
+                for compte in accounts.discover_accounts(
+                        pathlib.Path(args.steam_root)):
+                    notres = [r for r in vdf_io.load_shortcuts(compte.shortcuts_path)
+                              if entry.is_owned(r, args.emulation_root)]
+                    muets += steam_input.jeux_actifs(compte.localconfig_path, notres)
+            except (accounts.NoSteamAccountError, steam_input.LocalConfigError,
+                    vdf_io.ShortcutsError) as exc:
+                # Signalé, jamais fatal : `status` est une consultation, et
+                # tout le reste du rapport garde sa valeur.
+                echec_steam_input = str(exc)
+
         rapport = status.build_report(
             install_dirs=install_dirs,
             emulation_root=pathlib.Path(args.emulation_root),
@@ -452,6 +476,22 @@ def _cmd_status(args) -> int:
             # changer.
             profils=profils,
             render_mode=launcher_mod.lire_mode(
+                pathlib.Path(args.emulation_root)),
+            steam_input_muets=muets,
+            steam_input_echec=echec_steam_input,
+            # Le témoin que le lanceur écrit : `status` ne peut pas
+            # constater l'état d'un fichier qui vit dans le profil de
+            # l'utilisateur Windows. Même racine que `lire_mode` ci-dessus,
+            # et même limite : sur la machine, les deux chemins se
+            # confondent.
+            amorcages=launcher_mod.lire_amorcages(
+                pathlib.Path(args.emulation_root)),
+            # Un lanceur compilé avant les plans qu'il lit n'échoue pas : il
+            # ignore les lignes qu'il ne connaît pas. Sans ce constat, la
+            # section Amorçage annoncerait « pas encore amorcé » aussi
+            # longtemps qu'il resterait en place, et rien ne dirait que le
+            # geste à faire est de le recompiler.
+            lanceur_perime=launcher_mod.lanceur_perime(
                 pathlib.Path(args.emulation_root)),
         )
         texte = status.format_report(rapport)
@@ -478,6 +518,18 @@ def _cmd_launcher(args) -> int:
     confiance à un exécutable qu'on ne peut pas relire.
     """
     racine = pathlib.Path(args.emulation_root_local)
+    # Le ré-amorçage est un geste à part : il ne redépose pas la source du
+    # lanceur, et il ne dépend pas de sa compilation.
+    if args.reamorcer:
+        try:
+            fichier = launcher_mod.ordonner_reamorcage(racine, args.reamorcer)
+        except (launcher_mod.AmorcageError, OSError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(f"ré-amorçage demandé pour « {args.reamorcer} » : {fichier}\n"
+              "Il sera posé au prochain lancement d'un jeu de cet émulateur, "
+              "après sauvegarde de sa configuration actuelle.")
+        return 0
     try:
         deposes = launcher_mod.deposer_source(racine)
     except OSError as exc:
@@ -487,6 +539,21 @@ def _cmd_launcher(args) -> int:
         print(f"déposé : {f}")
 
     if launcher_mod.est_installe(racine):
+        if launcher_mod.lanceur_perime(racine):
+            # Un binaire plus vieux que sa source ignore EN SILENCE les
+            # lignes de plan qu'il ne connaît pas : pas d'erreur, pas
+            # d'amorçage, et `retro status` annoncerait « pas encore amorcé »
+            # indéfiniment. Ne pas rendre 0 : c'est l'état du jour même de la
+            # livraison, et « en place » l'a déjà fait croire une fois.
+            print(
+                "le lanceur en place est plus ancien que sa source : il "
+                "ignorerait en silence ce que les plans portent de nouveau "
+                "(l'amorçage des émulateurs, notamment). Le recompiler depuis "
+                f"Windows :\n    {launcher_mod.launcher_dir(args.emulation_root)}"
+                f"\\{launcher_mod.RECOMPILER}",
+                file=sys.stderr,
+            )
+            return 1
         print("le lanceur est compilé et en place")
         return 0
     # Ne PAS rendre 0 : sans binaire, le lanceur n'est pas installé, et
@@ -494,7 +561,8 @@ def _cmd_launcher(args) -> int:
     # étape terminée, et la panne apparaîtrait deux commandes plus loin.
     print(
         "le lanceur n'est pas encore compilé. Depuis Windows, exécuter :\n"
-        f"    {launcher_mod.launcher_dir(args.emulation_root)}\\compiler.cmd\n"
+        f"    {launcher_mod.launcher_dir(args.emulation_root)}\\"
+        f"{launcher_mod.RECOMPILER}\n"
         "csc.exe du .NET Framework suffit : il est présent sur toute "
         "installation de Windows, rien à télécharger.",
         file=sys.stderr,
@@ -597,6 +665,11 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="la racine telle que la CONSOLE la verra")
     lan.add_argument("--emulation-root-local", required=True,
                      help="le chemin par lequel CETTE machine y accède")
+    lan.add_argument("--reamorcer", metavar="PROFIL", default=None,
+                     help="reposer la configuration de cet émulateur au "
+                          "prochain lancement, en sauvegardant l'actuelle. "
+                          "Sans cette option, une configuration existante "
+                          "n'est jamais touchée.")
     lan.set_defaults(func=_cmd_launcher)
 
     ren = sous.add_parser(
@@ -620,6 +693,11 @@ def _build_parser() -> argparse.ArgumentParser:
     st.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     st.add_argument("--user-manifest", default=None)
     st.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
+    st.add_argument("--steam-root", default=None,
+                   help="racine Steam, pour dire quels jeux ont encore Steam "
+                        "Input actif — leur manette reste muette dans "
+                        "l'émulateur. Facultatif : sans elle, le rapport se "
+                        "rend comme avant, sans cette section.")
     st.add_argument("--bios", required=True,
                     help="dossier où le propriétaire dépose ses BIOS")
     st.set_defaults(func=_cmd_status)

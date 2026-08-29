@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+import re
 import tomllib
 
 from retro import render as render_mod
@@ -42,6 +43,63 @@ class System:
     # croiser avec la machine et déciderait sur une valeur inventée.
     cost: str = ""
     render: Render | None = None
+
+
+# La phrase qu'un fichier d'amorçage porte en tête, dans la syntaxe de
+# commentaire de son propre format. Elle est EXIGÉE : une configuration écrite
+# par un outil et qui ne le dit pas est un piège pour le prochain lecteur, qui
+# la prendrait pour la sienne et chercherait longtemps pourquoi ses réglages
+# « reviennent ». C'est la même exigence que l'en-tête des plans de lancement.
+MARQUE_BOOTSTRAP = "Écrit par « retro »"
+
+
+# L'état du RELEVÉ d'une manette, et jamais l'identifiant lui-même.
+#
+# Un identifiant de périphérique n'est pas une propriété du périphérique :
+# c'est une propriété de l'ÉMULATEUR qui le nomme. Le relevé du 2026-08-28
+# (plan des manettes, tâche 1) a produit QUATRE identifiants pour une seule
+# manette physique — le VID/PID de Windows, deux relevés SDL sous deux pilotes,
+# et celui que l'émulateur avait écrit lui-même. Un seul était le bon, et
+# c'était le dernier.
+#
+# D'où la règle, et d'où ce champ : toute valeur non relevée sur la machine est
+# FAUSSE, et sa fausseté est indiscernable de l'absence de valeur — une liaison
+# qui ne correspond à aucun périphérique est ignorée EN SILENCE, et la manette
+# reste muette exactement comme si le fichier était vide. Un profil ne peut
+# donc écrire honnêtement qu'une chose : où en est le relevé.
+MAPPING_AUTO = "auto"           # mesuré : cet émulateur trouve la manette seul
+MAPPING_A_RELEVER = "a-relever"  # mesuré : il ne la trouve pas, rien n'est relevé
+MAPPING_INCONNU = "inconnu"     # personne n'a mesuré
+MAPPINGS = (MAPPING_AUTO, MAPPING_A_RELEVER, MAPPING_INCONNU)
+
+
+@dataclasses.dataclass(frozen=True)
+class Bootstrap:
+    """La configuration qu'un émulateur neuf reçoit, et où elle va.
+
+    `target` est un chemin WINDOWS, variables d'environnement comprises : la
+    configuration d'un émulateur vit dans le profil de l'utilisateur Windows,
+    que la machine qui pilote `retro` n'atteint pas. Le lanceur, lui, y est.
+
+    DEUX RÉGIMES, et ils sont STRUCTURELS — deux champs, pas un mode déclaré
+    qu'on pourrait mettre en contradiction avec ce que le bloc contient :
+
+    `content`  est posé SI LE FICHIER EST ABSENT, et plus jamais retouché. Ce
+      sont des préférences : le propriétaire les change dans l'interface de
+      son émulateur, et son choix tient.
+    `enforced` est REPOSÉ À CHAQUE LANCEMENT, par fusion. Ce sont les clés
+      sans lesquelles un jeu ne démarre pas sans clavier — un assistant de
+      première configuration qui s'ouvre par-dessus, une fenêtre de mise à
+      jour, un plein écran manquant. La console doit pouvoir les imposer,
+      sinon la bibliothèque entière devient inutilisable au premier réglage
+      malheureux.
+
+    Les deux visent LE MÊME fichier. Ce qui n'est dans ni l'un ni l'autre
+    appartient entièrement au propriétaire et n'est jamais touché.
+    """
+    target: str
+    content: str
+    enforced: str = ""
 
 
 def folder_key(nom: str) -> str:
@@ -80,6 +138,17 @@ class Profile:
     exit_native: str
     exit_fallback: str
     steam_input: str
+    # Où en est le relevé de la manette de cet émulateur, et où il se fait.
+    # `input_mapping_where` n'est PAS un identifiant : c'est le fichier, et la
+    # section, que le propriétaire doit ouvrir sur la console. `retro status`
+    # en fait le « où » du problème qu'il énonce — un constat sans chemin est
+    # une accusation, pas un diagnostic.
+    input_mapping: str = MAPPING_INCONNU
+    input_mapping_where: str = ""
+    # Facultatif : un émulateur qui démarre nu n'a rien à recevoir. Le profil
+    # doit alors DIRE pourquoi il n'a pas de bloc — sans quoi rien ne
+    # distingue « cet émulateur se débrouille » d'un bloc oublié.
+    bootstrap: Bootstrap | None = None
 
 
 def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
@@ -135,11 +204,11 @@ def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
 # chemin d'un fichier ne dépend pas de la résolution.
 _VARIABLES = ("width", "height", "scale", "render_config")
 _CLES_RENDER = ("native", "full", "native_height", "max_scale")
-_CLES_MODE = ("args", "note", "crt", "crt_absent", "config")
+_CLES_MODE = ("args", "note", "crt", "crt_absent", "config",
+              "fill", "fill_absent")
 
 
 def _valider_variables(path, sid, quoi: str, gabarit: str) -> None:
-    import re
     inconnues = sorted({m for m in re.findall(r"\{(\w+)\}", gabarit)
                         if m not in _VARIABLES})
     if inconnues:
@@ -230,8 +299,66 @@ def _lire_mode(path, sid, nom: str, brut) -> RenderMode:
             "'crt_absent'. Le shader CRT n'a de sens qu'en mode natif — "
             "déclaré ici, il ne serait jamais appliqué."
         )
+    fill, fill_absent = _lire_remplissage(path, sid, nom, brut, args, config)
     return RenderMode(args=args, note=note, crt=crt, crt_absent=crt_absent,
-                      config=config)
+                      config=config, fill=fill, fill_absent=fill_absent)
+
+
+def _lire_remplissage(path, sid, nom: str, brut, args: str,
+                      config: str) -> tuple[str, str]:
+    """Le TROISIÈME axe de ce mode : `fill`, `fill_absent`, ou ni l'un ni
+    l'autre.
+
+    Ni l'un ni l'autre est PERMIS — le troisième axe se remplit émulateur par
+    émulateur, comme les deux autres, et un profil qui ne l'a pas encore
+    mesuré doit continuer de lancer ses jeux. C'est `retro status` qui nomme
+    ces systèmes, comme il nomme ceux qui n'ont aucun mode.
+
+    Les trois refus ci-dessous portent chacun sur une faute qui ne se verrait
+    que sur la télévision, sur une image dont rien ne dirait qu'elle est celle
+    qu'on a demandée.
+    """
+    fill = brut.get("fill", "").strip()
+    fill_absent = brut.get("fill_absent", "").strip()
+    if fill and fill_absent:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}' déclare SOIT 'fill' — le "
+            "remplissage que ses arguments produisent — SOIT 'fill_absent', "
+            "qui dit que cet émulateur n'expose aucun réglage de cet axe. Les "
+            "deux à la fois ne veulent rien dire."
+        )
+    if not fill:
+        return "", fill_absent
+    if fill not in render_mod.REMPLISSAGES:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}.fill' vaut {fill!r} — "
+            f"remplissage inconnu. Les remplissages sont "
+            f"{', '.join(render_mod.REMPLISSAGES)} : ce sont les deux seules "
+            "façons d'agrandir une image SANS la déformer, et l'étirement "
+            "n'est pas une troisième valeur qu'on aurait omise. Une valeur "
+            "inconnue ne serait comparée à rien et le mode partirait sans son "
+            "troisième axe, sans qu'un mot le dise."
+        )
+    if not args and not config.strip():
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}' déclare un remplissage alors "
+            "qu'il ne passe RIEN à l'émulateur — ni argument, ni fichier de "
+            "réglages. Rien ne l'appliquerait. Un mode vide n'a aucun axe à "
+            "régler, celui-ci compris : sa 'note' le dit déjà, et `retro "
+            "status` la répète."
+        )
+    attendu = render_mod.remplissage_attendu(nom)
+    if fill != attendu:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}.fill' vaut {fill!r}, mais la "
+            f"politique de remplissage retient {attendu!r} pour le mode "
+            f"{nom} — {render_mod.motif_remplissage(nom)}. Un profil qui la "
+            "contredit ne serait démenti par rien : la contradiction ne se "
+            "verrait que sur l'écran. Corriger le profil, ou changer la "
+            "politique dans retro/render.py — où elle est écrite en clair, et "
+            "citée par le rapport."
+        )
+    return fill, ""
 
 
 def _lire_render(path, sid, brut, launch: str) -> Render:
@@ -292,6 +419,220 @@ def _lire_render(path, sid, brut, launch: str) -> Render:
                   max_scale=brut.get("max_scale", 0))
 
 
+def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
+    """Le bloc [bootstrap], validé, ou None s'il n'y en a pas.
+
+    Les trois refus ci-dessous portent chacun sur une faute MUETTE : un bloc
+    à moitié écrit, un chemin qui vise un dossier au hasard, un fichier qui
+    ne dit pas d'où il vient. Aucune ne fait échouer quoi que ce soit au
+    moment où elle est commise — elles se découvrent devant une télévision,
+    sur un jeu qui n'a pas démarré.
+    """
+    if not brut:
+        return None
+    target = brut.get("target", "")
+    content = brut.get("content", "")
+    for nom, valeur in (("target", target), ("content", content)):
+        if not isinstance(valeur, str) or not valeur.strip():
+            raise ProfileError(
+                f"{path} [bootstrap] : champ '{nom}' manquant ou vide. La "
+                "moitié d'un amorçage n'amorce rien, et se lit pourtant comme "
+                "un profil complet."
+            )
+    if not (target.startswith("%")
+            or pathlib.PureWindowsPath(target).is_absolute()):
+        raise ProfileError(
+            f"{path} [bootstrap] : 'target' doit être un chemin Windows "
+            f"absolu ou commencer par une variable d'environnement — reçu "
+            f"{target!r}. Un chemin relatif s'écrirait dans le dossier de "
+            "travail de l'émulateur, et le fichier posé ne serait lu par "
+            "personne."
+        )
+    if MARQUE_BOOTSTRAP not in content:
+        raise ProfileError(
+            f"{path} [bootstrap] : 'content' ne porte pas « "
+            f"{MARQUE_BOOTSTRAP} » en commentaire. Un fichier de "
+            "configuration écrit par un outil doit dire qui l'a écrit : sans "
+            "cela, le propriétaire le prend pour le sien."
+        )
+    enforced = brut.get("enforced", "")
+    if not isinstance(enforced, str):
+        raise ProfileError(
+            f"{path} [bootstrap] : 'enforced' doit être du texte — le "
+            "fragment de configuration que la console REPOSE à chaque "
+            "lancement."
+        )
+    _valider_regimes(path, content, enforced)
+    return Bootstrap(target=target, content=content,
+                     enforced=enforced.strip())
+
+
+def cles_ini(fragment: str) -> list[tuple[str, str]]:
+    """Les couples (section, clé) d'un fragment INI, dans l'ordre.
+
+    Rendue publique : `retro status` compte ce que la console impose, et
+    recompter ailleurs ferait deux analyseurs qui divergeraient au premier
+    format inhabituel.
+
+    Les commentaires n'y sont PAS des clés. Une ligne « ; Scaling = ... » ne
+    doit pas passer pour le réglage qu'elle explique — c'est la même règle que
+    dans la fusion du lanceur, et l'y contredire ferait dire au rapport qu'une
+    clé est imposée alors qu'elle ne l'est pas.
+    """
+    section, cles = "", []
+    for ligne in fragment.splitlines():
+        nu = ligne.strip()
+        if not nu or nu[0] in ";#":
+            continue
+        if nu.startswith("[") and nu.endswith("]"):
+            section = nu[1:-1].strip()
+        elif "=" in nu:
+            cles.append((section, nu.split("=", 1)[0].strip()))
+    return cles
+
+
+def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
+    """Les deux régimes ne se recouvrent pas, et l'en-tête dit lequel est quoi.
+
+    Une clé déclarée DES DEUX CÔTÉS serait décidée à deux endroits. Le
+    fusionné l'emporterait toujours — il passe après —, mais personne, en
+    lisant le profil, ne pourrait dire lequel gagne, et la préférence
+    apparemment posée ne tiendrait jamais. C'est la faute que ce dépôt refuse
+    partout ailleurs, et elle serait ici parfaitement muette.
+
+    La comparaison porte sur le couple SECTION/CLÉ : « Enabled » sous [Pad1]
+    et sous [Display] ne sont pas le même réglage.
+
+    Et l'en-tête. Il PROMET quelque chose au propriétaire, qui règle son
+    comportement dessus. « Vos réglages ne sont jamais retouchés » était vrai
+    tant que rien n'était imposé ; il devient faux pour les clés reposées.
+    Mais « tout est reposé » serait faux aussi, pour les préférences. Dès
+    qu'un profil impose quelque chose, son en-tête doit donc distinguer les
+    TROIS catégories — imposé, posé une fois, à vous. La garde est
+    volontairement grossière : elle n'attrape pas une formulation
+    malheureuse, elle attrape l'oubli.
+    """
+    if not enforced.strip():
+        return
+    deux = sorted(set(cles_ini(content)) & set(cles_ini(enforced)))
+    if deux:
+        noms = ", ".join(f"[{s}] {c}" for s, c in deux)
+        raise ProfileError(
+            f"{path} [bootstrap] : {noms} — déclaré dans les DEUX régimes, "
+            "'content' et 'enforced'. Le réglage serait décidé à deux "
+            "endroits : l'imposé l'emporterait toujours, la préférence "
+            "posée ne tiendrait jamais, et rien dans le profil ne dirait "
+            "lequel gagne. Choisir : imposé par la console, ou posé une fois "
+            "puis laissé au propriétaire."
+        )
+    minuscules = content.lower()
+    if not ("impos" in minuscules and "une fois" in minuscules):
+        raise ProfileError(
+            f"{path} [bootstrap] : ce profil IMPOSE des clés, mais son "
+            "'content' ne distingue pas les TROIS catégories que le fichier "
+            "porte désormais : ce que la console impose et repose à chaque "
+            "lancement, ce qu'elle a posé UNE FOIS et ne retouche plus, et "
+            "tout le reste, qui appartient au propriétaire. L'en-tête d'un "
+            "fichier de configuration est CRU : le propriétaire y lit une "
+            "garantie et règle son comportement dessus. Une promesse qui "
+            "survivrait au régime qui la rendait vraie serait pire qu'une "
+            "absence d'en-tête."
+        )
+
+
+def _lire_mapping(path: pathlib.Path, entree: dict) -> tuple[str, str]:
+    """L'état du relevé de la manette, validé, et l'endroit où il se fait.
+
+    Le défaut est `inconnu`, et ce choix se défend contre les deux autres :
+
+    - `auto` par défaut ferait dire au rapport que neuf émulateurs trouvent
+      leur manette seuls, ce que personne n'a mesuré. C'est très exactement le
+      mensonge de `steam_input = "required"`, que ce module typographie et
+      relit sans qu'aucun code ne l'applique jamais, et qui a fait croire
+      pendant tout un diagnostic que la question des manettes était traitée ;
+    - `a-relever` par défaut accuserait huit émulateurs d'une panne que
+      personne n'a constatée, et noierait la seule qui l'a été.
+
+    `inconnu` est le seul état vrai d'un profil qui se tait. Il n'est pas un
+    problème — mais il est NOMMÉ, faute de quoi « personne n'a regardé » et
+    « cet émulateur se débrouille » se lisent pareil.
+    """
+    etat = entree.get("mapping", MAPPING_INCONNU)
+    if etat not in MAPPINGS:
+        raise ProfileError(
+            f"{path} [input] : 'mapping' vaut {etat!r}, attendu l'un de "
+            f"{', '.join(MAPPINGS)}. Ce champ ne porte JAMAIS un identifiant "
+            "de manette — il dit où en est le RELEVÉ, seule chose qu'on "
+            "puisse écrire sans avoir mesuré. Une faute de frappe y "
+            "retomberait sur le défaut « inconnu » et ferait taire "
+            "« retro status » sur l'émulateur précisément concerné."
+        )
+    ou = entree.get("mapping_where", "")
+    if not isinstance(ou, str):
+        raise ProfileError(
+            f"{path} [input] : 'mapping_where' doit être un texte — le "
+            "fichier, et la section, que le propriétaire ouvrira sur la "
+            f"console. Reçu {ou!r}."
+        )
+    ou = ou.strip()
+    if etat == MAPPING_A_RELEVER and not ou:
+        raise ProfileError(
+            f"{path} [input] : 'mapping' vaut « {MAPPING_A_RELEVER} » mais "
+            "'mapping_where' est vide. « Un constat sans chemin ni action "
+            "n'aide personne » : le rapport dirait « la manette restera "
+            "muette » sans dire quel fichier ouvrir, et cette panne-là ne se "
+            "constate que le pad en main, devant la télévision."
+        )
+    return etat, ou
+
+
+# L'identifiant d'un profil n'est pas une étiquette : il NOMME un fichier et
+# il se DÉCOUPE, à trois endroits, dans trois langages différents.
+#
+# - `launcher.bootstrap_name` en fait « <id>.bootstrap.<ext> », déposé à côté
+#   des plans ; `launcher.profils_amorcables` retrouve ensuite l'identifiant en
+#   coupant sur « .bootstrap » — un identifiant qui porte cette chaîne se
+#   couperait au mauvais endroit, et le profil deviendrait non ré-amorçable ;
+# - `launcher.ordonner_reamorcage` écrit un identifiant par ligne dans
+#   reamorcer.txt et relit le fichier avec `split()`, qui découpe sur les
+#   BLANCS : un identifiant contenant un espace y devient deux ordres, dont
+#   aucun ne désigne un profil ;
+# - le lanceur retrouve le profil dans « <profil>.<système> » en coupant au
+#   premier point : un identifiant qui en porte un désignerait un autre profil.
+#
+# Aucune de ces trois fautes ne fait échouer quoi que ce soit au moment où elle
+# est commise : elles se découvrent devant une télévision, sur une
+# configuration qui n'a pas été posée. La règle les ferme toutes les trois.
+#
+# Le point d'ancrage est \Z et non $ : « duckstation\n » satisferait $, et TOML
+# accepte parfaitement un identifiant multiligne.
+_ID_PROFIL = re.compile(r"[a-z0-9][a-z0-9_-]*\Z")
+
+
+def _valider_id(path: pathlib.Path, pid) -> None:
+    """L'identifiant du profil, tel que le reste du projet peut le manipuler."""
+    if isinstance(pid, str) and _ID_PROFIL.match(pid):
+        return
+    raise ProfileError(
+        f"{path} : 'id' vaut {pid!r}. Un identifiant de profil s'écrit en "
+        "minuscules non accentuées, chiffres, tiret et souligné, et commence "
+        "par une lettre ou un chiffre — ni espace, ni point, ni majuscule. Ce "
+        "n'est pas une étiquette : il NOMME le fichier d'amorçage déposé pour "
+        "le lanceur, il s'écrit seul sur une ligne de reamorcer.txt (relue en "
+        "découpant sur les blancs), et le lanceur le retrouve en coupant "
+        "« <profil>.<système> » au premier point. Un espace y ferait deux "
+        "ordres qui ne désignent rien, un point désignerait un autre profil, "
+        "et « .bootstrap » rendrait le profil non ré-amorçable — trois pannes "
+        "qui ne se voient que devant la télévision.\n"
+        "Renommer un profil DÉJÀ synchronisé n'est pas gratuit : l'identifiant "
+        "entre dans la clé de système que porte le raccourci Steam, donc dans "
+        "ses options de lancement, dont dérive l'identifiant de l'entrée. Les "
+        "jeux de cet émulateur seront recréés sous une nouvelle identité et "
+        "leur artwork retéléchargé — le faire Steam fermé, puis relancer "
+        "« retro scan » et « retro sync »."
+    )
+
+
 def load_profile(path: pathlib.Path) -> Profile:
     try:
         with path.open("rb") as f:
@@ -305,6 +646,7 @@ def load_profile(path: pathlib.Path) -> Profile:
     for champ in ("id", "exe"):
         if champ not in data:
             raise ProfileError(f"{path} : champ '{champ}' manquant")
+    _valider_id(path, data["id"])
 
     systemes = []
     vus = set()
@@ -467,11 +809,15 @@ def load_profile(path: pathlib.Path) -> Profile:
 
     sortie = data.get("exit", {})
     entree = data.get("input", {})
+    mapping, mapping_ou = _lire_mapping(path, entree)
     return Profile(
         id=data["id"], exe=data["exe"], systems=tuple(systemes),
         exit_native=sortie.get("native", ""),
         exit_fallback=sortie.get("fallback", "alt+f4"),
         steam_input=entree.get("steam_input", "required"),
+        input_mapping=mapping,
+        input_mapping_where=mapping_ou,
+        bootstrap=_lire_bootstrap(path, data.get("bootstrap")),
     )
 
 

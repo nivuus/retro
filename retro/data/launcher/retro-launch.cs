@@ -5,9 +5,9 @@
 // la machine offre — n'est connu qu'ICI, au lancement : un flux Apollo change
 // de résolution selon le client qui se connecte.
 //
-// Ce programme NE DÉCIDE RIEN. Tout l'arbitrage est calculé par `retro sync`,
-// en Python, où il est testé, et écrit dans le plan que ce fichier se contente
-// de lire. Le classement de la machine se fait ici parce que la machine est
+// Ce programme NE DÉCIDE RIEN. Tout l'arbitrage est calculé en Python, où il
+// est testé, et écrit par `retro scan` dans le plan que ce fichier se
+// contente de lire. Le classement de la machine se fait ici parce que la machine est
 // ici, mais avec les seuils que le plan porte.
 //
 // Compilé en /target:winexe — sans console. C'est aussi ce qui supprime la
@@ -23,6 +23,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 static class RetroLaunch
 {
@@ -118,6 +119,17 @@ static class RetroLaunch
 
     static string dossier;
     static string journal;
+    const string SI_ABSENT = "si-absent";
+    // La seconde strategie d'ecriture. « si-absent » pose un fichier absent
+    // et n'y revient jamais ; « fusion » rouvre un fichier QUI EXISTE pour y
+    // porter les seules cles que retro apporte. Le proprietaire l'a
+    // explicitement autorisee — a MODIFIER, jamais a ECRASER.
+    const string FUSION = "fusion";
+    // La ligne qui distingue, DANS LE FICHIER, ce que retro a pose de ce que
+    // le proprietaire a pose. Sans elle, quelqu'un qui rouvre son settings.ini
+    // six mois plus tard ne peut pas savoir quelle valeur il a choisie
+    // lui-meme et laquelle lui a ete posee — et corrigerait la mauvaise.
+    const string MARQUE_FUSION = "; posé par « retro » — cette ligne est réécrite à chaque lancement";
 
     static int Main()
     {
@@ -157,6 +169,588 @@ static class RetroLaunch
         catch (Exception) { /* un journal illisible ne doit pas tuer le jeu */ }
     }
 
+    // Un avertissement A L'ECRAN qui ne retient PAS le lanceur.
+    //
+    // MessageBoxW est MODALE : appelee sur le fil principal, elle bloquerait
+    // le lancement jusqu'a ce que quelqu'un clique — et une console de salon
+    // pilotee a la seule manette n'a personne pour le faire. Le jeu ne
+    // demarrerait alors JAMAIS et Steam resterait « en jeu » indefiniment :
+    // exactement l'aller sans retour que l'en-tete de ce fichier decrit comme
+    // le pire etat possible. Sur un thread d'arriere-plan, l'appelant se
+    // poursuit tout de suite ; IsBackground fait mourir ce thread avec le
+    // processus, donc il ne peut jamais retenir le lanceur apres la fin du
+    // jeu, et STA est ce qu'exige une boite de dialogue Win32.
+    //
+    // Factorisee parce que DEUX chemins en ont besoin — un amorcage qui
+    // echoue, un ordre de reamorcage qui n'a pas pu etre consomme — et qu'un
+    // second exemplaire finirait par perdre l'un de ces trois reglages.
+    static void AvertirEnFond(string titre, string message)
+    {
+        try
+        {
+            var boite = new Thread(() => MessageBoxW(IntPtr.Zero, message,
+                                                     titre, 0x30));
+            boite.IsBackground = true;
+            boite.SetApartmentState(ApartmentState.STA);
+            boite.Start();
+        }
+        catch (Exception e)
+        {
+            // Un thread qui ne demarre pas ne doit pas, lui non plus,
+            // empecher le jeu de demarrer : l'appelant a deja ecrit la trace
+            // complete au journal AVANT d'appeler cette methode.
+            Noter("boite de dialogue non affichee (" + titre + ") : "
+                + e.Message);
+        }
+    }
+
+    // L'amorçage : poser la configuration d'un émulateur qui n'en a jamais eu.
+    //
+    // Mesuré le 2026-08-28 : sans son settings.ini, DuckStation tient
+    // SetupWizardIncomplete pour vrai et ouvre son assistant AVANT d'honorer
+    // sa ligne de commande. Aucun de ses dix-sept arguments ne le saute, et
+    // comme personne ne termine un assistant depuis un canapé, rien n'est
+    // jamais ecrit : le lancement suivant recommence a l'identique.
+    //
+    // Ce qui est pose, et quand, est decide par « retro scan » : cette
+    // methode lit trois lignes du plan et n'en invente aucune.
+    static void Amorcer(Dictionary<string, string> p, string profil)
+    {
+        string cible = Valeur(p, "bootstrap_target");
+        if (cible.Length == 0)
+        {
+            // Cet emulateur n'a rien a recevoir — mais un ordre de
+            // reamorcage a pu etre pose AVANT que le bloc [bootstrap]
+            // disparaisse du profil. Sortir sans le consommer le laisserait
+            // dans reamorcer.txt pour toujours : invisible tant que le bloc
+            // manque, et surprenant le jour ou il revient — ce jour-la, un
+            // ordre que personne ne se rappelle avoir donne ferait sauvegarder
+            // puis ecraser la configuration du proprietaire.
+            if (OrdreDeReamorcage(profil))
+            {
+                Noter("ordre de reamorcage sans objet pour " + profil
+                    + " : ce profil ne porte plus de configuration a poser ; "
+                    + "l'ordre est retire sans rien ecrire.");
+                ConsommerOrdre(profil, false);
+            }
+            return;
+        }
+
+        // « bootstrap_when » ne gouverne QUE le fichier « posé une fois ». Le
+        // second regime, celui des cles imposees, se reconnait a la presence
+        // de « bootstrap_enforced » : le profil le distingue par STRUCTURE,
+        // pas par un mode qu'on pourrait mettre en contradiction avec ce
+        // qu'il contient.
+        string quand = Valeur(p, "bootstrap_when");
+        if (quand.Length > 0 && quand != SI_ABSENT)
+            throw new Exception(
+                "Le plan demande une stratégie d'amorçage inconnue : « " + quand
+                + " ». Ce lanceur ne connaît que « " + SI_ABSENT + " » pour le "
+                + "fichier posé une fois, et « " + FUSION + " » pour les clés "
+                + "imposées, qu'il reconnaît à « bootstrap_enforced ».\n\n"
+                + "Recompiler le lanceur (compiler.cmd), ou relancer "
+                + "« retro scan ».");
+
+        cible = Environment.ExpandEnvironmentVariables(cible);
+        bool force = OrdreDeReamorcage(profil);
+        string impose = Valeur(p, "bootstrap_enforced");
+
+        // GetDirectoryName rend null pour une racine ("C:\") : tester
+        // parent.Length sans ce garde leverait une NullReferenceException,
+        // dont le message « Object reference not set to an instance of an
+        // object » ne nomme rien — la politique de ce depot l'interdit. Une
+        // cible sans dossier parent est de toute facon une erreur du plan :
+        // aucune configuration d'emulateur ne se pose a la racine d'un disque.
+        string parent = Path.GetDirectoryName(cible);
+        if (parent == null)
+            throw new Exception(
+                "La cible d'amorçage n'a pas de dossier parent valide :\n\n"
+                + cible + "\n\nRelancer « retro scan ».");
+        if (parent.Length > 0 && !Directory.Exists(parent))
+            Directory.CreateDirectory(parent);
+
+        // LES DEUX REGIMES, DANS CET ORDRE, SUR LA MEME CIBLE.
+        //
+        // 1. poser le fichier s'il est absent — les preferences, que le
+        //    proprietaire pourra ensuite changer pour de bon ;
+        // 2. y refondre les cles que la console impose.
+        //
+        // L'ordre n'est pas indifferent : sur une console neuve, la seconde
+        // etape doit trouver le fichier que la premiere vient de poser. A
+        // l'envers, la fusion aurait cree un fichier ne portant QUE les cles
+        // imposees, et « si-absent » n'aurait plus jamais pose les
+        // preferences — la cible existant desormais.
+        bool ecrit = false;
+
+        if (!File.Exists(cible) || force)
+        {
+            string source = Valeur(p, "bootstrap_source");
+            if (source.Length > 0)
+            {
+                if (!File.Exists(source))
+                    throw new Exception(
+                        "Le fichier de configuration à poser est introuvable :"
+                        + "\n\n" + source + "\n\nRelancer « retro scan » "
+                        + "depuis l'hôte.");
+                bool bomSource;
+                string contenu = LireTexte(source, out bomSource);
+                Sauvegarder(cible);
+                EcrireAtomique(cible, contenu, bomSource);
+                Noter("amorcage : " + profil + " -> " + cible + " (" + SI_ABSENT
+                      + ")" + (force ? " (ordre de reamorcage)" : ""));
+                ecrit = true;
+            }
+        }
+
+        if (impose.Length > 0)
+        {
+            if (!File.Exists(impose))
+                throw new Exception(
+                    "Le fichier des clés imposées est introuvable :\n\n"
+                    + impose + "\n\nRelancer « retro scan » depuis l'hôte.");
+            bool bomImpose;
+            string apporte = LireTexte(impose, out bomImpose);
+            if (File.Exists(cible))
+            {
+                bool bomCible;
+                string existant = LireTexte(cible, out bomCible);
+                int posees;
+                string fusionne = Fusionner(existant, apporte, out posees);
+                // Un fichier deja conforme n'est NI sauvegarde NI reecrit.
+                // Sans ce test, chaque lancement deposerait une sauvegarde de
+                // plus et retoucherait un fichier qui n'avait rien a changer
+                // — le contraire exact de ce que le proprietaire a autorise.
+                if (fusionne == existant)
+                {
+                    Noter("amorcage : " + cible + " deja conforme — aucune "
+                          + "sauvegarde, aucune reecriture (" + FUSION + ")");
+                }
+                else
+                {
+                    Sauvegarder(cible);
+                    // Le BOM rendu est celui de la CIBLE : le fichier
+                    // appartient au proprietaire, et le lui changer au
+                    // passage serait une modification qu'il n'a pas
+                    // autorisee.
+                    EcrireAtomique(cible, fusionne, bomCible);
+                    Noter("amorcage : " + profil + " -> " + cible + " ("
+                          + FUSION + ", " + posees + " cle(s) imposee(s))");
+                    ecrit = true;
+                }
+            }
+            else
+            {
+                // Aucune cible : le profil n'a pas de fichier « posé une
+                // fois », ou il est vide. Les cles imposees suffisent a le
+                // creer — sans elles l'emulateur rouvrirait son assistant.
+                EcrireAtomique(cible, apporte, bomImpose);
+                Noter("amorcage : " + profil + " -> " + cible + " (" + FUSION
+                      + ", fichier cree)");
+                ecrit = true;
+            }
+        }
+
+        if (ecrit) InscrireTemoin(profil, cible);
+        if (force) ConsommerOrdre(profil, true);
+    }
+
+    // Une copie horodatee de la cible, avant toute ecriture. Rien n'ecrase
+    // une configuration sans sauvegarde : la convention est celle de
+    // shortcuts.vdf.bak-*, deja en usage cote synchronisation.
+    static void Sauvegarder(string cible)
+    {
+        if (!File.Exists(cible)) return;
+        // L'horodatage a une resolution d'une seconde : deux lancements du
+        // meme profil dans la meme seconde visent le meme nom, et
+        // File.Copy(..., false) refuse a bon droit de l'ecraser — mais il
+        // faut alors essayer un AUTRE nom plutot que de faire echouer
+        // l'amorcage. Meme parade que sauvegarder() cote synchronisation
+        // (retro/steam/writer.py) : un suffixe « -N » croissant, borne pour
+        // ne jamais boucler indefiniment.
+        string based = cible + ".bak-" + DateTime.Now.ToString(
+            "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        string sauvegarde = based;
+        bool copiee = false;
+        for (int n = 0; n < 1000 && !copiee; n++)
+        {
+            sauvegarde = n == 0 ? based : based + "-" + n;
+            try
+            {
+                File.Copy(cible, sauvegarde, false);
+                copiee = true;
+            }
+            catch (IOException)
+            {
+                // Un filtre d'exception (« catch (...) when ») serait du
+                // C# 6 ; compiler.cmd appelle le csc.exe du .NET Framework
+                // 4.0.30319, dont rien ne garantit la version de langage sur
+                // la machine du proprietaire. Le test est donc fait EN CLAIR,
+                // dans le catch : si ce nom est deja pris, essayer le
+                // suivant ; toute autre IOException (disque plein,
+                // permission) n'est pas une collision de nom et remonte telle
+                // quelle.
+                if (!File.Exists(sauvegarde)) throw;
+            }
+        }
+        if (!copiee)
+            throw new Exception(
+                "Impossible de sauvegarder " + cible + " : 1000 noms de "
+                + "sauvegarde sont déjà pris.");
+        Noter("amorcage : " + cible + " sauvegarde en " + sauvegarde);
+    }
+
+    // ECRITURE ATOMIQUE, comme retro/steam/writer.py (os.replace) : c'est la
+    // politique du depot, et elle vaut ici plus qu'ailleurs. Une ecriture
+    // interrompue — disque plein, machine eteinte, antivirus — laisserait une
+    // cible qui EXISTE, a moitie ecrite : « si-absent » ne la reparerait plus
+    // JAMAIS, et l'emulateur rouvrirait son assistant pour de bon. On ecrit
+    // donc a cote, puis on bascule d'un coup : a tout instant, la cible est
+    // soit l'ancienne, soit la nouvelle, jamais une moitie des deux.
+    //
+    // Deux appels et non un : File.Move refuse d'ecraser (l'option
+    // « overwrite » n'existe pas sur le .NET Framework) et File.Replace exige
+    // au contraire une cible existante.
+    static void EcrireAtomique(string cible, string contenu, bool bom)
+    {
+        string temporaire = cible + ".retro-tmp";
+        try
+        {
+            File.WriteAllText(temporaire, contenu, new UTF8Encoding(bom));
+            if (File.Exists(cible)) File.Replace(temporaire, cible, null);
+            else File.Move(temporaire, cible);
+        }
+        catch (Exception)
+        {
+            // Ne rien laisser derriere : ce dossier appartient au
+            // proprietaire, et un « .retro-tmp » a moitie ecrit y serait un
+            // debris que personne ne saurait relier a quoi que ce soit.
+            try { if (File.Exists(temporaire)) File.Delete(temporaire); }
+            catch (Exception) { }
+            throw;
+        }
+    }
+
+    // Ce qu'une fusion FERAIT, sans rien ecrire. C'est la seule facon de
+    // verifier a distance qu'elle ne va pas abimer le fichier du
+    // proprietaire : on lit, on melange en memoire, on compare, on rend le
+    // compte — et on ne touche a rien.
+    //
+    // Toute exception est RATTRAPEE et rendue en clair : --explain est appele
+    // par WinRM en session 0, ou une boite de dialogue pendrait jusqu'a
+    // l'expiration du delai. Meme raison que pour la lecture de reamorcer.txt.
+    static string FusionAPoser(string cible, string impose)
+    {
+        try
+        {
+            cible = Environment.ExpandEnvironmentVariables(cible);
+            if (!File.Exists(impose))
+                return "inconnu (le fichier des cles imposees est "
+                       + "introuvable : " + impose + ")";
+            bool bomCible, bomImpose;
+            string apporte = LireTexte(impose, out bomImpose);
+            if (!File.Exists(cible))
+                return "oui (" + FUSION + " : la cible n'existe pas encore)";
+            string existant = LireTexte(cible, out bomCible);
+            int posees;
+            string fusionne = Fusionner(existant, apporte, out posees);
+            if (fusionne == existant)
+                return "non (" + FUSION + " : la cible porte deja les cles "
+                       + "imposees, rien ne sera reecrit)";
+            return "oui (" + FUSION + " : " + posees + " cle(s) imposee(s) ; "
+                   + "la cible sera sauvegardee, le reste de son contenu est "
+                   + "preserve)";
+        }
+        catch (Exception e)
+        {
+            return "inconnu (fusion illisible : "
+                   + e.Message.Replace("\r", " ").Replace("\n", " ") + ")";
+        }
+    }
+
+    // --- la fusion d'un fichier INI -------------------------------------
+    //
+    // Le proprietaire a autorise retro a MODIFIER un settings.ini qui existe.
+    // Modifier, jamais ecraser : tout ce que cette methode ne connait pas est
+    // recopie tel quel — cles inconnues, commentaires, lignes vides, ordre.
+    // Le [BIOS] SearchDirectory que le proprietaire a ajoute a la main
+    // survit ; c'est le cas d'usage qui a fait ecrire cette methode ainsi.
+    //
+    // Ce qu'elle apporte, et rien d'autre : les cles du fichier source. Pour
+    // chacune, dans sa section :
+    //   - la cle existe deja  -> sa VALEUR est remplacee, a sa place ;
+    //   - la section existe   -> la cle est ajoutee a la fin de la section ;
+    //   - rien n'existe       -> la section est creee a la fin du fichier.
+    //
+    // IDEMPOTENTE : les marques de retro presentes sont retirees a la lecture
+    // et reposees a l'ecriture, donc fusionner deux fois rend exactement le
+    // meme texte. C'est ce qui permet a l'appelant de comparer et de NE RIEN
+    // ECRIRE quand le fichier est deja conforme — pas de sauvegarde inutile,
+    // pas de section empilee, pas de fichier retouche pour rien.
+    //
+    // LIMITE ASSUMEE : les COMMENTAIRES du fichier source ne sont pas
+    // reportes, seules ses cles le sont. Les reporter demanderait de savoir
+    // les reconnaitre pour ne pas les empiler a chaque passage, et un
+    // commentaire duplique a chaque lancement serait exactement la panne que
+    // l'idempotence existe pour fermer. Les explications vivent dans le
+    // profil et dans le fichier source depose a cote des plans ; ici, la
+    // marque dit qui a pose la ligne, ce qui est ce dont on a besoin devant
+    // un fichier qu'on relit six mois plus tard.
+    static string SectionDe(string ligne)
+    {
+        string s = ligne.Trim();
+        if (s.Length >= 2 && s[0] == '[' && s[s.Length - 1] == ']')
+            return s.Substring(1, s.Length - 2).Trim();
+        return null;
+    }
+
+    // Le nom de cle d'une ligne « cle = valeur », ou null. Les commentaires
+    // n'en sont pas : une ligne « ; Scaling = ... » ne doit pas passer pour
+    // le reglage qu'elle explique, sans quoi la fusion irait ecrire dans un
+    // commentaire et la vraie cle resterait a sa valeur d'avant.
+    static string CleDe(string ligne)
+    {
+        string s = ligne.Trim();
+        if (s.Length == 0 || s[0] == ';' || s[0] == '#' || s[0] == '[')
+            return null;
+        int eq = s.IndexOf('=');
+        if (eq <= 0) return null;
+        string cle = s.Substring(0, eq).Trim();
+        return cle.Length > 0 ? cle : null;
+    }
+
+    static string Cle(string section, string cle)
+    {
+        // Les sections et les cles d'un INI ne sont pas sensibles a la casse
+        // chez la plupart des lecteurs. Comparer telles quelles ferait poser
+        // une SECONDE cle « scaling » a cote de « Scaling », dont l'emulateur
+        // ne lirait qu'une — et pas forcement la notre.
+        return section.ToLowerInvariant() + " " + cle.ToLowerInvariant();
+    }
+
+    static string Fusionner(string existant, string apporte, out int posees)
+    {
+        // Ce que la source apporte, dans l'ordre : (section, cle) -> ligne.
+        var ordre = new List<string>();
+        var lignesApportees = new Dictionary<string, string>();
+        var sectionDe = new Dictionary<string, string>();
+        string courante = "";
+        foreach (string ligne in apporte.Replace("\r\n", "\n").Split('\n'))
+        {
+            string sec = SectionDe(ligne);
+            if (sec != null) { courante = sec; continue; }
+            string cle = CleDe(ligne);
+            if (cle == null) continue;
+            string id = Cle(courante, cle);
+            if (!lignesApportees.ContainsKey(id)) ordre.Add(id);
+            lignesApportees[id] = ligne.Trim();
+            sectionDe[id] = courante;
+        }
+
+        var reste = new List<string>(ordre);
+        var sortie = new List<string>();
+        courante = "";
+        posees = 0;
+
+        var lignes = new List<string>(existant.Replace("\r\n", "\n").Split('\n'));
+        for (int i = 0; i < lignes.Count; i++)
+        {
+            string ligne = lignes[i];
+            // Les marques d'un passage anterieur sont retirees ici et
+            // reposees plus bas : c'est ce qui rend la fusion idempotente.
+            if (ligne.Trim() == MARQUE_FUSION) continue;
+
+            string sec = SectionDe(ligne);
+            if (sec != null)
+            {
+                Completer(sortie, reste, lignesApportees, sectionDe, courante,
+                          ref posees);
+                courante = sec;
+                sortie.Add(ligne);
+                continue;
+            }
+            string cle = CleDe(ligne);
+            string id = cle == null ? null : Cle(courante, cle);
+            if (id != null && lignesApportees.ContainsKey(id)
+                && reste.Contains(id))
+            {
+                sortie.Add(MARQUE_FUSION);
+                sortie.Add(lignesApportees[id]);
+                reste.Remove(id);
+                posees++;
+                continue;
+            }
+            sortie.Add(ligne);
+        }
+        Completer(sortie, reste, lignesApportees, sectionDe, courante,
+                  ref posees);
+
+        // Ce qui reste appartient a des sections que le fichier n'a pas.
+        while (reste.Count > 0)
+        {
+            string section = sectionDe[reste[0]];
+            if (sortie.Count > 0 && sortie[sortie.Count - 1].Trim().Length > 0)
+                sortie.Add("");
+            sortie.Add("[" + section + "]");
+            for (int i = 0; i < reste.Count; i++)
+            {
+                if (sectionDe[reste[i]] != section) continue;
+                sortie.Add(MARQUE_FUSION);
+                sortie.Add(lignesApportees[reste[i]]);
+                posees++;
+                reste.RemoveAt(i);
+                i--;
+            }
+        }
+        return string.Join("\r\n", sortie.ToArray());
+    }
+
+    // Les cles de CETTE section que le fichier ne portait pas, ajoutees a sa
+    // fin. Rien si la section n'est pas concernee.
+    static void Completer(List<string> sortie, List<string> reste,
+                          Dictionary<string, string> lignesApportees,
+                          Dictionary<string, string> sectionDe,
+                          string section, ref int posees)
+    {
+        if (section == null) return;
+        // Reculer avant les lignes vides de fin de section : la cle se pose
+        // apres le dernier reglage, pas apres le blanc qui suit — sans quoi
+        // elle glisserait d'une section a l'autre au passage suivant, et
+        // l'idempotence tomberait.
+        int fin = sortie.Count;
+        while (fin > 0 && sortie[fin - 1].Trim().Length == 0) fin--;
+        var ajouts = new List<string>();
+        for (int i = 0; i < reste.Count; i++)
+        {
+            if (!string.Equals(sectionDe[reste[i]], section,
+                               StringComparison.OrdinalIgnoreCase)) continue;
+            ajouts.Add(MARQUE_FUSION);
+            ajouts.Add(lignesApportees[reste[i]]);
+            posees++;
+            reste.RemoveAt(i);
+            i--;
+        }
+        if (ajouts.Count > 0) sortie.InsertRange(fin, ajouts);
+    }
+
+    // Le texte d'un fichier, et si on lui a trouve une marque d'octets. Le
+    // BOM se PRESERVE : le fichier appartient au proprietaire, et le lui
+    // retirer au passage serait une modification qu'il n'a pas autorisee.
+    static string LireTexte(string chemin, out bool bom)
+    {
+        byte[] octets = File.ReadAllBytes(chemin);
+        bom = octets.Length >= 3 && octets[0] == 0xEF && octets[1] == 0xBB
+              && octets[2] == 0xBF;
+        return new UTF8Encoding(false).GetString(
+            octets, bom ? 3 : 0, octets.Length - (bom ? 3 : 0));
+    }
+
+    // Le propriétaire a-t-il demande de reposer la configuration de ce profil ?
+    static bool OrdreDeReamorcage(string profil)
+    {
+        string fichier = Path.Combine(dossier, "reamorcer.txt");
+        if (!File.Exists(fichier)) return false;
+        foreach (string ligne in File.ReadAllLines(fichier, Encoding.UTF8))
+            if (ligne.Trim() == profil) return true;
+        return false;
+    }
+
+    // Un ordre ne vaut qu'un passage : le laisser ferait une sauvegarde et une
+    // reecriture a chaque lancement, et le propriétaire ne pourrait plus jamais
+    // regler son emulateur lui-meme.
+    //
+    // Protegee comme InscrireTemoin : reamorcer.txt est aussi ecrit depuis
+    // l'hote a travers un partage reseau, et un verrou ou un attribut lecture
+    // seule y ferait lever une exception ALORS QUE la configuration a deja
+    // ete posee — sur le chemin nominal, Amorcer() n'appelle cette methode
+    // qu'apres avoir copie le fichier avec succes. Une exception non rattrapee ferait donc annoncer
+    // « ECHEC de l'amorcage » pour un amorcage reussi, et laisserait surtout
+    // l'ordre en place : chaque lancement suivant reposerait la configuration
+    // et ajouterait une sauvegarde de plus — precisement ce que cette methode
+    // existe pour empecher.
+    //
+    // « configurationPosee » ne sert qu'au message : le meme echec n'a pas la
+    // meme suite selon qu'une configuration vient d'etre ecrite (elle le sera
+    // de nouveau a chaque lancement) ou que l'ordre etait devenu sans objet
+    // (rien n'a ete ecrit, mais l'ordre attendra le retour du bloc). Dire
+    // « la configuration a bien ete posee » dans le second cas serait faux.
+    static void ConsommerOrdre(string profil, bool configurationPosee)
+    {
+        string fichier = Path.Combine(dossier, "reamorcer.txt");
+        try
+        {
+            var restants = new List<string>();
+            foreach (string ligne in File.ReadAllLines(fichier, Encoding.UTF8))
+                if (ligne.Trim().Length > 0 && ligne.Trim() != profil)
+                    restants.Add(ligne.Trim());
+            if (restants.Count == 0) File.Delete(fichier);
+            else File.WriteAllLines(fichier, restants, new UTF8Encoding(false));
+        }
+        catch (Exception e)
+        {
+            // Le proprietaire doit lire la consequence, pas seulement
+            // l'echec : sans cela rien ne dit que sa configuration sera
+            // reposee au prochain lancement, ni ce qu'il faut faire pour
+            // l'empecher.
+            //
+            // ET A L'ECRAN, pas seulement au journal : c'est le seul chemin
+            // de l'amorcage qui abime les donnees du proprietaire de facon
+            // REPETEE — l'ordre restant en place, chaque lancement suivant
+            // sauvegarde puis ecrase, indefiniment. Un journal ne se lit pas
+            // depuis un canape.
+            string consequence = configurationPosee
+                ? "La configuration a bien été posée, mais elle sera reposée "
+                  + "(avec une sauvegarde de plus) à CHAQUE lancement tant que "
+                  + "« " + profil + " » restera dans " + fichier
+                  + " — retirer cette ligne, ou supprimer ce fichier, pour "
+                  + "l'empêcher."
+                : "Rien n'a été écrit : ce profil ne porte plus de "
+                  + "configuration à poser. L'ordre, lui, reste dans "
+                  + fichier + ", et il s'appliquera le jour où ce profil en "
+                  + "portera une de nouveau — retirer cette ligne, ou "
+                  + "supprimer ce fichier.";
+            Noter("ordre de reamorcage non consomme pour " + profil + " : "
+                + e.Message + ". " + consequence);
+            AvertirEnFond("Console rétro — ordre de ré-amorçage non consommé",
+                "L'ordre de ré-amorçage de « " + profil + " » n'a pas pu être "
+                + "retiré :\n\n" + e.Message + "\n\n" + consequence);
+        }
+    }
+
+    // Le temoin : « retro status » tourne sur l'hote, qui n'atteint ni
+    // C:\Users ni %APPDATA%. Il ne peut donc pas CONSTATER qu'un emulateur est
+    // amorce — seulement lire ce que le lanceur a ecrit la ou l'hote regarde.
+    // C'est une trace, jamais une source de verite : Amorcer() consulte la
+    // cible, jamais ce fichier.
+    static void InscrireTemoin(string profil, string cible)
+    {
+        try
+        {
+            string fichier = Path.Combine(dossier, "bootstrap.txt");
+            var lignes = new List<string>();
+            if (File.Exists(fichier))
+                foreach (string l in File.ReadAllLines(fichier, Encoding.UTF8))
+                    if (l.Length > 0 && !l.StartsWith(profil + "\t"))
+                        lignes.Add(l);
+            // InvariantCulture : dans un format personnalise, « : » est le
+            // separateur d'heure DE LA CULTURE (pas un litteral) et l'annee
+            // suit son calendrier. Ce temoin est un contrat relu par
+            // retro/launcher.py::lire_amorcages, qui attend exactement
+            // « yyyy-MM-dd HH:mm:ss » : une culture exotique sur la console
+            // casserait cette lecture en silence.
+            lignes.Add(profil + "\t" + DateTime.Now.ToString(
+                "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+                + "\t" + cible);
+            lignes.Sort();
+            File.WriteAllLines(fichier, lignes, new UTF8Encoding(false));
+        }
+        catch (Exception e)
+        {
+            // Un temoin illisible ne doit pas priver le propriétaire de son jeu :
+            // la configuration, elle, est posee.
+            Noter("temoin d'amorcage non ecrit : " + e.Message);
+        }
+    }
+
     static int Lancer()
     {
         // La ligne de commande est lue BRUTE : découpée par le runtime, un
@@ -188,12 +782,23 @@ static class RetroLaunch
         string cle = reste.Substring(0, espace);
         string rom = reste.Substring(espace + 1).Trim().Trim('"');
 
+        // « cle » est « <profil>.<systeme> » (system_key, cote Python). La
+        // coupe se fait au PREMIER point : c'est l'identifiant de PROFIL qui
+        // est garanti sans point — profiles.py refuse a la lecture du profil
+        // tout identifiant hors [a-z0-9_-], parce que cet identifiant nomme
+        // un fichier et se decoupe a trois endroits. Rien de tel n'est exige
+        // d'un identifiant de SYSTEME : couper au dernier point ferait, sur
+        // un systeme nomme « ps.x », chercher un profil qui n'existe pas, et
+        // l'ordre de reamorcage du proprietaire ne serait jamais vu.
+        int premierPoint = cle.IndexOf('.');
+        string profilCle = premierPoint < 0 ? cle : cle.Substring(0, premierPoint);
+
         string plan = Path.Combine(Path.Combine(dossier, "systems"), cle + ".ini");
         if (!File.Exists(plan))
             throw new Exception(
                 "Aucun plan de lancement pour « " + cle + " ».\n\n"
                 + "Attendu ici : " + plan + "\n\n"
-                + "Relancer « retro sync » depuis l'hôte : c'est lui qui écrit "
+                + "Relancer « retro scan » depuis l'hôte : c'est lui qui écrit "
                 + "les plans.");
 
         var p = LirePlan(plan);
@@ -255,11 +860,105 @@ static class RetroLaunch
             rapport.AppendLine("resolution=" + largeur + "x" + hauteur);
             rapport.AppendLine("emulateur=" + emulateur);
             rapport.AppendLine("commande=" + commande);
+            string cibleAmorcage = Valeur(p, "bootstrap_target");
+            rapport.AppendLine("amorcage_cible=" + cibleAmorcage);
+            // Combien de cles la console impose dans ce fichier, et non
+            // seulement qu'elle en impose : « 3 cles » et « tout le fichier »
+            // n'appellent pas la meme reaction.
+            rapport.AppendLine("amorcage_impose="
+                + (Valeur(p, "bootstrap_enforced").Length > 0 ? "oui" : "non"));
+            // Un ordre en attente CHANGE la reponse, et le taire faisait
+            // mentir le seul controle verifiable a distance : --explain
+            // rendait « non (la cible existe) » alors que le lancement
+            // suivant allait justement sauvegarder cette cible et la
+            // reecrire. Lire reamorcer.txt ne modifie rien — --explain doit
+            // rester sans effet de bord.
+            //
+            // La lecture est RATTRAPEE ICI, et nulle part ailleurs. Ce
+            // fichier est ecrit par l'hote a travers un partage reseau : il
+            // peut etre verrouille ou illisible au moment ou on le lit. Une
+            // exception remonterait a Main(), qui appelle Echouer(), qui
+            // affiche une MessageBoxW SYNCHRONE sur le fil principal — or
+            // --explain est appele par WinRM, en session 0, ou personne ne
+            // peut cliquer : l'appel pendrait jusqu'a son delai
+            // d'expiration, et c'est justement le canal par lequel ce
+            // lanceur se verifie a distance. Sur le chemin de LANCEMENT, au
+            // contraire, la meme exception doit rester bruyante : le jeu
+            // demarre quand meme et la boite s'affiche en arriere-plan,
+            // devant quelqu'un qui peut la lire.
+            //
+            // Et on le DIT : repondre « aucun » sans avoir pu lire mentirait
+            // par omission sur le point meme qu'on vient d'ajouter. Le
+            // message de l'exception est mis a plat, une ligne du rapport
+            // etant un « cle=valeur » que l'hote decoupe ligne a ligne.
+            bool ordre = false;
+            string ordreIllisible = "";
+            try
+            {
+                ordre = OrdreDeReamorcage(profilCle);
+            }
+            catch (Exception e)
+            {
+                ordreIllisible = e.Message.Replace("\r", " ").Replace("\n", " ");
+            }
+            if (ordreIllisible.Length > 0)
+                rapport.AppendLine("amorcage_ordre=illisible : " + ordreIllisible);
+            else
+                rapport.AppendLine("amorcage_ordre="
+                    + (ordre ? "en attente" : "aucun"));
+            string aPoser;
+            if (cibleAmorcage.Length == 0)
+                aPoser = ordre
+                    ? "rien (ordre sans objet : il sera retire au prochain "
+                      + "lancement)"
+                    : "rien";
+            else if (ordreIllisible.Length > 0)
+                // Ni « oui » ni « non » : avec un ordre qu'on n'a pas pu
+                // lire, on ne sait pas si la cible sera reecrite. Trancher
+                // ici rendrait faux le seul controle a distance.
+                aPoser = "inconnu (l'ordre de reamorcage n'a pas pu etre lu)";
+            else if (ordre)
+                aPoser = "oui (ordre de reamorcage : la cible sera sauvegardee "
+                    + "puis reecrite)";
+            else if (File.Exists(Environment.ExpandEnvironmentVariables(
+                         cibleAmorcage)))
+                // « si-absent » s'arrete la ; les cles IMPOSEES, elles,
+                // rouvrent ce fichier a chaque lancement. Repondre « non (la
+                // cible existe) » quand il y en a mentirait sur le seul
+                // controle verifiable a distance — et c'est precisement le
+                // fichier du proprietaire qui est en jeu.
+                aPoser = Valeur(p, "bootstrap_enforced").Length > 0
+                    ? FusionAPoser(cibleAmorcage,
+                                   Valeur(p, "bootstrap_enforced"))
+                    : "non (la cible existe)";
+            else
+                aPoser = "oui";
+            rapport.AppendLine("amorcage_a_poser=" + aPoser);
             Console.Out.Write(rapport.ToString());
             Console.Out.Flush();
             File.WriteAllText(Path.Combine(dossier, "explain.txt"),
                               rapport.ToString(), new UTF8Encoding(false));
             return 0;
+        }
+
+        // Avant de lancer : poser la configuration si l'emulateur n'en a
+        // aucune. Un echec n'empeche PAS le jeu de demarrer — il ouvrira son
+        // assistant, mais le propriétaire aura lu pourquoi. Abandonner ici
+        // rendrait la main a Steam, ce qui ressemble exactement a un jeu
+        // qu'on vient de quitter.
+        try
+        {
+            Amorcer(p, profilCle);
+        }
+        catch (Exception e)
+        {
+            // Le journal garde la trace complete, synchrone, AVANT tout le
+            // reste : meme si la boite ne s'affiche jamais, rien n'est perdu.
+            Noter("ECHEC de l'amorcage : " + e.Message);
+            AvertirEnFond("Console rétro — configuration non posée",
+                e.Message + "\n\nLe jeu va tout de même démarrer : "
+                + "l'émulateur ouvrira peut-être son assistant de "
+                + "configuration.");
         }
 
         IntPtr job = CreerJob();
@@ -271,6 +970,40 @@ static class RetroLaunch
         psi.WorkingDirectory = Valeur(p, "workdir");
         psi.UseShellExecute = false;
         psi.CreateNoWindow = true;
+        // Steam pose SDL_GAMECONTROLLER_IGNORE_DEVICES dans l'environnement de
+        // ce qu'il lance : la liste des manettes qu'il prend en charge, et
+        // 0x045e/0x028e — la Xbox 360 — en fait partie. C'est precisement ce
+        // que la manette virtuelle d'Apollo se declare etre. SDL la masque
+        // donc a l'emulateur, et Steam ne fournit AUCUN peripherique virtuel
+        // en echange tant que Steam Input n'est pas actif sur le raccourci :
+        // l'emulateur ne voit plus aucune manette du tout.
+        //
+        // Mesure sur la machine le 2026-08-28 : le meme outil SDL, dans la
+        // meme session, voit UNE manette sans cette variable et ZERO avec.
+        // l'emulateur repondait « No matching controllers found » a chaque
+        // lancement, sans qu'aucun message ne nomme la cause.
+        //
+        // La retirer ICI, et pas dans les reglages de Steam : le masquage est
+        // repose par le client a chaque lancement, un reglage par raccourci
+        // serait a refaire a chaque synchronisation, et ce lanceur est deja le
+        // seul passage oblige entre Steam et les emulateurs. Le retrait vaut
+        // donc pour les neuf d'un coup.
+        psi.EnvironmentVariables.Remove("SDL_GAMECONTROLLER_IGNORE_DEVICES");
+        psi.EnvironmentVariables.Remove("SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT");
+        // Steam a un SECOND mecanisme, et celui-la ne se neutralise PAS d'ici.
+        // Il injecte gameoverlayrenderer64.dll dans tout ce qu'il lance, et
+        // cette DLL pose son propre hook sur XInput pour le compte de Steam
+        // Input, en dialoguant avec le client par IPC. Priver l'emulateur des
+        // variables Steam a bien ete essaye le 2026-08-28 — verifie sur le
+        // processus vivant : SteamAppId, SteamGameId et le reste absents,
+        // SteamNoOverlayUIDrawing pose — et la manette restait masquee. Le
+        // code a ete retire : il ne servait a rien, et il privait au passage
+        // le jeu de l'overlay Steam, que le bouton Xbox n'ouvrait plus.
+        //
+        // La seule parade est un REGLAGE STEAM, hors d'atteinte d'ici :
+        // « Desactiver Steam Input » sur le raccourci. Voir le plan du
+        // sous-projet E, section « Ce dont la console depend et que le code
+        // ne garantit pas ».
         using (var jeu = Process.Start(psi))
         {
             // Avant WaitForExit : entre le demarrage et l'affectation, un
@@ -317,7 +1050,9 @@ static class RetroLaunch
         string v;
         if (!p.TryGetValue(cle, out v))
             throw new Exception("Le plan de lancement n'a pas de champ « "
-                + cle + " ». Relancer « retro sync ».");
+                + cle + " ». Relancer « retro scan », qui écrit les plans "
+                + "— ce message est celui d'un plan écrit par une version "
+                + "antérieure de retro.");
         return v;
     }
 
@@ -359,7 +1094,7 @@ static class RetroLaunch
             if (natif <= 0 || maxi <= 0)
                 throw new Exception(
                     "Le plan emploie {scale} sans hauteur d'origine ni échelle "
-                    + "maximale. Relancer « retro sync ».");
+                    + "maximale. Relancer « retro scan ».");
             int e = hauteur / natif;
             if (e < 1) e = 1;
             if (e > maxi) e = maxi;

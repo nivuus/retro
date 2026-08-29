@@ -49,10 +49,13 @@ def steam_is_running(processes: list[str] | None = None) -> bool:
     return any(n.lower() in STEAM_PROCESS_NAMES for n in noms)
 
 
-def assert_steam_not_running() -> None:
+def assert_steam_not_running(fichier: str = "shortcuts.vdf") -> None:
+    """Le nom du fichier est un paramètre : localconfig.vdf court le même
+    risque, et un message qui nomme le mauvais fichier envoie chercher la
+    panne ailleurs qu'où elle est."""
     if steam_is_running():
         raise SteamRunningError(
-            "Steam est en cours d'exécution : il réécrirait shortcuts.vdf à sa "
+            f"Steam est en cours d'exécution : il réécrirait {fichier} à sa "
             "fermeture et la synchronisation serait perdue. Fermer Steam d'abord."
         )
 
@@ -61,8 +64,13 @@ def _horodatage() -> str:
     return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
-def _sauvegarder(path: pathlib.Path) -> pathlib.Path:
+def sauvegarder(path: pathlib.Path) -> pathlib.Path:
     """Copie ``path`` vers un `.bak` horodaté, sans jamais en écraser un.
+
+    Publique parce que shortcuts.vdf n'est pas le seul fichier de Steam que ce
+    paquet modifie : localconfig.vdf l'est aussi, et il porte bien plus que ce
+    qu'on y touche. Deux implémentations du même filet finiraient par diverger,
+    et c'est celle qui protège le moins qu'on découvrirait le jour venu.
 
     L'horodatage a une résolution d'une seconde : deux écritures rapprochées
     visent le même nom. Sans le suffixe de désambiguïsation, la seconde
@@ -103,7 +111,7 @@ def write_shortcuts(path: pathlib.Path, entries: list[dict]) -> pathlib.Path | N
     if existe and path.read_bytes() == blob:
         return None
 
-    sauvegarde = _sauvegarder(path) if existe else None
+    sauvegarde = sauvegarder(path) if existe else None
 
     temporaire = path.with_suffix(".vdf.tmp")
     temporaire.write_bytes(blob)
