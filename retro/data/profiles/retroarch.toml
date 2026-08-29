@@ -69,12 +69,47 @@ crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
 # d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
 # famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
 # l'air normal.
+# Remplissage (le TROISIÈME axe) : ENTIER — le plus grand multiple entier qui
+# tienne, ratio conservé, le reste en bande noire.
+#
+# Les trois clés sont lues dans la révision 1.22.2 ÉPINGLÉE AU MANIFESTE, et
+# c'est la preuve reproductible — n'importe qui peut rouvrir ces fichiers :
+#   video_scale_integer, video_scale_integer_axis et
+#   video_scale_integer_scaling sont enregistrées dans configuration.c, et
+#   leurs valeurs par défaut (false, 0, 0) dans config.def.h ;
+#   aucune des trois n'a d'option en ligne de commande — l'aide intégrée de
+#   retroarch.exe ne porte que --appendconfig=FILE et --set-shader=PATH pour
+#   toucher au rendu. Elles passent donc par le fichier ci-dessus, comme le
+#   shader.
+# Corroboré le 2026-08-29 par une lecture du retroarch.cfg que RetroArch avait
+# lui-même écrit sur la console (invité en provision_version=B1), où les trois
+# clés figurent à ces valeurs. Cette lecture n'est PAS reproductible depuis
+# l'hôte — l'accès à l'invité s'est refermé — donc elle confirme, elle ne
+# fonde pas.
+#
+# Le sens des deux valeurs, dans la même révision :
+#   axis = 0 (VIDEO_SCALE_INTEGER_AXIS_Y, enum de gfx/video_defines.h) : le
+#     multiple entier porte sur la HAUTEUR seule, la largeur restant celle du
+#     ratio. C'est ce qui empêche la déformation —
+#     video_viewport_get_scaled_integer de gfx/video_driver.c dérive la
+#     largeur de content_height * aspect_ratio (« Account for non-square
+#     pixels ») et ne touche à la largeur que pour les axes >= Y_X.
+#   scaling = 0 (VIDEO_SCALE_INTEGER_SCALING_UNDERSCALE) : le plus grand
+#     multiple qui TIENNE, jamais celui qui déborde — donc de la bande noire
+#     plutôt qu'une image rognée.
+# CE QUI RESTE NON VÉRIFIÉ : le résultat À L'ÉCRAN. Les émulateurs tournent
+# sur l'invité Windows et personne n'a encore regardé une partie avec ce
+# réglage posé.
+fill = "entier"
 config = '''
 video_shader_enable = "true"
 video_shader_dir = ":\shaders"
 aspect_ratio_index = "0"
 video_aspect_ratio_auto = "false"
 video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
 '''
 [system.render.full]
 # Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
@@ -82,10 +117,22 @@ video_force_aspect = "true"
 # être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
 # s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
 args = '--appendconfig "{render_config}"'
+# Remplissage : AJUSTE — le plus grand agrandissement qui tienne, ratio
+# conservé. La mise à l'échelle entière est ÉTEINTE EXPLICITEMENT, pour la
+# raison exacte qui fait éteindre le shader ici : RetroArch RÉÉCRIT son
+# retroarch.cfg en quittant, donc un réglage posé par --appendconfig lors
+# d'une partie précédente y reste. Le retroarch.cfg lu sur la console le
+# 2026-08-29 portait bien aspect_ratio_index = "22", la valeur que ce mode-ci
+# écrit — indice, non reproductible depuis l'hôte. Sans cette ligne, « full »
+# remplirait moins que « natif » après une seule partie en natif.
+# Éteinte, RetroArch retombe sur son cadrage ordinaire, qui conserve le
+# ratio — video_viewport_get_scaled_aspect, gfx/video_driver.c, 1.22.2.
+fill = "ajuste"
 config = '''
 video_shader_enable = "false"
 aspect_ratio_index = "22"
 video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
 '''
 
 [[system]]
@@ -109,12 +156,47 @@ crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
 # d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
 # famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
 # l'air normal.
+# Remplissage (le TROISIÈME axe) : ENTIER — le plus grand multiple entier qui
+# tienne, ratio conservé, le reste en bande noire.
+#
+# Les trois clés sont lues dans la révision 1.22.2 ÉPINGLÉE AU MANIFESTE, et
+# c'est la preuve reproductible — n'importe qui peut rouvrir ces fichiers :
+#   video_scale_integer, video_scale_integer_axis et
+#   video_scale_integer_scaling sont enregistrées dans configuration.c, et
+#   leurs valeurs par défaut (false, 0, 0) dans config.def.h ;
+#   aucune des trois n'a d'option en ligne de commande — l'aide intégrée de
+#   retroarch.exe ne porte que --appendconfig=FILE et --set-shader=PATH pour
+#   toucher au rendu. Elles passent donc par le fichier ci-dessus, comme le
+#   shader.
+# Corroboré le 2026-08-29 par une lecture du retroarch.cfg que RetroArch avait
+# lui-même écrit sur la console (invité en provision_version=B1), où les trois
+# clés figurent à ces valeurs. Cette lecture n'est PAS reproductible depuis
+# l'hôte — l'accès à l'invité s'est refermé — donc elle confirme, elle ne
+# fonde pas.
+#
+# Le sens des deux valeurs, dans la même révision :
+#   axis = 0 (VIDEO_SCALE_INTEGER_AXIS_Y, enum de gfx/video_defines.h) : le
+#     multiple entier porte sur la HAUTEUR seule, la largeur restant celle du
+#     ratio. C'est ce qui empêche la déformation —
+#     video_viewport_get_scaled_integer de gfx/video_driver.c dérive la
+#     largeur de content_height * aspect_ratio (« Account for non-square
+#     pixels ») et ne touche à la largeur que pour les axes >= Y_X.
+#   scaling = 0 (VIDEO_SCALE_INTEGER_SCALING_UNDERSCALE) : le plus grand
+#     multiple qui TIENNE, jamais celui qui déborde — donc de la bande noire
+#     plutôt qu'une image rognée.
+# CE QUI RESTE NON VÉRIFIÉ : le résultat À L'ÉCRAN. Les émulateurs tournent
+# sur l'invité Windows et personne n'a encore regardé une partie avec ce
+# réglage posé.
+fill = "entier"
 config = '''
 video_shader_enable = "true"
 video_shader_dir = ":\shaders"
 aspect_ratio_index = "0"
 video_aspect_ratio_auto = "false"
 video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
 '''
 [system.render.full]
 # Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
@@ -122,10 +204,22 @@ video_force_aspect = "true"
 # être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
 # s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
 args = '--appendconfig "{render_config}"'
+# Remplissage : AJUSTE — le plus grand agrandissement qui tienne, ratio
+# conservé. La mise à l'échelle entière est ÉTEINTE EXPLICITEMENT, pour la
+# raison exacte qui fait éteindre le shader ici : RetroArch RÉÉCRIT son
+# retroarch.cfg en quittant, donc un réglage posé par --appendconfig lors
+# d'une partie précédente y reste. Le retroarch.cfg lu sur la console le
+# 2026-08-29 portait bien aspect_ratio_index = "22", la valeur que ce mode-ci
+# écrit — indice, non reproductible depuis l'hôte. Sans cette ligne, « full »
+# remplirait moins que « natif » après une seule partie en natif.
+# Éteinte, RetroArch retombe sur son cadrage ordinaire, qui conserve le
+# ratio — video_viewport_get_scaled_aspect, gfx/video_driver.c, 1.22.2.
+fill = "ajuste"
 config = '''
 video_shader_enable = "false"
 aspect_ratio_index = "22"
 video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
 '''
 
 [[system]]
@@ -149,12 +243,47 @@ crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
 # d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
 # famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
 # l'air normal.
+# Remplissage (le TROISIÈME axe) : ENTIER — le plus grand multiple entier qui
+# tienne, ratio conservé, le reste en bande noire.
+#
+# Les trois clés sont lues dans la révision 1.22.2 ÉPINGLÉE AU MANIFESTE, et
+# c'est la preuve reproductible — n'importe qui peut rouvrir ces fichiers :
+#   video_scale_integer, video_scale_integer_axis et
+#   video_scale_integer_scaling sont enregistrées dans configuration.c, et
+#   leurs valeurs par défaut (false, 0, 0) dans config.def.h ;
+#   aucune des trois n'a d'option en ligne de commande — l'aide intégrée de
+#   retroarch.exe ne porte que --appendconfig=FILE et --set-shader=PATH pour
+#   toucher au rendu. Elles passent donc par le fichier ci-dessus, comme le
+#   shader.
+# Corroboré le 2026-08-29 par une lecture du retroarch.cfg que RetroArch avait
+# lui-même écrit sur la console (invité en provision_version=B1), où les trois
+# clés figurent à ces valeurs. Cette lecture n'est PAS reproductible depuis
+# l'hôte — l'accès à l'invité s'est refermé — donc elle confirme, elle ne
+# fonde pas.
+#
+# Le sens des deux valeurs, dans la même révision :
+#   axis = 0 (VIDEO_SCALE_INTEGER_AXIS_Y, enum de gfx/video_defines.h) : le
+#     multiple entier porte sur la HAUTEUR seule, la largeur restant celle du
+#     ratio. C'est ce qui empêche la déformation —
+#     video_viewport_get_scaled_integer de gfx/video_driver.c dérive la
+#     largeur de content_height * aspect_ratio (« Account for non-square
+#     pixels ») et ne touche à la largeur que pour les axes >= Y_X.
+#   scaling = 0 (VIDEO_SCALE_INTEGER_SCALING_UNDERSCALE) : le plus grand
+#     multiple qui TIENNE, jamais celui qui déborde — donc de la bande noire
+#     plutôt qu'une image rognée.
+# CE QUI RESTE NON VÉRIFIÉ : le résultat À L'ÉCRAN. Les émulateurs tournent
+# sur l'invité Windows et personne n'a encore regardé une partie avec ce
+# réglage posé.
+fill = "entier"
 config = '''
 video_shader_enable = "true"
 video_shader_dir = ":\shaders"
 aspect_ratio_index = "0"
 video_aspect_ratio_auto = "false"
 video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
 '''
 [system.render.full]
 # Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
@@ -162,10 +291,22 @@ video_force_aspect = "true"
 # être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
 # s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
 args = '--appendconfig "{render_config}"'
+# Remplissage : AJUSTE — le plus grand agrandissement qui tienne, ratio
+# conservé. La mise à l'échelle entière est ÉTEINTE EXPLICITEMENT, pour la
+# raison exacte qui fait éteindre le shader ici : RetroArch RÉÉCRIT son
+# retroarch.cfg en quittant, donc un réglage posé par --appendconfig lors
+# d'une partie précédente y reste. Le retroarch.cfg lu sur la console le
+# 2026-08-29 portait bien aspect_ratio_index = "22", la valeur que ce mode-ci
+# écrit — indice, non reproductible depuis l'hôte. Sans cette ligne, « full »
+# remplirait moins que « natif » après une seule partie en natif.
+# Éteinte, RetroArch retombe sur son cadrage ordinaire, qui conserve le
+# ratio — video_viewport_get_scaled_aspect, gfx/video_driver.c, 1.22.2.
+fill = "ajuste"
 config = '''
 video_shader_enable = "false"
 aspect_ratio_index = "22"
 video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
 '''
 
 [[system]]
@@ -189,12 +330,47 @@ crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
 # d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
 # famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
 # l'air normal.
+# Remplissage (le TROISIÈME axe) : ENTIER — le plus grand multiple entier qui
+# tienne, ratio conservé, le reste en bande noire.
+#
+# Les trois clés sont lues dans la révision 1.22.2 ÉPINGLÉE AU MANIFESTE, et
+# c'est la preuve reproductible — n'importe qui peut rouvrir ces fichiers :
+#   video_scale_integer, video_scale_integer_axis et
+#   video_scale_integer_scaling sont enregistrées dans configuration.c, et
+#   leurs valeurs par défaut (false, 0, 0) dans config.def.h ;
+#   aucune des trois n'a d'option en ligne de commande — l'aide intégrée de
+#   retroarch.exe ne porte que --appendconfig=FILE et --set-shader=PATH pour
+#   toucher au rendu. Elles passent donc par le fichier ci-dessus, comme le
+#   shader.
+# Corroboré le 2026-08-29 par une lecture du retroarch.cfg que RetroArch avait
+# lui-même écrit sur la console (invité en provision_version=B1), où les trois
+# clés figurent à ces valeurs. Cette lecture n'est PAS reproductible depuis
+# l'hôte — l'accès à l'invité s'est refermé — donc elle confirme, elle ne
+# fonde pas.
+#
+# Le sens des deux valeurs, dans la même révision :
+#   axis = 0 (VIDEO_SCALE_INTEGER_AXIS_Y, enum de gfx/video_defines.h) : le
+#     multiple entier porte sur la HAUTEUR seule, la largeur restant celle du
+#     ratio. C'est ce qui empêche la déformation —
+#     video_viewport_get_scaled_integer de gfx/video_driver.c dérive la
+#     largeur de content_height * aspect_ratio (« Account for non-square
+#     pixels ») et ne touche à la largeur que pour les axes >= Y_X.
+#   scaling = 0 (VIDEO_SCALE_INTEGER_SCALING_UNDERSCALE) : le plus grand
+#     multiple qui TIENNE, jamais celui qui déborde — donc de la bande noire
+#     plutôt qu'une image rognée.
+# CE QUI RESTE NON VÉRIFIÉ : le résultat À L'ÉCRAN. Les émulateurs tournent
+# sur l'invité Windows et personne n'a encore regardé une partie avec ce
+# réglage posé.
+fill = "entier"
 config = '''
 video_shader_enable = "true"
 video_shader_dir = ":\shaders"
 aspect_ratio_index = "0"
 video_aspect_ratio_auto = "false"
 video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
 '''
 [system.render.full]
 # Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
@@ -202,10 +378,22 @@ video_force_aspect = "true"
 # être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
 # s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
 args = '--appendconfig "{render_config}"'
+# Remplissage : AJUSTE — le plus grand agrandissement qui tienne, ratio
+# conservé. La mise à l'échelle entière est ÉTEINTE EXPLICITEMENT, pour la
+# raison exacte qui fait éteindre le shader ici : RetroArch RÉÉCRIT son
+# retroarch.cfg en quittant, donc un réglage posé par --appendconfig lors
+# d'une partie précédente y reste. Le retroarch.cfg lu sur la console le
+# 2026-08-29 portait bien aspect_ratio_index = "22", la valeur que ce mode-ci
+# écrit — indice, non reproductible depuis l'hôte. Sans cette ligne, « full »
+# remplirait moins que « natif » après une seule partie en natif.
+# Éteinte, RetroArch retombe sur son cadrage ordinaire, qui conserve le
+# ratio — video_viewport_get_scaled_aspect, gfx/video_driver.c, 1.22.2.
+fill = "ajuste"
 config = '''
 video_shader_enable = "false"
 aspect_ratio_index = "22"
 video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
 '''
 
 [[system]]
@@ -229,12 +417,47 @@ crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
 # d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
 # famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
 # l'air normal.
+# Remplissage (le TROISIÈME axe) : ENTIER — le plus grand multiple entier qui
+# tienne, ratio conservé, le reste en bande noire.
+#
+# Les trois clés sont lues dans la révision 1.22.2 ÉPINGLÉE AU MANIFESTE, et
+# c'est la preuve reproductible — n'importe qui peut rouvrir ces fichiers :
+#   video_scale_integer, video_scale_integer_axis et
+#   video_scale_integer_scaling sont enregistrées dans configuration.c, et
+#   leurs valeurs par défaut (false, 0, 0) dans config.def.h ;
+#   aucune des trois n'a d'option en ligne de commande — l'aide intégrée de
+#   retroarch.exe ne porte que --appendconfig=FILE et --set-shader=PATH pour
+#   toucher au rendu. Elles passent donc par le fichier ci-dessus, comme le
+#   shader.
+# Corroboré le 2026-08-29 par une lecture du retroarch.cfg que RetroArch avait
+# lui-même écrit sur la console (invité en provision_version=B1), où les trois
+# clés figurent à ces valeurs. Cette lecture n'est PAS reproductible depuis
+# l'hôte — l'accès à l'invité s'est refermé — donc elle confirme, elle ne
+# fonde pas.
+#
+# Le sens des deux valeurs, dans la même révision :
+#   axis = 0 (VIDEO_SCALE_INTEGER_AXIS_Y, enum de gfx/video_defines.h) : le
+#     multiple entier porte sur la HAUTEUR seule, la largeur restant celle du
+#     ratio. C'est ce qui empêche la déformation —
+#     video_viewport_get_scaled_integer de gfx/video_driver.c dérive la
+#     largeur de content_height * aspect_ratio (« Account for non-square
+#     pixels ») et ne touche à la largeur que pour les axes >= Y_X.
+#   scaling = 0 (VIDEO_SCALE_INTEGER_SCALING_UNDERSCALE) : le plus grand
+#     multiple qui TIENNE, jamais celui qui déborde — donc de la bande noire
+#     plutôt qu'une image rognée.
+# CE QUI RESTE NON VÉRIFIÉ : le résultat À L'ÉCRAN. Les émulateurs tournent
+# sur l'invité Windows et personne n'a encore regardé une partie avec ce
+# réglage posé.
+fill = "entier"
 config = '''
 video_shader_enable = "true"
 video_shader_dir = ":\shaders"
 aspect_ratio_index = "0"
 video_aspect_ratio_auto = "false"
 video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
 '''
 [system.render.full]
 # Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
@@ -242,10 +465,22 @@ video_force_aspect = "true"
 # être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
 # s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
 args = '--appendconfig "{render_config}"'
+# Remplissage : AJUSTE — le plus grand agrandissement qui tienne, ratio
+# conservé. La mise à l'échelle entière est ÉTEINTE EXPLICITEMENT, pour la
+# raison exacte qui fait éteindre le shader ici : RetroArch RÉÉCRIT son
+# retroarch.cfg en quittant, donc un réglage posé par --appendconfig lors
+# d'une partie précédente y reste. Le retroarch.cfg lu sur la console le
+# 2026-08-29 portait bien aspect_ratio_index = "22", la valeur que ce mode-ci
+# écrit — indice, non reproductible depuis l'hôte. Sans cette ligne, « full »
+# remplirait moins que « natif » après une seule partie en natif.
+# Éteinte, RetroArch retombe sur son cadrage ordinaire, qui conserve le
+# ratio — video_viewport_get_scaled_aspect, gfx/video_driver.c, 1.22.2.
+fill = "ajuste"
 config = '''
 video_shader_enable = "false"
 aspect_ratio_index = "22"
 video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
 '''
 
 [[system]]
@@ -273,12 +508,47 @@ crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
 # d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
 # famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
 # l'air normal.
+# Remplissage (le TROISIÈME axe) : ENTIER — le plus grand multiple entier qui
+# tienne, ratio conservé, le reste en bande noire.
+#
+# Les trois clés sont lues dans la révision 1.22.2 ÉPINGLÉE AU MANIFESTE, et
+# c'est la preuve reproductible — n'importe qui peut rouvrir ces fichiers :
+#   video_scale_integer, video_scale_integer_axis et
+#   video_scale_integer_scaling sont enregistrées dans configuration.c, et
+#   leurs valeurs par défaut (false, 0, 0) dans config.def.h ;
+#   aucune des trois n'a d'option en ligne de commande — l'aide intégrée de
+#   retroarch.exe ne porte que --appendconfig=FILE et --set-shader=PATH pour
+#   toucher au rendu. Elles passent donc par le fichier ci-dessus, comme le
+#   shader.
+# Corroboré le 2026-08-29 par une lecture du retroarch.cfg que RetroArch avait
+# lui-même écrit sur la console (invité en provision_version=B1), où les trois
+# clés figurent à ces valeurs. Cette lecture n'est PAS reproductible depuis
+# l'hôte — l'accès à l'invité s'est refermé — donc elle confirme, elle ne
+# fonde pas.
+#
+# Le sens des deux valeurs, dans la même révision :
+#   axis = 0 (VIDEO_SCALE_INTEGER_AXIS_Y, enum de gfx/video_defines.h) : le
+#     multiple entier porte sur la HAUTEUR seule, la largeur restant celle du
+#     ratio. C'est ce qui empêche la déformation —
+#     video_viewport_get_scaled_integer de gfx/video_driver.c dérive la
+#     largeur de content_height * aspect_ratio (« Account for non-square
+#     pixels ») et ne touche à la largeur que pour les axes >= Y_X.
+#   scaling = 0 (VIDEO_SCALE_INTEGER_SCALING_UNDERSCALE) : le plus grand
+#     multiple qui TIENNE, jamais celui qui déborde — donc de la bande noire
+#     plutôt qu'une image rognée.
+# CE QUI RESTE NON VÉRIFIÉ : le résultat À L'ÉCRAN. Les émulateurs tournent
+# sur l'invité Windows et personne n'a encore regardé une partie avec ce
+# réglage posé.
+fill = "entier"
 config = '''
 video_shader_enable = "true"
 video_shader_dir = ":\shaders"
 aspect_ratio_index = "0"
 video_aspect_ratio_auto = "false"
 video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
 '''
 [system.render.full]
 # Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
@@ -286,10 +556,22 @@ video_force_aspect = "true"
 # être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
 # s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
 args = '--appendconfig "{render_config}"'
+# Remplissage : AJUSTE — le plus grand agrandissement qui tienne, ratio
+# conservé. La mise à l'échelle entière est ÉTEINTE EXPLICITEMENT, pour la
+# raison exacte qui fait éteindre le shader ici : RetroArch RÉÉCRIT son
+# retroarch.cfg en quittant, donc un réglage posé par --appendconfig lors
+# d'une partie précédente y reste. Le retroarch.cfg lu sur la console le
+# 2026-08-29 portait bien aspect_ratio_index = "22", la valeur que ce mode-ci
+# écrit — indice, non reproductible depuis l'hôte. Sans cette ligne, « full »
+# remplirait moins que « natif » après une seule partie en natif.
+# Éteinte, RetroArch retombe sur son cadrage ordinaire, qui conserve le
+# ratio — video_viewport_get_scaled_aspect, gfx/video_driver.c, 1.22.2.
+fill = "ajuste"
 config = '''
 video_shader_enable = "false"
 aspect_ratio_index = "22"
 video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
 '''
 
 [[system]]
@@ -319,12 +601,47 @@ crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
 # d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
 # famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
 # l'air normal.
+# Remplissage (le TROISIÈME axe) : ENTIER — le plus grand multiple entier qui
+# tienne, ratio conservé, le reste en bande noire.
+#
+# Les trois clés sont lues dans la révision 1.22.2 ÉPINGLÉE AU MANIFESTE, et
+# c'est la preuve reproductible — n'importe qui peut rouvrir ces fichiers :
+#   video_scale_integer, video_scale_integer_axis et
+#   video_scale_integer_scaling sont enregistrées dans configuration.c, et
+#   leurs valeurs par défaut (false, 0, 0) dans config.def.h ;
+#   aucune des trois n'a d'option en ligne de commande — l'aide intégrée de
+#   retroarch.exe ne porte que --appendconfig=FILE et --set-shader=PATH pour
+#   toucher au rendu. Elles passent donc par le fichier ci-dessus, comme le
+#   shader.
+# Corroboré le 2026-08-29 par une lecture du retroarch.cfg que RetroArch avait
+# lui-même écrit sur la console (invité en provision_version=B1), où les trois
+# clés figurent à ces valeurs. Cette lecture n'est PAS reproductible depuis
+# l'hôte — l'accès à l'invité s'est refermé — donc elle confirme, elle ne
+# fonde pas.
+#
+# Le sens des deux valeurs, dans la même révision :
+#   axis = 0 (VIDEO_SCALE_INTEGER_AXIS_Y, enum de gfx/video_defines.h) : le
+#     multiple entier porte sur la HAUTEUR seule, la largeur restant celle du
+#     ratio. C'est ce qui empêche la déformation —
+#     video_viewport_get_scaled_integer de gfx/video_driver.c dérive la
+#     largeur de content_height * aspect_ratio (« Account for non-square
+#     pixels ») et ne touche à la largeur que pour les axes >= Y_X.
+#   scaling = 0 (VIDEO_SCALE_INTEGER_SCALING_UNDERSCALE) : le plus grand
+#     multiple qui TIENNE, jamais celui qui déborde — donc de la bande noire
+#     plutôt qu'une image rognée.
+# CE QUI RESTE NON VÉRIFIÉ : le résultat À L'ÉCRAN. Les émulateurs tournent
+# sur l'invité Windows et personne n'a encore regardé une partie avec ce
+# réglage posé.
+fill = "entier"
 config = '''
 video_shader_enable = "true"
 video_shader_dir = ":\shaders"
 aspect_ratio_index = "0"
 video_aspect_ratio_auto = "false"
 video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
 '''
 note = "la résolution interne de ce cœur est une « core option », rangée dans config\\<cœur>\\<cœur>.opt et non dans retroarch.cfg : --appendconfig ne l'atteint pas. Le mode full y donne donc le ratio du cœur et pas de shader, sans monter la résolution interne."
 [system.render.full]
@@ -333,10 +650,22 @@ note = "la résolution interne de ce cœur est une « core option », rangée da
 # être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
 # s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
 args = '--appendconfig "{render_config}"'
+# Remplissage : AJUSTE — le plus grand agrandissement qui tienne, ratio
+# conservé. La mise à l'échelle entière est ÉTEINTE EXPLICITEMENT, pour la
+# raison exacte qui fait éteindre le shader ici : RetroArch RÉÉCRIT son
+# retroarch.cfg en quittant, donc un réglage posé par --appendconfig lors
+# d'une partie précédente y reste. Le retroarch.cfg lu sur la console le
+# 2026-08-29 portait bien aspect_ratio_index = "22", la valeur que ce mode-ci
+# écrit — indice, non reproductible depuis l'hôte. Sans cette ligne, « full »
+# remplirait moins que « natif » après une seule partie en natif.
+# Éteinte, RetroArch retombe sur son cadrage ordinaire, qui conserve le
+# ratio — video_viewport_get_scaled_aspect, gfx/video_driver.c, 1.22.2.
+fill = "ajuste"
 config = '''
 video_shader_enable = "false"
 aspect_ratio_index = "22"
 video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
 '''
 
 [[system]]
@@ -363,12 +692,47 @@ crt  = '--set-shader "shaders_slang/crt/crt-geom.slangp"'
 # d3d11, qui lit les presets slang et ignore les glsl. Un preset de la mauvaise
 # famille n'est pas une erreur bruyante — il ne s'applique pas, et le jeu a
 # l'air normal.
+# Remplissage (le TROISIÈME axe) : ENTIER — le plus grand multiple entier qui
+# tienne, ratio conservé, le reste en bande noire.
+#
+# Les trois clés sont lues dans la révision 1.22.2 ÉPINGLÉE AU MANIFESTE, et
+# c'est la preuve reproductible — n'importe qui peut rouvrir ces fichiers :
+#   video_scale_integer, video_scale_integer_axis et
+#   video_scale_integer_scaling sont enregistrées dans configuration.c, et
+#   leurs valeurs par défaut (false, 0, 0) dans config.def.h ;
+#   aucune des trois n'a d'option en ligne de commande — l'aide intégrée de
+#   retroarch.exe ne porte que --appendconfig=FILE et --set-shader=PATH pour
+#   toucher au rendu. Elles passent donc par le fichier ci-dessus, comme le
+#   shader.
+# Corroboré le 2026-08-29 par une lecture du retroarch.cfg que RetroArch avait
+# lui-même écrit sur la console (invité en provision_version=B1), où les trois
+# clés figurent à ces valeurs. Cette lecture n'est PAS reproductible depuis
+# l'hôte — l'accès à l'invité s'est refermé — donc elle confirme, elle ne
+# fonde pas.
+#
+# Le sens des deux valeurs, dans la même révision :
+#   axis = 0 (VIDEO_SCALE_INTEGER_AXIS_Y, enum de gfx/video_defines.h) : le
+#     multiple entier porte sur la HAUTEUR seule, la largeur restant celle du
+#     ratio. C'est ce qui empêche la déformation —
+#     video_viewport_get_scaled_integer de gfx/video_driver.c dérive la
+#     largeur de content_height * aspect_ratio (« Account for non-square
+#     pixels ») et ne touche à la largeur que pour les axes >= Y_X.
+#   scaling = 0 (VIDEO_SCALE_INTEGER_SCALING_UNDERSCALE) : le plus grand
+#     multiple qui TIENNE, jamais celui qui déborde — donc de la bande noire
+#     plutôt qu'une image rognée.
+# CE QUI RESTE NON VÉRIFIÉ : le résultat À L'ÉCRAN. Les émulateurs tournent
+# sur l'invité Windows et personne n'a encore regardé une partie avec ce
+# réglage posé.
+fill = "entier"
 config = '''
 video_shader_enable = "true"
 video_shader_dir = ":\shaders"
 aspect_ratio_index = "0"
 video_aspect_ratio_auto = "false"
 video_force_aspect = "true"
+video_scale_integer = "true"
+video_scale_integer_axis = "0"
+video_scale_integer_scaling = "0"
 '''
 [system.render.full]
 # Pas de shader, et le ratio que le cœur annonce (ASPECT_RATIO_CORE = 22 dans
@@ -376,9 +740,21 @@ video_force_aspect = "true"
 # être ÉTEINT explicitement : un préréglage retenu d'une partie précédente
 # s'appliquerait sinon par-dessus, et « full » rendrait du CRT.
 args = '--appendconfig "{render_config}"'
+# Remplissage : AJUSTE — le plus grand agrandissement qui tienne, ratio
+# conservé. La mise à l'échelle entière est ÉTEINTE EXPLICITEMENT, pour la
+# raison exacte qui fait éteindre le shader ici : RetroArch RÉÉCRIT son
+# retroarch.cfg en quittant, donc un réglage posé par --appendconfig lors
+# d'une partie précédente y reste. Le retroarch.cfg lu sur la console le
+# 2026-08-29 portait bien aspect_ratio_index = "22", la valeur que ce mode-ci
+# écrit — indice, non reproductible depuis l'hôte. Sans cette ligne, « full »
+# remplirait moins que « natif » après une seule partie en natif.
+# Éteinte, RetroArch retombe sur son cadrage ordinaire, qui conserve le
+# ratio — video_viewport_get_scaled_aspect, gfx/video_driver.c, 1.22.2.
+fill = "ajuste"
 config = '''
 video_shader_enable = "false"
 aspect_ratio_index = "22"
 video_aspect_ratio_auto = "false"
+video_scale_integer = "false"
 '''
 

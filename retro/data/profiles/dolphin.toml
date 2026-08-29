@@ -29,6 +29,16 @@
 # laisse le ratio à Auto et multiplie la résolution interne par ce que la
 # session peut afficher.
 #
+# LE TROISIÈME AXE — le remplissage — n'est PAS réglable ici, et c'est une
+# réponse, pas un oubli : voir 'fill_absent' sous chaque mode. Le piège, pour
+# qui chercherait à « remplir davantage », est juste à côté : l'enum AspectMode
+# de Source/Core/VideoCommon/VideoConfig.h (révision 2606a) compte Auto = 0,
+# ForceWide = 1, ForceStandard = 2, Stretch = 3, Custom = 4, CustomStretch = 5,
+# Raw = 6. Stretch et CustomStretch ÉTIRENT l'image — c'est exactement ce que
+# la console s'interdit — et Raw force des pixels carrés, donc abandonne le
+# ratio d'époque, qui est le DEUXIÈME axe et pas celui-ci. Les valeurs 2 et 0
+# retenues ci-dessus sont les seules qui ne déforment rien.
+#
 # Dolphin n'a AUCUNE option de plein écran : il se lançait donc en fenêtre sur
 # la télévision, jeu compris — une panne muette, puisque le jeu tourne. Le
 # plein écran est un réglage, que --config pose pour ce lancement seulement.
@@ -77,8 +87,10 @@ max_scale     = 12
 [system.render.native]
 args = '--config GFX.Settings.InternalResolution=1 --config GFX.Settings.AspectRatio=2'
 crt_absent = "Dolphin n'embarque aucun shader CRT : ses shaders de post-traitement se déposent à la main dans Load\\Shaders\\, et l'archive épinglée n'en livre aucun."
+fill_absent = "Dolphin n'expose AUCUN réglage de remplissage : la révision 2606a épinglée au manifeste ne déclare aucune clé portant « Integer » dans Source/Core/Core/Config/GraphicsSettings.cpp, son .h, ni dans Source/Core/VideoCommon/VideoConfig.h — les seuls réglages de cadrage y sont l'AspectMode et les clés Crop. Corroboré par les chaînes du Dolphin.exe livré, lues le 2026-08-29, où « Integer » ne désigne que des types, du JIT et des entrées OpenGL. NON VÉRIFIÉ : ce que Dolphin fait de lui-même sur cet axe — personne n'a regardé une partie."
 [system.render.full]
 args = '--config GFX.Settings.InternalResolution={scale} --config GFX.Settings.AspectRatio=0'
+fill_absent = "Dolphin n'expose AUCUN réglage de remplissage : la révision 2606a épinglée au manifeste ne déclare aucune clé portant « Integer » dans Source/Core/Core/Config/GraphicsSettings.cpp, son .h, ni dans Source/Core/VideoCommon/VideoConfig.h — les seuls réglages de cadrage y sont l'AspectMode et les clés Crop. Corroboré par les chaînes du Dolphin.exe livré, lues le 2026-08-29, où « Integer » ne désigne que des types, du JIT et des entrées OpenGL. NON VÉRIFIÉ : ce que Dolphin fait de lui-même sur cet axe — personne n'a regardé une partie."
 
 
 [[system]]
@@ -97,5 +109,7 @@ max_scale     = 12
 [system.render.native]
 args = '--config GFX.Settings.InternalResolution=1 --config GFX.Settings.AspectRatio=2'
 crt_absent = "Dolphin n'embarque aucun shader CRT : ses shaders de post-traitement se déposent à la main dans Load\\Shaders\\, et l'archive épinglée n'en livre aucun."
+fill_absent = "Dolphin n'expose AUCUN réglage de remplissage : la révision 2606a épinglée au manifeste ne déclare aucune clé portant « Integer » dans Source/Core/Core/Config/GraphicsSettings.cpp, son .h, ni dans Source/Core/VideoCommon/VideoConfig.h — les seuls réglages de cadrage y sont l'AspectMode et les clés Crop. Corroboré par les chaînes du Dolphin.exe livré, lues le 2026-08-29, où « Integer » ne désigne que des types, du JIT et des entrées OpenGL. NON VÉRIFIÉ : ce que Dolphin fait de lui-même sur cet axe — personne n'a regardé une partie."
 [system.render.full]
 args = '--config GFX.Settings.InternalResolution={scale} --config GFX.Settings.AspectRatio=0'
+fill_absent = "Dolphin n'expose AUCUN réglage de remplissage : la révision 2606a épinglée au manifeste ne déclare aucune clé portant « Integer » dans Source/Core/Core/Config/GraphicsSettings.cpp, son .h, ni dans Source/Core/VideoCommon/VideoConfig.h — les seuls réglages de cadrage y sont l'AspectMode et les clés Crop. Corroboré par les chaînes du Dolphin.exe livré, lues le 2026-08-29, où « Integer » ne désigne que des types, du JIT et des entrées OpenGL. NON VÉRIFIÉ : ce que Dolphin fait de lui-même sur cet axe — personne n'a regardé une partie."

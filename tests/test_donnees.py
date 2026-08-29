@@ -533,3 +533,66 @@ def test_chaque_profil_livre_dit_ou_en_est_son_amorcage():
             "mesurer sur la machine — sans quoi rien ne distingue « pas "
             "encore regardé » de « cet émulateur se débrouille »"
         )
+
+
+# Les valeurs de ratio qui ÉTIRENT l'image, lues dans les révisions épinglées
+# au manifeste. Ce sont les seules déformations que ces deux émulateurs
+# savent produire, et aucune n'est sur l'axe du remplissage : les nommer ici
+# ferme la porte à celui qui, cherchant à « remplir davantage », les prendrait
+# pour la solution.
+#   - RetroArch 1.22.2 : ASPECT_RATIO_FULL, dernière valeur de l'enum
+#     aspect_ratio de gfx/video_defines.h, soit l'indice 24 ;
+#   - Dolphin 2606a : AspectMode::Stretch = 3 et AspectMode::CustomStretch = 5
+#     dans Source/Core/VideoCommon/VideoConfig.h.
+ETIREMENTS = (
+    'aspect_ratio_index = "24"',
+    "AspectRatio=3",
+    "AspectRatio=5",
+)
+
+
+def _modes_livres():
+    """Chaque mode de rendu déclaré par un profil livré, nommé."""
+    for pid, p in sorted(profiles.load_profiles(PROFILS).items()):
+        for s in p.systems:
+            if s.render is None:
+                continue
+            yield f"{pid}/{s.id}/native", s.render.native
+            yield f"{pid}/{s.id}/full", s.render.full
+
+
+def test_aucun_reglage_livre_n_etire_l_image():
+    """L'objectif de la console est « le plus possible de l'écran SANS étirer
+    l'image ». Les deux émulateurs qui pilotent leur rendu savent étirer ;
+    aucun réglage livré ne doit le demander, et un jour où quelqu'un
+    confondrait « remplir » et « étirer », c'est ici que ça se verrait — pas
+    sur la télévision."""
+    fautifs = [
+        f"{nom} : {mauvais}"
+        for nom, mode in _modes_livres()
+        for mauvais in ETIREMENTS
+        if mauvais in mode.args + mode.crt + mode.config
+    ]
+    assert fautifs == [], f"réglages qui déforment l'image : {fautifs}"
+
+
+def test_chaque_mode_livre_tranche_sur_le_remplissage():
+    """Le troisième axe de la dette D2. Un mode qui ne le tranche pas laisse
+    l'émulateur décider seul du cadrage : sur neuf émulateurs configurés par
+    neuf équipes, ce n'est pas une console, c'est neuf comportements.
+
+    Le test se désarme mode par mode, comme celui de l'amorçage : un mode
+    déclaré VIDE ne passe rien à l'émulateur — il n'a pas de remplissage à
+    régler, et sa 'note' dit déjà pourquoi.
+    """
+    from retro import render
+
+    muets = [nom for nom, mode in _modes_livres()
+             if render.resoudre_remplissage(nom.rsplit("/", 1)[1],
+                                            mode).remplissage
+             == render.NON_MESURE]
+    assert muets == [], (
+        "modes de rendu livrés qui ne disent rien du remplissage : "
+        f"{muets}. Déclarer 'fill' — les arguments qui le règlent existent — "
+        "ou 'fill_absent', qui dit que cet émulateur n'en expose aucun."
+    )
