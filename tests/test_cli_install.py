@@ -4,7 +4,7 @@ import pathlib
 
 import pytest
 
-from retro import cli, launcher
+from retro import acquire, cli, launcher
 
 
 def poser_lanceur(racine):
@@ -697,3 +697,102 @@ bios = []
     plan = emulation / launcher.DIR / launcher.PLAN / "r.snes.ini"
     assert plan.is_file()
     assert 'launch=-f "{rom}"' in plan.read_text(encoding="utf-8")
+
+
+# --- `retro install` nomme ce qu'il vient d'effacer ------------------------
+
+def _manifeste_d_un(tmp_path, cle="rpcs3", profil="rpcs3"):
+    """Un manifeste minimal à une seule entrée, épinglée."""
+    f = tmp_path / "m.toml"
+    f.write_text(f"""
+schema = 1
+[emulator.{cle}]
+name        = "Un émulateur"
+version     = "1.0"
+url         = "https://exemple.invalid/e.zip"
+sha256      = "{'0' * 64}"
+archive     = "zip"
+install_dir = "Dossier"
+profile     = "{profil}"
+""", encoding="utf-8")
+    return f
+
+
+def _profils_d_un(tmp_path, pid, cible):
+    """Un dossier de profils à un seul profil, dont l'amorçage vise `cible`."""
+    dossier = tmp_path / "profiles"
+    dossier.mkdir(exist_ok=True)
+    (dossier / f"{pid}.toml").write_text(f"""
+schema = 1
+id = "{pid}"
+exe = "x.exe"
+
+[[bootstrap]]
+target = '{cible}'
+content = '''
+; Écrit par « retro »
+'''
+
+[[system]]
+id = "{pid}-s"
+name = "Un système"
+extensions = [".rom"]
+launch = '"{{rom}}"'
+bios = []
+""", encoding="utf-8")
+    return dossier
+
+
+def test_retro_install_dit_ce_qu_il_a_efface(tmp_path, capsys, monkeypatch):
+    """La moitié manquante de la dette D7.
+
+    Les deux fichiers de RPCS3 vivent sous son dossier d'installation, que
+    `retro install` supprime à chaque montée de version. Le régime « si-absent »
+    les repose au lancement suivant — mais entre les deux, la manette ne répond
+    pas, et cela ne ressemble EN RIEN à une mise à jour. Sans cette phrase, on
+    cherche du côté du pad, des pilotes ou de Steam ; le seul endroit où c'est
+    écrit doit être la sortie de la commande qui vient de l'effacer.
+    """
+    cible = "{install_dir}\\config\\input_configs\\global\\Default.yml"
+    monkeypatch.setattr(acquire, "acquire", lambda *a, **k: "réinstallé")
+    code = cli.main(["install",
+                     "--manifest", str(_manifeste_d_un(tmp_path)),
+                     "--profiles", str(_profils_d_un(tmp_path, "rpcs3", cible)),
+                     "--emulation-root", str(tmp_path / "Emu")])
+    assert code == 0
+    sortie = capsys.readouterr().out
+    assert "rpcs3" in sortie
+    assert "Default.yml" in sortie
+    # La cible est écrite telle qu'elle vit dans le profil, jeton compris : au
+    # moment de l'installation, le dossier d'émulation n'est pas encore résolu
+    # pour Windows, et inventer un chemin ici en ferait un faux à copier-coller.
+    assert "{install_dir}" in sortie
+
+
+def test_une_installation_a_jour_n_annonce_rien_d_efface(tmp_path, capsys,
+                                                         monkeypatch):
+    """« à jour » n'a rien touché. Un message qui crie à chaque installation
+    ne se lit plus le jour où il est vrai."""
+    cible = "{install_dir}\\config\\input_configs\\global\\Default.yml"
+    monkeypatch.setattr(acquire, "acquire", lambda *a, **k: "à jour")
+    code = cli.main(["install",
+                     "--manifest", str(_manifeste_d_un(tmp_path)),
+                     "--profiles", str(_profils_d_un(tmp_path, "rpcs3", cible)),
+                     "--emulation-root", str(tmp_path / "Emu")])
+    assert code == 0
+    assert "Default.yml" not in capsys.readouterr().out
+
+
+def test_un_dossier_de_profils_du_proprietaire_absent_reste_normal(
+        tmp_path, capsys, monkeypatch):
+    """Il vit sur un partage qui n'est pas toujours monté. Une installation
+    qui échouerait pour cette raison serait une panne inventée."""
+    monkeypatch.setattr(acquire, "acquire", lambda *a, **k: "réinstallé")
+    code = cli.main(["install",
+                     "--manifest", str(_manifeste_d_un(tmp_path)),
+                     "--profiles", str(_profils_d_un(
+                         tmp_path, "rpcs3", "{install_dir}\\x.ini")),
+                     "--user-profiles", str(tmp_path / "jamais-monte"),
+                     "--emulation-root", str(tmp_path / "Emu")])
+    assert code == 0
+    assert "x.ini" in capsys.readouterr().out

@@ -161,12 +161,24 @@ def _cmd_install(args) -> int:
     try:
         emulateurs = manifest.load_manifest(pathlib.Path(args.manifest),
                                             _dossier(args.user_manifest))
+        # Les MÊMES profils que `scan`, et pour une raison qui n'a rien de
+        # cosmétique : ce sont eux qui disent quelles configurations vivent
+        # sous un dossier d'installation, donc eux seuls savent ce que
+        # l'installation qui vient de tourner a emporté.
+        profils = profiles.load_profiles(pathlib.Path(args.profiles),
+                                         _dossier(args.user_profiles))
         resultats = install_mod.install_all(emulateurs, pathlib.Path(args.emulation_root))
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
         print(str(exc), file=sys.stderr)
         return 2
 
     print(install_mod.format_install_report(resultats))
+    # Après le rapport, et jamais à sa place : ce n'est pas un échec
+    # d'installation, c'est une conséquence de sa réussite.
+    efface = install_mod.format_configurations_effacees(
+        install_mod.configurations_effacees(resultats, emulateurs, profils))
+    if efface:
+        print(efface)
     echecs = [cle for cle, etat in resultats if etat.startswith("ÉCHEC")]
     return 1 if echecs else 0
 
@@ -648,6 +660,12 @@ def _build_parser() -> argparse.ArgumentParser:
     i.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
     i.add_argument("--user-manifest", default=None)
     i.add_argument("--emulation-root", default=DEFAULT_EMULATION_ROOT)
+    # Les mêmes options que `scan`, avec la même aide : les profils disent
+    # quelles configurations vivent sous un dossier d'installation, donc quelles
+    # configurations cette commande vient d'emporter en le supprimant. Sans
+    # elles, l'installation réussit, la manette se tait, et rien ne fait le lien.
+    i.add_argument("--profiles", default=str(DEFAULT_PROFILES))
+    i.add_argument("--user-profiles", default=None, help=_AIDE_USER_PROFILES)
     i.set_defaults(func=_cmd_install)
 
     s = sous.add_parser("scan", help="produit l'inventaire des ROMs")

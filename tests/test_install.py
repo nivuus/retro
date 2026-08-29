@@ -1,10 +1,11 @@
 """Installation de tous les émulateurs du manifeste."""
+import dataclasses
 import hashlib
 import zipfile
 
 import pytest
 
-from retro import install, manifest
+from retro import install, manifest, profiles
 
 
 def faire_zip(chemin, nom_membre="t.exe"):
@@ -126,3 +127,105 @@ def test_un_temoin_vide_ne_vaut_pas_version(tmp_path):
     dossier = poser(tmp_path)
     (dossier / ".retro-version").write_text("  \n", encoding="utf-8")
     assert install.installed_version(tmp_path, "RetroArch") is None
+
+
+# --- ce que `retro install` vient d'effacer -------------------------------
+#
+# Trois des quatre réglages mesurés le 2026-08-29 vivent SOUS le dossier
+# d'installation de leur émulateur, que `acquire` supprime (shutil.rmtree) à
+# chaque montée de version. Le mécanisme les repose au lancement suivant — mais
+# rien ne fait le lien, et c'est la moitié de la dette D7 : une manette muette
+# après une mise à jour ne ressemble pas à une mise à jour.
+
+def profil_avec_cible(tmp_path, pid: str, cible: str):
+    """Un profil livrable minimal, dont l'unique amorçage vise `cible`."""
+    f = tmp_path / f"{pid}.toml"
+    f.write_text(f"""
+schema = 1
+id = "{pid}"
+exe = "x.exe"
+
+[[bootstrap]]
+target = '{cible}'
+content = '''
+; Écrit par « retro »
+'''
+
+[[system]]
+id = "{pid}-s"
+name = "Un système"
+extensions = [".rom"]
+launch = '"{{rom}}"'
+bios = []
+""", encoding="utf-8")
+    return profiles.load_profile(f)
+
+
+def test_une_reinstallation_nomme_la_configuration_effacee(tmp_path):
+    """« réinstallé » a effacé le dossier ; « à jour » n'a rien touché.
+
+    Confondre les deux ferait annoncer une configuration perdue à chaque
+    `retro install`, y compris ceux qui ne téléchargent rien — et un message
+    qui crie tous les jours ne se lit plus le jour où il est vrai.
+    """
+    cible = "{install_dir}\\config\\input_configs\\global\\Default.yml"
+    profils = {"rpcs3": profil_avec_cible(tmp_path, "rpcs3", cible)}
+    emulateurs = {"rpcs3": emu("rpcs3", "0" * 64)}
+    for etat in ("installé", "réinstallé"):
+        assert install.configurations_effacees(
+            [("rpcs3", etat)], emulateurs, profils) == [("rpcs3", cible)]
+    assert install.configurations_effacees(
+        [("rpcs3", "à jour")], emulateurs, profils) == []
+
+
+def test_une_cible_hors_du_dossier_d_installation_n_est_pas_nommee(tmp_path):
+    """Un %USERPROFILE% survit à toutes les montées de version.
+
+    Sans ce test, une fonction qui rendrait TOUT passerait le précédent : elle
+    annoncerait effacé un fichier intact, ce qui envoie chercher une panne là
+    où il n'y en a pas.
+    """
+    cible = "%USERPROFILE%\\Documents\\ailleurs.ini"
+    profils = {"ailleurs": profil_avec_cible(tmp_path, "ailleurs", cible)}
+    emulateurs = {"ailleurs": emu("ailleurs", "0" * 64)}
+    assert install.configurations_effacees(
+        [("ailleurs", "réinstallé")], emulateurs, profils) == []
+
+
+def test_le_lien_manifeste_profil_passe_par_le_champ_profile(tmp_path):
+    """La clé du manifeste n'est PAS l'identifiant du profil, et les confondre
+    rendrait la liste vide sans erreur — le silence exact que ce message
+    existe pour rompre."""
+    cible = "{install_dir}\\x.ini"
+    profils = {"le-profil": profil_avec_cible(tmp_path, "le-profil", cible)}
+    e = emu("la-cle", "0" * 64)
+    emulateurs = {"la-cle": dataclasses.replace(e, profile="le-profil")}
+    assert install.configurations_effacees(
+        [("la-cle", "installé")], emulateurs, profils) == [("le-profil", cible)]
+
+
+def test_le_message_nomme_le_profil_et_la_cible(tmp_path):
+    """Un message qui dirait seulement « des configurations ont été effacées »
+    n'aide personne : c'est le NOM du fichier qui permet d'aller voir."""
+    texte = install.format_configurations_effacees(
+        [("rpcs3", "{install_dir}\\config\\Default.yml")])
+    assert "rpcs3" in texte and "Default.yml" in texte
+    assert install.format_configurations_effacees([]) == ""
+
+
+def test_les_etats_qui_effacent_sont_ceux_qu_acquire_rend(tmp_path):
+    """Le couplage entre les deux modules est une CHAÎNE, et une chaîne qui
+    changerait d'un côté rendrait la liste vide de l'autre — sans erreur, sans
+    symptôme, et le message se tairait le jour où il compte. Le seul garde
+    possible est de faire tourner une vraie installation et de lire l'état
+    qu'elle rend, puis de la refaire pour obtenir celui qui n'efface rien.
+    """
+    blob = faire_zip(tmp_path / "s.zip")
+    sha = hashlib.sha256(blob).hexdigest()
+    m = {"a": emu("a", sha)}
+    (_, premier), = install.install_all(m, tmp_path / "Emu",
+                                        fetch=lambda u: blob)
+    assert premier in install.ETATS_EFFACANTS
+    (_, second), = install.install_all(m, tmp_path / "Emu",
+                                       fetch=lambda u: blob)
+    assert second not in install.ETATS_EFFACANTS
