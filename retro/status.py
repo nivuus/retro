@@ -216,6 +216,69 @@ def _probleme_manettes(manettes: list[Manette]) -> list[Problem]:
 
 
 @dataclasses.dataclass(frozen=True)
+class Vibration:
+    """Où en est la VIBRATION d'un émulateur, telle que son profil la déclare.
+
+    Cinq états, et il faut les cinq — c'est ce que le champ `[input] rumble`
+    porte, et le rapport ne fait que le relayer. Aucune ligne d'ici n'affirme
+    qu'une manette vibre : seul `vu` le dit, et un profil ne peut déclarer
+    `vu` qu'avec un témoin humain daté, que le chargement exige.
+
+    Avant ce type, `retro status` ne disait RIEN de la vibration — pas une
+    section, pas un problème, pas une ligne — alors que la dette D1 la donne
+    pour absente PARTOUT. L'aveu vivait dans des commentaires TOML, que
+    personne ne lit depuis un canapé : c'est très exactement l'écart que le
+    sous-projet E reproche à `steam_input = "required"`.
+    """
+    profile_id: str
+    etat: str
+    where: str = ""
+    witness: str = ""
+
+
+def etat_vibrations(profils: dict) -> list[Vibration]:
+    """L'état de vibration de chaque profil, tel qu'il se déclare."""
+    return [Vibration(profile_id=pid,
+                      etat=getattr(profils[pid], "input_rumble",
+                                   profiles_mod.RUMBLE_INCONNU),
+                      where=getattr(profils[pid], "input_rumble_where", ""),
+                      witness=getattr(profils[pid], "input_rumble_witness", ""))
+            for pid in sorted(profils)]
+
+
+def _probleme_vibrations(vibrations: list[Vibration]) -> list[Problem]:
+    """Un problème pour le SEUL état `a-relever`, comme pour les manettes.
+
+    C'est le seul des cinq qui dise « quelqu'un a constaté, et il reste un
+    geste à faire ». Les quatre autres sont nommés dans la section Vibration,
+    et nulle part ailleurs :
+
+    - `inconnu` : personne n'a regardé, ce n'est pas une panne ;
+    - `pose` : un réglage EST posé, il n'y a pas de relevé à jouer. Il reste
+      dit, AVEC son fichier — personne ne l'a vu agir, et il peut disparaître
+      de ce fichier sans un mot ;
+    - `vu` : mesuré, et soutenu par un témoin ;
+    - `absent` : mesuré aussi — cet émulateur n'a rien à régler.
+    """
+    return [Problem(
+        what=f"{m.profile_id} : aucun réglage de vibration n'a été relevé — "
+             "la manette ne vibrera pas, et l'émulateur ne le dira pas",
+        where=m.where,
+        action=f"jouer la procédure de relevé ({PROCEDURE_RELEVE}) sur la "
+               "console : activer la vibration DANS l'interface de "
+               "l'émulateur, le fermer, puis recopier dans le profil ce qu'il "
+               "a écrit lui-même",
+        # La même garde que pour les liaisons de manette, et pour la même
+        # raison : le nom d'une clé de rumble n'est pas une propriété de la
+        # manette, c'est une propriété de l'émulateur qui la nomme.
+        details=("une clé de rumble recopiée d'une documentation est ignorée "
+                 "en silence : le symptôme est identique avant et après une "
+                 "valeur inventée",),
+    ) for m in vibrations if m.etat == profiles_mod.RUMBLE_A_RELEVER]
+
+
+
+@dataclasses.dataclass(frozen=True)
 class Report:
     emulators: list[tuple[str, str]]
     systems: list[tuple[str, int]]
@@ -232,6 +295,7 @@ class Report:
     paquet: str = ""
     amorcages: list[Amorcage] = dataclasses.field(default_factory=list)
     manettes: list[Manette] = dataclasses.field(default_factory=list)
+    vibrations: list[Vibration] = dataclasses.field(default_factory=list)
 
 
 def _joindre(racine: str, *parties: str) -> str:
@@ -623,6 +687,7 @@ def build_report(
         install_dirs, emulation_root, ignored_systems, emulator_exes)
     rendu = etat_rendu(profils) if profils else []
     manettes = etat_manettes(profils) if profils else []
+    vibrations = etat_vibrations(profils) if profils else []
     return Report(
         emulators=emulateurs,
         systems=list(systems),
@@ -633,13 +698,15 @@ def build_report(
                   *_probleme_remplissage_non_mesure(rendu),
                   *_probleme_steam_input(steam_input_muets, steam_input_echec),
                   *_probleme_lanceur_perime(lanceur_perime, emulation_root),
-                  *_probleme_manettes(manettes)],
+                  *_probleme_manettes(manettes),
+                  *_probleme_vibrations(vibrations)],
         bios_root=bios_root,
         render_mode=render_mode,
         paquet=paquet,
         render=rendu,
         amorcages=etat_amorcage(profils, amorcages or {}) if profils else [],
         manettes=manettes,
+        vibrations=vibrations,
     )
 
 
@@ -838,6 +905,38 @@ def _lignes_manettes(report: Report) -> list[str]:
     return lignes
 
 
+def _lignes_vibration(report: Report) -> list[str]:
+    """Où en est la vibration de chaque émulateur.
+
+    Cinq formulations, une par état, sur le modèle de la section Manettes. Les
+    trois qui nomment un fichier le nomment : celui où le relevé se fera, celui
+    où le réglage posé vit et d'où il peut disparaître sans un mot.
+
+    AUCUNE ligne n'affirme que la vibration marche. Le rapport rend ce que les
+    profils déclarent, et un profil ne déclare `vu` qu'avec un témoin humain
+    daté — que la ligne cite, parce que c'est la seule chose qui distingue une
+    mesure d'une affirmation.
+    """
+    lignes = []
+    for v in report.vibrations:
+        if v.etat == profiles_mod.RUMBLE_A_RELEVER:
+            lignes.append(f"  · {v.profile_id} : ne vibre pas, aucun réglage "
+                          f"relevé — {v.where}")
+        elif v.etat == profiles_mod.RUMBLE_POSE:
+            lignes.append(f"  · {v.profile_id} : un réglage est posé et "
+                          f"reposé, jamais vu agir — {v.where}")
+        elif v.etat == profiles_mod.RUMBLE_VU:
+            lignes.append(f"  · {v.profile_id} : vibration SENTIE en jeu "
+                          f"({v.witness}) — {v.where}")
+        elif v.etat == profiles_mod.RUMBLE_ABSENT:
+            lignes.append(f"  · {v.profile_id} : aucun réglage de vibration à "
+                          "poser, mesuré dans sa source")
+        else:
+            lignes.append(f"  · {v.profile_id} : jamais mesuré — personne n'a "
+                          "senti cette manette vibrer")
+    return lignes
+
+
 def format_report(report: Report) -> str:
     """Le texte que l'hôte relaie tel quel au propriétaire."""
     sections: list[str] = []
@@ -897,6 +996,15 @@ def format_report(report: Report) -> str:
     sections += _section(
         "Manettes", _lignes_manettes(report),
         "aucun profil chargé : l'état des manettes se lit profil par profil")
+
+    # INCONDITIONNELLE, pour la raison de la section Manettes portée à son
+    # extrême : une manette qui ne vibre pas ne se constate QUE la manette en
+    # main, et jusqu'ici le rapport n'en disait pas un mot — l'aveu vivait dans
+    # des commentaires TOML que personne ne lit depuis un canapé (dette D1).
+    sections += _section(
+        "Vibration", _lignes_vibration(report),
+        "aucun profil chargé : l'état de la vibration se lit profil par "
+        "profil")
 
     nb = len(report.problems)
     # 0 et 1 prennent le singulier en français : « Problème (1) », pas
