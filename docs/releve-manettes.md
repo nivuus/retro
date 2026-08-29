@@ -57,7 +57,9 @@ Deux conséquences, et ce sont les fondations de cette page :
 ### Parler à l'invité
 
 Les commandes de cette page passent par l'exécuteur WinRM du dépôt
-`nivuus/installer` — `console/guest/winrm_exec.py`, transport NTLM :
+`nivuus/installer` — `console/guest/winrm_exec.py`, transport NTLM. **Ce canal
+n'est pas ouvert à tout le monde** : les étapes qui écrivent, et l'étape 3 qui
+lance DuckStation, sont à jouer par le propriétaire.
 
 ```bash
 python3 <installer>/console/guest/winrm_exec.py ps '<commande PowerShell>'
