@@ -606,3 +606,128 @@ def test_un_lanceur_a_jour_ne_produit_aucun_probleme():
         systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
         lanceur_perime=False)
     assert [p for p in rapport.problems if "plus ancien" in p.what] == []
+
+
+# --- Manettes : la panne qui ne se voit que le pad en main ----------------
+#
+# Dette D3. « Le seul émulateur PlayStation de la console est injouable, et
+# rien dans `retro status` ne le dit. » L'émulateur, lui, ne dira jamais rien :
+# une liaison qui ne correspond à aucun périphérique est ignorée EN SILENCE, et
+# la manette reste muette exactement comme si le fichier était vide.
+
+_PROFIL_MANETTE = """
+schema = 1
+id = "{pid}"
+exe = '{pid}.exe'
+
+[input]
+mapping = "{mapping}"
+{ou}
+
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{{rom}}"'
+"""
+
+
+def _profil_manette(tmp_path, pid, mapping, ou=""):
+    ligne = f"mapping_where = '{ou}'" if ou else ""
+    p = tmp_path / f"{pid}.toml"
+    p.write_text(_PROFIL_MANETTE.format(pid=pid, mapping=mapping, ou=ligne),
+                 encoding="utf-8")
+    return {pid: profiles.load_profile(p)}
+
+
+def _rapport_manette(profils):
+    return status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
+        profils=profils)
+
+
+def test_une_manette_a_relever_est_un_probleme(tmp_path):
+    """C'est le constat de D3 : le jeu démarre, la manette ne répond pas, et
+    aucun journal — ni celui de Steam, ni celui de l'émulateur — n'en dit un
+    mot. Si le rapport se tait aussi, la panne n'existe nulle part ailleurs
+    que devant la télévision."""
+    profils = _profil_manette(
+        tmp_path, "duckstation", "a-relever",
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]")
+    problemes = [p for p in _rapport_manette(profils).problems
+                 if "duckstation" in p.what]
+    assert len(problemes) == 1
+    # Le constat, le chemin, le geste : la règle du module. Un « la manette ne
+    # répond pas » sans le fichier à ouvrir ni la procédure à jouer est une
+    # accusation, pas un diagnostic.
+    assert "[Pad1]" in problemes[0].where
+    assert "releve-manettes" in problemes[0].action
+
+
+def test_un_emulateur_qui_trouve_sa_manette_seul_est_dit_sans_etre_accuse(tmp_path):
+    """Deux moitiés du même fait, et aucune ne se suffit : ne pas accuser sans
+    rien dire laisserait ce profil invisible, indiscernable d'un profil oublié.
+    """
+    profils = _profil_manette(tmp_path, "retroarch", "auto")
+    rapport = _rapport_manette(profils)
+    assert [p for p in rapport.problems if "manette" in p.what] == []
+    assert [(m.profile_id, m.etat) for m in rapport.manettes] == [
+        ("retroarch", profiles.MAPPING_AUTO)]
+
+
+def test_un_mapping_jamais_mesure_est_nomme_sans_etre_accuse(tmp_path):
+    """« personne n'a regardé » n'est pas « c'est cassé ». Le confondre ferait
+    huit accusations sans mesure, et noierait la seule qui en a une — mais le
+    taire ferait croire que ces huit émulateurs ont été vérifiés."""
+    profils = _profil_manette(tmp_path, "cemu", "inconnu")
+    rapport = _rapport_manette(profils)
+    assert [p for p in rapport.problems if "manette" in p.what] == []
+    assert [(m.profile_id, m.etat) for m in rapport.manettes] == [
+        ("cemu", profiles.MAPPING_INCONNU)]
+
+
+def test_les_trois_etats_de_manette_se_lisent_dans_le_texte(tmp_path):
+    """Trois formulations, comme la section Amorçage : un état calculé sans
+    être imprimé ne sert à personne, et « jamais mesuré » doit se distinguer
+    de « il se débrouille »."""
+    profils = {}
+    profils.update(_profil_manette(tmp_path, "retroarch", "auto"))
+    profils.update(_profil_manette(tmp_path, "cemu", "inconnu"))
+    profils.update(_profil_manette(
+        tmp_path, "duckstation", "a-relever",
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]"))
+    texte = status.format_report(_rapport_manette(profils))
+    assert "Manettes" in texte
+    ligne = {l.strip().split(" : ")[0].lstrip("· ").strip(): l
+             for l in texte.splitlines() if " : " in l}
+    assert "trouve sa manette seul" in ligne["retroarch"]
+    assert "jamais mesuré" in ligne["cemu"]
+    assert "[Pad1]" in ligne["duckstation"]
+
+
+def test_la_section_manettes_s_affiche_meme_sans_profil():
+    """Comme BIOS, Rendu et Amorçage : une section qui disparaît se lit comme
+    une panne d'affichage, et son repli est la seule chose qui distingue
+    « rien à dire » de « rien n'a été lu »."""
+    rapport = status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"))
+    assert rapport.manettes == []
+    texte = status.format_report(rapport)
+    assert "Manettes" in texte and "aucun profil chargé" in texte
+
+
+def test_le_probleme_de_manette_dit_qu_une_liaison_fausse_est_muette(tmp_path):
+    """La garde de D3. Sans cette phrase, le prochain lecteur recopiera un
+    identifiant trouvé dans une recette et croira avoir corrigé la panne : le
+    symptôme est le MÊME — manette muette — avant et après."""
+    profils = _profil_manette(
+        tmp_path, "duckstation", "a-relever",
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]")
+    problemes = [p for p in _rapport_manette(profils).problems
+                 if "duckstation" in p.what]
+    assert len(problemes) == 1
+    dit = " ".join((problemes[0].what, problemes[0].action,
+                    *problemes[0].details)).lower()
+    assert "silence" in dit
