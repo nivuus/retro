@@ -19,6 +19,8 @@ que dans un journal que personne ne lit depuis un canapé.
 Toutes les fixtures sont FABRIQUÉES octet par octet. Aucun dump, aucune licence
 réelle n'entre dans ce dépôt.
 """
+import pathlib
+
 import pytest
 
 from retro import licence
@@ -165,6 +167,11 @@ def test_un_chemin_windows_d_inventaire_s_ouvre_sur_le_disque_local(tmp_path):
     Jointes telles quelles sous Linux, elles font un segment unique qu'aucun
     is_file() ne confirme : le rapport conclurait « aucune licence à poser »
     sur une bibliothèque qui en porte."""
+    # Le dump EXISTE : depuis le 2026-08-29, seuls les dossiers sont retenus
+    # (une ROM qui est un fichier ne porte aucune licence, et descendre sous
+    # elle fait lever Windows). Une fixture sans dossier ne mesurerait plus la
+    # traduction, mais le filtre.
+    (tmp_path / "Sony" / "PSVita" / "PCSF00012").mkdir(parents=True)
     jeux = licence.jeux_locaux(
         [_Entree("Un jeu", "G:\\ROMs\\Sony\\PSVita\\PCSF00012")],
         "G:\\ROMs", tmp_path)
@@ -177,3 +184,46 @@ def test_une_entree_d_une_autre_racine_est_laissee_de_cote(tmp_path):
     pas."""
     assert licence.jeux_locaux(
         [_Entree("Un jeu", "H:\\Autre\\PCSF00012")], "G:\\ROMs", tmp_path) == []
+
+
+# --- Mesuré sur la console le 2026-08-29 : `retro status` PLANTAIT ---------
+#
+# [WinError 31] A device attached to the system is not functioning:
+#   'G:\Games\Nintendo\Gameboy\Pokemon ... .gb\sce_sys\package\work.bin'
+#
+# `jeux_locaux` retenait TOUTE entrée sous la racine, y compris les ROMs qui
+# sont des FICHIERS. `licence_du_dump` joignait alors `sce_sys/package/work.bin`
+# SOUS un fichier. Sous Linux, `is_file()` y rend False sans broncher — c'est
+# pourquoi aucune fixture ne l'a vu ; sous Windows, il LÈVE, et le rapport
+# entier mourait. Une licence vit dans un dump, qui est un DOSSIER.
+
+def test_une_rom_fichier_n_est_pas_un_jeu_a_licence(tmp_path):
+    """Le seul rapport fait pour être lu ne doit pas mourir sur une Game Boy."""
+    (tmp_path / "Nintendo" / "Gameboy").mkdir(parents=True)
+    rom = tmp_path / "Nintendo" / "Gameboy" / "Pokemon.gb"
+    rom.write_bytes(b"\x00" * 32)
+    dump = tmp_path / "Sony" / "PS Vita" / "PCSF00012"
+    dump.mkdir(parents=True)
+
+    class Entree:
+        def __init__(self, titre, chemin):
+            self.title, self.rom_path = titre, chemin
+
+    jeux = licence.jeux_locaux(
+        [Entree("Pokemon", r"G:\Games\Nintendo\Gameboy\Pokemon.gb"),
+         Entree("Uncharted", r"G:\Games\Sony\PS Vita\PCSF00012")],
+        r"G:\Games", tmp_path)
+    titres = [t for t, _ in jeux]
+    assert titres == ["Uncharted"], (
+        "une ROM qui est un fichier ne porte aucun dump, donc aucune licence ; "
+        f"la retenir fait descendre sous un fichier — reçu {titres}")
+
+
+def test_un_chemin_illisible_ne_tue_pas_le_rapport(tmp_path, monkeypatch):
+    """Windows lève là où Linux rend False. Le rapport doit survivre aux deux :
+    un chemin qu'on ne peut pas interroger n'est pas une licence, c'est une
+    absence de réponse — et elle ne vaut pas la mort du seul écran lisible."""
+    def leve(self):
+        raise OSError(31, "A device attached to the system is not functioning")
+    monkeypatch.setattr(pathlib.Path, "is_file", leve)
+    assert licence.licence_du_dump(tmp_path) is None

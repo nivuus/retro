@@ -157,7 +157,16 @@ def licence_du_dump(dossier: pathlib.Path) -> pathlib.Path | None:
     bibliothèque, et la seule qui compte s'y perdrait.
     """
     chemin = dossier.joinpath(*LICENCE_DU_DUMP)
-    return chemin if chemin.is_file() else None
+    try:
+        return chemin if chemin.is_file() else None
+    except OSError:
+        # Windows LÈVE là où Linux rend False — mesuré le 2026-08-29 sur la
+        # console : « [WinError 31] A device attached to the system is not
+        # functioning » en descendant sous une ROM Game Boy, et `retro status`
+        # mourait tout entier. Un chemin qu'on ne peut pas interroger n'est pas
+        # une licence : c'est une absence de réponse, et elle ne vaut pas la
+        # mort du seul écran de ce paquet fait pour être lu.
+        return None
 
 
 def jeux_locaux(inventaire: Sequence[object], roms_root_windows: str,
@@ -181,9 +190,18 @@ def jeux_locaux(inventaire: Sequence[object], roms_root_windows: str,
         chemin = str(getattr(rom, "rom_path", ""))
         if not chemin.startswith(prefixe + "\\"):
             continue
-        jeux.append((rom.title,
-                     install_mod.local_path(roms_root,
-                                            chemin[len(prefixe) + 1:])))
+        local = install_mod.local_path(roms_root, chemin[len(prefixe) + 1:])
+        # SEULS LES DOSSIERS. Une licence vit dans un dump, qui est un dossier
+        # (`ux0/app/<TITLEID>/sce_sys/package/work.bin`) ; une ROM qui est un
+        # FICHIER n'en porte aucune. Les retenir toutes faisait descendre sous
+        # un fichier, ce que Windows refuse en levant — le rapport entier
+        # mourait sur une Game Boy. Mesuré sur la console le 2026-08-29.
+        try:
+            if not local.is_dir():
+                continue
+        except OSError:
+            continue
+        jeux.append((rom.title, local))
     return jeux
 
 
