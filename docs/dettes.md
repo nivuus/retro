@@ -31,6 +31,32 @@ sont pas le même défaut, et rien ne dit aujourd'hui lequel est rompu :
 sous-projet E écrit. Le rumble est un réglage de cette configuration, pas de la
 ligne de commande : il suit exactement le chemin déjà tracé pour le mapping.
 
+**Un maillon est devenu actionnable sans nouvelle mesure — 2026-08-29.** Le
+relevé de D3 a montré que, pour DuckStation, la vibration n'est pas un réglage
+à part : ce sont **deux liaisons de `[Pad1]`**, au même titre que les boutons.
+
+```
+LargeMotor = SDL-0/LargeMotor
+SmallMotor = SDL-0/SmallMotor
+```
+
+Elles étaient **absentes** du `settings.ini` de la console — comme tout le
+reste de `[Pad1]`, et pour la même cause : `SetupWizardIncomplete = false` saute
+la page « Controller Setup », donc le seul geste qui les aurait écrites. Elles
+sont désormais dans le champ `enforced` de `duckstation.toml`, reposées à
+chaque lancement.
+
+Ce que cela change pour D1 : la première ligne du tableau ci-dessus —
+« aucun profil ne pose de réglage de rumble » — **n'est plus vraie pour
+DuckStation**. Le maillon « émulateur → SDL → ViGEmBus » y est donc testable
+tel quel, sans nouveau relevé : il suffit de jouer. Les huit autres émulateurs
+restent entiers. Et cela ne dit RIEN des deux autres maillons — Steam Input,
+et la remontée Apollo → client Moonlight —, qui sont des défauts distincts.
+
+**Précaution, la même que pour D3 :** ces deux lignes n'ont **pas** été vues
+faire vibrer quoi que ce soit. Elles ont été écrites par DuckStation, elles ont
+la bonne forme, et c'est tout ce qu'on en sait.
+
 **Ce que ça coûte :** rien ne bloque une partie, mais une console de salon dont
 la manette ne vibre jamais passe pour un émulateur, pas pour une console.
 
@@ -159,7 +185,12 @@ dit, pour que personne ne croie son relevé saboté.
 
 ---
 
-## D3 — DuckStation : la manette reste muette sur Crash Team Racing
+## D3 — DuckStation : liaisons relevées, réponse en jeu NON vérifiée
+
+> **Cette dette n'est pas réglée.** Les liaisons existent, elles ont été
+> écrites par DuckStation lui-même, elles sont dans le profil livré. Il manque
+> la seule preuve qui compte : **personne n'a vu un bouton faire quelque chose
+> dans un jeu.** Tant que ce n'est pas fait, D3 reste ouverte.
 
 **Constaté le 2026-08-28**, après les correctifs de manette du même jour
 (retrait de `SDL_GAMECONTROLLER_IGNORE_DEVICES` par le lanceur, extinction de
@@ -205,19 +236,32 @@ qui en a l'accès plutôt qu'à croire sur parole.
    liaisons de DuckStation. À confirmer avant de s'en servir, mais c'est ce que
    le binaire dit.
 
-### Ce qui n'a PAS pu être mesuré, et pourquoi
+### Les valeurs, relevées le 2026-08-29 par une autre voie
 
-**Les valeurs des liaisons.** Aucune manette n'était connectée au moment du
-relevé : le pad d'Apollo (`USB\VID_045E&PID_028E`) et une DualShock 4
-(`VID_054C&PID_05C4`) figurent tous deux dans les périphériques de l'invité,
-avec l'état `Unknown` — c'est-à-dire absents. Le pad n'existe que pendant une
-session Moonlight, et DuckStation aurait répondu mot pour mot « Automatic
-mapping failed, no devices are available ».
+Au premier passage, aucune manette n'était connectée : le pad d'Apollo
+(`USB\VID_045E&PID_028E`) et une DualShock 4 (`VID_054C&PID_05C4`) figuraient
+tous deux dans les périphériques de l'invité avec l'état `Unknown` —
+c'est-à-dire absents. Le pad n'existe que pendant une session Moonlight.
+
+La session Moonlight **n'a pas pu être ouverte** : `403 Permission denied` au
+`/launch`, le client appairé portant `perm=0x3000000` là où les clients
+fonctionnels portent `0x7131f00`. Le pad a donc été créé **directement par
+ViGEmBus**, sans Apollo et sans client, et l'assistant de DuckStation a été
+piloté dans la session interactive jusqu'à l'appariement automatique. Les codes
+IOCTL, les deux pièges d'automatisation et le détail du `403` sont dans
+`docs/releve-manettes.md` — ils ont coûté cher et ne se devinent pas.
+
+**Résultat : vingt-sept liaisons**, écrites par DuckStation lui-même, relues
+dans le `settings.ini` qu'il venait d'écrire. Clés nues, identifiant `SDL-0`,
+axes préfixés `+`/`-`, deux liaisons de vibration (`LargeMotor`, `SmallMotor`),
+et **aucune clé `Type`** — DuckStation n'en écrit pas.
 
 **Toute valeur non relevée sur la machine est fausse :** DuckStation n'émet
 aucun message quand une liaison ne correspond à rien, et la manette reste muette
 exactement comme si le fichier était vide. Une valeur recopiée d'une recette est
-donc indiscernable de l'absence de valeur, à l'œil comme au journal.
+donc indiscernable de l'absence de valeur, à l'œil comme au journal. C'est
+pourquoi ces vingt-sept lignes valent quelque chose : elles ne viennent pas
+d'une recette.
 
 ### Ce qui a été fait le 2026-08-29
 
@@ -232,25 +276,69 @@ donc indiscernable de l'absence de valeur, à l'œil comme au journal.
   fait du seul `a-relever` un problème nommant le fichier à ouvrir, la
   procédure à jouer, et la phrase qui empêche la fausse correction : « une
   liaison qui ne correspond à aucun périphérique est ignorée en silence ».
-- **Le squelette `[Pad1]` est posé dans le bloc `[bootstrap]`**, à l'endroit
-  exact où DuckStation le lira, **entièrement en commentaire** — avec la forme
-  relevée, la cause mesurée, et les valeurs marquées « À RELEVER ». Un test
-  refuse toute ligne active sous une section `[Pad1]`, et tout retour à la
-  forme `Bindings/…` mesurée fausse.
 - **La procédure de relevé est écrite** : `docs/releve-manettes.md`. Elle ne
   demande de recopier aucune valeur — elle rouvre l'assistant de DuckStation le
-  temps d'un appariement automatique, session ouverte et manette branchée, et
-  fait écrire `[Pad1]` par DuckStation lui-même. C'est le seul relevé valide.
+  temps d'un appariement automatique et fait écrire `[Pad1]` par DuckStation
+  lui-même. C'est le seul relevé valide.
+- **Le squelette `[Pad1]` a cédé la place au relevé réel.** Il était
+  entièrement en commentaire tant que rien n'était mesuré ; les vingt-sept
+  liaisons sont désormais dans `duckstation.toml`, champ **`enforced`** — donc
+  reposées à chaque lancement. `content` ne les poserait sur AUCUNE console
+  déjà jouée : sous `-batch -nogui`, DuckStation ne rouvre jamais son
+  `settings.ini`, et le fichier existe déjà là-bas.
+- **La liste gelée des clés imposées a été élargie en revue.** Elle valait
+  trois clés ; elle en vaut trente. L'élargissement est délibéré et son prix
+  est écrit dans le profil : **le propriétaire ne peut plus remapper sa manette
+  depuis l'interface de DuckStation**, puisque le lancement suivant repose les
+  liaisons.
 
-### Ce qui reste
+### Ce qui reste — et pourquoi D3 N'EST PAS RÉGLÉE
 
-**Jouer la procédure**, manette en main. C'est la seule partie qui exige une
-session Moonlight, et elle ne peut être faite ni depuis l'hôte ni sans pad.
-Ensuite seulement viendra le gabarit à jetons du sous-projet E (tâche 3), sur
-le patron de `{render_config}`.
+La procédure pose **trois** conditions pour tenir un relevé pour bon. Deux sont
+remplies, la troisième ne l'est pas :
+
+| Condition | État |
+|---|---|
+| `[Pad1]` existe et porte des clés qui n'y étaient pas | ✅ vingt-sept |
+| ces lignes ont été écrites par DuckStation, pas à la main | ✅ par son assistant |
+| **un jeu lancé depuis Steam répond à la manette** | ❌ **non vérifié** |
+
+C'est la troisième qui compte, et c'est celle qui manque. Ce n'est pas un
+détail de forme : **DuckStation ne dira jamais qu'une liaison ne correspond à
+rien.** Une valeur juste et une valeur fausse produisent le même silence. Tant
+que personne n'a vu un bouton agir dans un jeu, ces vingt-sept lignes sont une
+hypothèse bien fondée, pas une manette qui marche.
+
+S'ajoute une raison matérielle de ne pas conclure : **le relevé a été restauré**
+sur l'invité à la fin de l'opération. La console n'a plus de `[Pad1]`, et rien
+n'y a été joué depuis. Les liaisons n'existent aujourd'hui que dans le profil ;
+elles n'auront été posées qu'au prochain `retro launcher`.
+
+**Pour la clore, dans cet ordre :**
+
+1. Lancer `retro launcher` pour que l'amorçage repose le `settings.ini`, puis
+   vérifier que `[Pad1]` y est bien et que `SetupWizardIncomplete` vaut `false`.
+2. **Lancer un jeu depuis Steam, manette en main, et voir un bouton agir.**
+   C'est la seule preuve. Crash Team Racing est le cas d'origine.
+3. Vérifier au passage l'index : `SDL-0` désigne la PREMIÈRE manette énumérée.
+   S'il y en a une autre branchée, ce n'est pas celle d'Apollo, et le symptôme
+   sera identique à la panne d'origine.
+4. Alors seulement basculer `[input] mapping` de `a-relever` vers ce que la
+   mesure dit, dans `retro/data/profiles/duckstation.toml`.
+
+Le champ `mapping` reste **`a-relever`** jusque-là, et `retro status` continue
+donc de signaler DuckStation. C'est voulu : `auto` dirait que DuckStation trouve
+sa manette seul, ce qui est faux — il ne la trouve que parce que la console lui
+impose vingt-sept liaisons.
 
 **Ce que ça coûte aujourd'hui :** le seul émulateur PlayStation de la console
-est injouable. `retro status` le dit désormais ; il ne le répare pas.
+est toujours réputé injouable, faute d'avoir été essayé. La différence avec
+hier, c'est qu'un essai a maintenant une chance d'aboutir.
+
+**Un essai AU FLUX reste bloqué** par le `perm=0x3000000` du client appairé
+(`403 Permission denied` au `/launch`). Qui voudra vérifier dans les conditions
+réelles — session Moonlight, pad d'Apollo, canapé — devra d'abord régler ce
+`perm`. Voir `docs/console-dettes.md` de `nivuus/installer`.
 
 ## D4 — Ni capteur de mouvement, ni manette PlayStation
 
