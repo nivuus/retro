@@ -1614,3 +1614,48 @@ def test_le_dernier_lancement_accorde_le_pluriel_des_manettes(tmp_path):
         profils, date="2026-09-01 21:14:33",
         pads=[_pad(0, "045e:028e", "X"), _pad(1, "045e:028e", "Y")]))
     assert "2 manettes" in deux
+
+
+# --- Mesuré sur la console le 2026-08-29 : le rapport montrait un JETON -----
+#
+# « rpcs3 : pas encore amorcé ({install_dir}\GuiConfigs\CurrentSettings.ini) ».
+# `{install_dir}` ne veut rien dire pour qui lit depuis un canapé : c'est une
+# convention interne, et le rapport est le seul écran de ce paquet fait pour
+# être lu. Le chemin réel est connu — la racine d'émulation et le dossier que
+# le manifeste nomme —, donc le taire était un choix, pas une fatalité.
+
+def test_une_cible_pas_encore_amorcee_montre_un_chemin_et_non_un_jeton():
+    class Amorce:
+        target = "{install_dir}\\GuiConfigs\\CurrentSettings.ini"
+        content = ""
+        enforced = ""
+
+    class Profil:
+        bootstraps = [Amorce()]
+
+    etats = status.etat_amorcage(
+        {"rpcs3": Profil()}, {},
+        install_dirs={"rpcs3": "RPCS3"},
+        emulation_root_windows="D:\\Emulation")
+    assert len(etats) == 1
+    assert etats[0].target == "D:\\Emulation\\RPCS3\\GuiConfigs\\CurrentSettings.ini", (
+        "le rapport montre encore le jeton brut au propriétaire : "
+        f"{etats[0].target}")
+
+
+def test_un_jeton_sans_dossier_connu_reste_lisible():
+    """Un émulateur absent du manifeste n'a pas de dossier d'installation. Le
+    rapport doit alors rendre la cible DÉCLARÉE plutôt que de fabriquer un
+    chemin faux — dire « je ne sais pas où » vaut mieux que désigner ailleurs.
+    """
+    class Amorce:
+        target = "{install_dir}\\config.yml"
+        content = ""
+        enforced = ""
+
+    class Profil:
+        bootstraps = [Amorce()]
+
+    etats = status.etat_amorcage({"inconnu": Profil()}, {}, install_dirs={},
+                                 emulation_root_windows="D:\\Emulation")
+    assert etats[0].target == "{install_dir}\\config.yml"

@@ -119,9 +119,32 @@ class Amorcage:
     imposees: int = 0
 
 
+def _cible_lisible(target: str, profile_id: str, install_dirs: dict,
+                   emulation_root_windows: str) -> str:
+    """La cible DÉCLARÉE, jeton substitué quand on sait par quoi.
+
+    Mesuré sur la console le 2026-08-29 : le rapport rendait
+    « pas encore amorcé ({install_dir}\\GuiConfigs\\CurrentSettings.ini) ».
+    `{install_dir}` est une convention interne, et ce rapport est le seul écran
+    de ce paquet fait pour être lu depuis un canapé. Le chemin réel est connu —
+    la racine d'émulation, puis le dossier que le MANIFESTE nomme, surcharge du
+    propriétaire comprise.
+
+    Quand ce dossier est inconnu, le jeton est LAISSÉ TEL QUEL. Fabriquer un
+    chemin sans lui désignerait un endroit où le fichier n'ira jamais, et le
+    propriétaire irait l'y chercher : dire « je ne sais pas où » vaut mieux.
+    """
+    dossier = install_dirs.get(profile_id)
+    if not dossier or not emulation_root_windows:
+        return target
+    racine = emulation_root_windows.rstrip("\\/")
+    return launcher_mod.resoudre_cible(target, f"{racine}\\{dossier}")
+
+
 def etat_amorcage(profils: dict,
-                  amorcages: dict[str, list[tuple[str, str]]]
-                  ) -> list[Amorcage]:
+                  amorcages: dict[str, list[tuple[str, str]]],
+                  install_dirs: dict | None = None,
+                  emulation_root_windows: str = "") -> list[Amorcage]:
     """L'état d'amorçage de chaque CIBLE, croisé avec le témoin du lanceur.
 
     Une entrée par cible, et non par profil : un profil à deux cibles en a deux
@@ -150,7 +173,9 @@ def etat_amorcage(profils: dict,
                 # doublon d'affichage, alors que l'une impose huit clés et
                 # l'autre aucune.
                 profile_id=pid, declare=True, date=date,
-                target=cible or amorcage.target,
+                target=cible or _cible_lisible(
+                    amorcage.target, pid, install_dirs or {},
+                    emulation_root_windows),
                 # `cles_de` et non `cles_ini` : le dialecte suit l'extension de
                 # la cible. Compté à l'INI seul, un config.yml rendait ZÉRO, et
                 # le rapport annonçait « aucun réglage imposé » là où la console
@@ -1010,7 +1035,9 @@ def build_report(
         render_mode=render_mode,
         paquet=paquet,
         render=rendu,
-        amorcages=etat_amorcage(profils, amorcages or {}) if profils else [],
+        amorcages=etat_amorcage(
+            profils, amorcages or {}, install_dirs,
+            str(emulation_root)) if profils else [],
         manettes=manettes,
         vibrations=vibrations,
         licences=list(licences),
