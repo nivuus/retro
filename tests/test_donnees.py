@@ -599,17 +599,64 @@ def test_chaque_mode_livre_tranche_sur_le_remplissage():
 
 
 # Ce que la console IMPOSE dans le settings.ini de DuckStation, arbitré par le
-# propriétaire le 2026-08-29 : ces trois clés, et pas une de plus. Sans elles,
-# un jeu ne démarre pas sans clavier — l'assistant de première configuration
-# ou la fenêtre de mise à jour s'ouvrent par-dessus, et le plein écran manque.
-# Tout le reste du bloc est une PRÉFÉRENCE, posée une fois puis laissée au
-# propriétaire : la liste est ici pour qu'un ajout se voie en revue.
+# propriétaire le 2026-08-29 : ces clés, et pas une de plus. Sans elles, un jeu
+# ne démarre pas sans clavier — l'assistant de première configuration ou la
+# fenêtre de mise à jour s'ouvrent par-dessus, et le plein écran manque — ou il
+# démarre sans qu'aucun bouton ne réponde. Tout le reste du bloc est une
+# PRÉFÉRENCE, posée une fois puis laissée au propriétaire : la liste est ici
+# pour qu'un ajout se voie en revue.
 # L'ordre est celui du FICHIER, pas celui dans lequel ils ont été énoncés :
 # regrouper les deux clés de [Main] évite de déclarer la section deux fois.
+#
+# [Pad1] A REJOINT L'ENSEMBLE IMPOSÉ le 2026-08-29, et cet élargissement a été
+# décidé, pas subi. Deux raisons, et elles sont mesurées :
+#
+#   1. Sous « -batch -nogui » — le seul mode que la console emploie —
+#      DuckStation ne rouvre jamais son settings.ini. Un régime « si-absent »
+#      ne poserait donc ces liaisons sur AUCUNE console déjà jouée, où le
+#      fichier existe déjà. Ce que la console doit garantir, c'est qu'un jeu
+#      répond à la manette ; « si-absent » ne le garantit pas.
+#   2. Ce n'est PAS une préférence reprise au propriétaire par mégarde : sans
+#      ces vingt-sept lignes, la manette est muette — c'est la dette D3,
+#      constatée le 2026-08-28 sur Crash Team Racing. Le prix, lui, est réel
+#      et il est écrit dans le profil : le propriétaire ne peut plus remapper
+#      sa manette depuis l'interface de DuckStation, puisque le lancement
+#      suivant repose ces liaisons.
+#
+# Les vingt-sept clés sont celles que l'assistant de DuckStation a ÉCRITES
+# lui-même le 2026-08-29 — ni plus, ni moins. Aucune clé « Type » : DuckStation
+# n'en écrit pas, et la liste ne prétend pas mieux savoir.
 DUCKSTATION_IMPOSE = (
     ("Main", "SetupWizardIncomplete"),
     ("Main", "StartFullscreen"),
     ("AutoUpdater", "CheckAtStartup"),
+    ("Pad1", "Analog"),
+    ("Pad1", "Circle"),
+    ("Pad1", "Cross"),
+    ("Pad1", "Down"),
+    ("Pad1", "L1"),
+    ("Pad1", "L2"),
+    ("Pad1", "L3"),
+    ("Pad1", "LDown"),
+    ("Pad1", "LLeft"),
+    ("Pad1", "LRight"),
+    ("Pad1", "LUp"),
+    ("Pad1", "LargeMotor"),
+    ("Pad1", "Left"),
+    ("Pad1", "R1"),
+    ("Pad1", "R2"),
+    ("Pad1", "R3"),
+    ("Pad1", "RDown"),
+    ("Pad1", "RLeft"),
+    ("Pad1", "RRight"),
+    ("Pad1", "RUp"),
+    ("Pad1", "Right"),
+    ("Pad1", "Select"),
+    ("Pad1", "SmallMotor"),
+    ("Pad1", "Square"),
+    ("Pad1", "Start"),
+    ("Pad1", "Triangle"),
+    ("Pad1", "Up"),
 )
 
 
@@ -647,3 +694,176 @@ def test_aucune_preference_livree_n_est_reposee_a_chaque_lancement():
         if deux:
             fautifs.append((pid, sorted(deux)))
     assert fautifs == [], f"clés dans les deux régimes : {fautifs}"
+
+
+# --- Manettes livrées : ce qu'aucun profil n'a le droit d'inventer --------
+
+def test_chaque_profil_livre_dit_ce_qu_il_sait_de_sa_manette():
+    """Le défaut du code — « inconnu » — est le bon état d'un profil du
+    propriétaire qui se tait. Il n'est PAS acceptable d'un profil livré : le
+    lecteur de `retroarch.toml` doit pouvoir y lire si sa manette a été
+    mesurée, sans aller déduire un silence d'une valeur par défaut écrite
+    ailleurs. C'est la même exigence que le bloc [bootstrap] absent, qui doit
+    dire pourquoi il est absent.
+    """
+    for f in sorted(PROFILS.glob("*.toml")):
+        with f.open("rb") as fh:
+            brut = tomllib.load(fh)
+        assert "mapping" in brut.get("input", {}), (
+            f"{f.name} : [input] ne déclare pas 'mapping'. Rien n'y distingue "
+            "« cet émulateur trouve sa manette seul » de « personne n'a "
+            "jamais regardé » — et c'est cette confusion qui a laissé "
+            "DuckStation muet sur Crash Team Racing."
+        )
+
+
+def test_duckstation_declare_sa_manette_a_relever():
+    """Dette D3, mesurée le 2026-08-28 : le jeu démarre, la manette ne répond
+    pas. Le plan des manettes rangeait pourtant DuckStation parmi les
+    émulateurs qui « détectent bien tout seuls » — le profil doit porter la
+    mesure, pas le souvenir.
+
+    Le champ RESTE « a-relever » après le relevé du 2026-08-29, et ce n'est pas
+    un oubli. Le relevé clôt deux des trois conditions de sa propre procédure —
+    la section existe, DuckStation l'a écrite lui-même — mais PAS la
+    troisième : personne n'a lancé un jeu depuis Steam pour voir la manette y
+    répondre. L'invité a d'ailleurs été restauré, il ne porte plus de [Pad1],
+    et rien n'a été joué. « auto » dirait que DuckStation trouve sa manette
+    seul, ce qui est faux — il ne la trouve que parce que la console lui impose
+    vingt-sept liaisons. Tant qu'aucun bouton n'a été VU répondre, l'état vrai
+    est celui d'une panne dont le relevé n'est pas clos, et `retro status` doit
+    continuer de renvoyer le propriétaire à l'étape 4 de la procédure.
+    """
+    profil = profiles.load_profile(PROFILS / "duckstation.toml")
+    assert profil.input_mapping == profiles.MAPPING_A_RELEVER
+    assert "Pad1" in profil.input_mapping_where
+
+
+def test_aucun_profil_livre_ne_pose_de_liaison_de_manette():
+    """La garde de D3, et la seule mécanisable.
+
+    Un relevé n'est valide que fait par l'émulateur lui-même, dans sa propre
+    configuration, une fois le pad choisi dans son interface (plan des
+    manettes, tâche 1 — quatre identifiants relevés pour une seule manette
+    physique, un seul bon). Une liaison écrite d'après une recette est donc
+    fausse, et son échec est INDISCERNABLE de l'absence de liaison :
+    l'émulateur l'ignore sans un mot. Huit des neuf profils livrés n'ont
+    toujours aucun relevé.
+
+    DuckStation fait exception depuis le 2026-08-29, et l'exception est
+    NOMMÉE : ses vingt-sept liaisons ont été écrites par son propre assistant,
+    et elles vivent dans `enforced` — pas ici. `content` reste, pour les neuf
+    profils, un endroit où aucune liaison de manette n'a le droit d'être : ce
+    qu'on y poserait ne serait posé que sur une console qui n'a jamais joué.
+    """
+    for f in sorted(PROFILS.glob("*.toml")):
+        profil = profiles.load_profile(f)
+        if profil.bootstrap is None:
+            continue
+        if profil.input_mapping == profiles.MAPPING_AUTO:
+            continue
+        actives = [l.strip() for l in profil.bootstrap.content.splitlines()
+                   if l.strip() and not l.lstrip().startswith((";", "#"))]
+        fautives = [l for l in actives if l.lower().startswith("bindings/")]
+        assert fautives == [], (
+            f"{f.name} : le bloc [bootstrap] pose des liaisons de manette "
+            f"alors que son [input] mapping vaut « {profil.input_mapping} » : "
+            + " | ".join(fautives)
+        )
+
+
+def test_les_liaisons_de_duckstation_sont_imposees_et_non_posees_une_fois():
+    """Le régime de [Pad1], et il n'est pas interchangeable.
+
+    Le squelette entièrement commenté que ce test gardait jusqu'au 2026-08-29
+    n'a plus lieu d'être : les liaisons ont été relevées, elles sont réelles,
+    et elles vivent désormais dans `enforced`.
+
+    `content` ne les poserait JAMAIS sur une console déjà jouée : le fichier y
+    existe, et le régime « si-absent » passe son chemin. Or DuckStation ne
+    rouvre jamais ce fichier sous « -batch -nogui » (mesuré le 2026-08-29 :
+    cinq heures et demie de jeu sans une écriture), donc rien ne viendrait
+    jamais réparer la manette. Les deux moitiés de ce test disent la même
+    chose : [Pad1] est dans `enforced`, et NULLE PART dans `content`.
+    """
+    b = profiles.load_profile(PROFILS / "duckstation.toml").bootstrap
+    pad_impose = [c for s, c in _cles_ini(b.enforced) if s == "Pad1"]
+    assert len(pad_impose) == 27, (
+        "duckstation.toml : `enforced` ne porte plus les vingt-sept liaisons "
+        f"relevées le 2026-08-29, mais {len(pad_impose)}. Elles ont été "
+        "écrites par DuckStation lui-même ; en retirer une, c'est rendre un "
+        "bouton muet sans qu'aucun message ne le dise."
+    )
+    pad_pose = [c for s, c in _cles_ini(b.content) if s == "Pad1"]
+    assert pad_pose == [], (
+        "duckstation.toml : des liaisons de manette sont passées dans "
+        "`content`, qui n'est posé que si le fichier est ABSENT. Sur une "
+        f"console déjà jouée elles ne seraient jamais écrites : {pad_pose}"
+    )
+
+
+def test_la_procedure_de_releve_existe_et_est_atteignable():
+    """`retro status` renvoie le propriétaire vers cette page : un renvoi qui
+    ne mène nulle part est pire que pas de renvoi — il se lit comme une
+    procédure existante que le lecteur n'arriverait pas à trouver."""
+    from retro import status
+    procedure = RACINE / "docs" / "releve-manettes.md"
+    assert procedure.is_file(), f"{procedure} n'existe pas"
+    assert status.PROCEDURE_RELEVE.endswith("releve-manettes.md")
+    assert (RACINE / status.PROCEDURE_RELEVE).is_file()
+
+
+def test_les_liaisons_de_duckstation_portent_la_forme_qu_il_a_ecrite():
+    """La forme de `[Pad1]` n'est pas supposée : elle est RELEVÉE.
+
+    Le 2026-08-29, sur l'invité NIVUUS-WIN (`provision_version` B1,
+    DuckStation v0.1-11609), l'assistant de DuckStation a écrit lui-même ces
+    lignes après un appariement automatique, pad virtuel d'Apollo branché. Ce
+    test garde ce que ce relevé a TRANCHÉ, et refuse chacune des formes qui
+    avaient été envisagées puis mesurées fausses ou non retenues :
+
+      - des clés `Bindings/…` — c'est la forme de PCSX2, absente du binaire de
+        DuckStation, et `docs/dettes.md` la supposait à tort ;
+      - `XInput-0/…` — les deux gabarits existent dans le binaire, mais
+        DuckStation a écrit `SDL-0`. Ne pas choisir était honnête tant que rien
+        n'était relevé ; choisir AUTRE CHOSE que ce qu'il a écrit ne l'est
+        plus ;
+      - une clé `Type` — DuckStation n'en écrit AUCUNE. En ajouter une serait
+        prétendre en savoir plus que l'émulateur sur son propre fichier, et
+        c'est exactement la faute que ce dépôt refuse.
+
+    Le silence est le danger de fond : une liaison qui ne correspond à rien est
+    ignorée sans un mot, et la manette reste muette comme si la section était
+    vide. Aucune de ces fautes ne se verrait autrement qu'ici.
+    """
+    b = profiles.load_profile(PROFILS / "duckstation.toml").bootstrap
+    impose = dict(_cles_ini(b.enforced))
+    pad = [(s, c) for s, c in _cles_ini(b.enforced) if s == "Pad1"]
+
+    fautives = [c for _, c in pad if c.lower().startswith("bindings/")]
+    assert fautives == [], (
+        "duckstation.toml : [Pad1] porte des clés « Bindings/ », forme "
+        "relevée ABSENTE de l'exécutable de DuckStation le 2026-08-29. C'est "
+        "la forme de PCSX2 : " + " | ".join(fautives)
+    )
+    assert "Type" not in impose, (
+        "duckstation.toml : [Pad1] porte une clé « Type » que DuckStation n'a "
+        "PAS écrite. Le fragment imposé est ce que l'émulateur a produit, pas "
+        "ce qu'on aurait cru bon d'y ajouter."
+    )
+
+    # Les valeurs, relues dans le fragment : toutes SDL-0, aucune XInput.
+    valeurs = [l.split("=", 1)[1].strip()
+               for l in b.enforced.splitlines()
+               if "=" in l and l.split("=", 1)[0].strip()
+               in {c for _, c in pad}]
+    hors = [v for v in valeurs if not v.startswith("SDL-0/")]
+    assert hors == [], (
+        "duckstation.toml : des liaisons de [Pad1] ne portent pas "
+        "l'identifiant « SDL-0 » relevé le 2026-08-29 : " + " | ".join(hors)
+    )
+    assert any(v.endswith(("LargeMotor", "SmallMotor")) for v in valeurs), (
+        "duckstation.toml : les deux liaisons de vibration (LargeMotor, "
+        "SmallMotor) ont disparu de [Pad1]. Elles font partie de ce que "
+        "DuckStation a écrit, et elles sont un maillon de la dette D1."
+    )

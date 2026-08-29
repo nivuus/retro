@@ -53,6 +53,26 @@ class System:
 MARQUE_BOOTSTRAP = "Écrit par « retro »"
 
 
+# L'état du RELEVÉ d'une manette, et jamais l'identifiant lui-même.
+#
+# Un identifiant de périphérique n'est pas une propriété du périphérique :
+# c'est une propriété de l'ÉMULATEUR qui le nomme. Le relevé du 2026-08-28
+# (plan des manettes, tâche 1) a produit QUATRE identifiants pour une seule
+# manette physique — le VID/PID de Windows, deux relevés SDL sous deux pilotes,
+# et celui que l'émulateur avait écrit lui-même. Un seul était le bon, et
+# c'était le dernier.
+#
+# D'où la règle, et d'où ce champ : toute valeur non relevée sur la machine est
+# FAUSSE, et sa fausseté est indiscernable de l'absence de valeur — une liaison
+# qui ne correspond à aucun périphérique est ignorée EN SILENCE, et la manette
+# reste muette exactement comme si le fichier était vide. Un profil ne peut
+# donc écrire honnêtement qu'une chose : où en est le relevé.
+MAPPING_AUTO = "auto"           # mesuré : cet émulateur trouve la manette seul
+MAPPING_A_RELEVER = "a-relever"  # mesuré : il ne la trouve pas, rien n'est relevé
+MAPPING_INCONNU = "inconnu"     # personne n'a mesuré
+MAPPINGS = (MAPPING_AUTO, MAPPING_A_RELEVER, MAPPING_INCONNU)
+
+
 @dataclasses.dataclass(frozen=True)
 class Bootstrap:
     """La configuration qu'un émulateur neuf reçoit, et où elle va.
@@ -118,6 +138,13 @@ class Profile:
     exit_native: str
     exit_fallback: str
     steam_input: str
+    # Où en est le relevé de la manette de cet émulateur, et où il se fait.
+    # `input_mapping_where` n'est PAS un identifiant : c'est le fichier, et la
+    # section, que le propriétaire doit ouvrir sur la console. `retro status`
+    # en fait le « où » du problème qu'il énonce — un constat sans chemin est
+    # une accusation, pas un diagnostic.
+    input_mapping: str = MAPPING_INCONNU
+    input_mapping_where: str = ""
     # Facultatif : un émulateur qui démarre nu n'a rien à recevoir. Le profil
     # doit alors DIRE pourquoi il n'a pas de bloc — sans quoi rien ne
     # distingue « cet émulateur se débrouille » d'un bloc oublié.
@@ -513,6 +540,52 @@ def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
         )
 
 
+def _lire_mapping(path: pathlib.Path, entree: dict) -> tuple[str, str]:
+    """L'état du relevé de la manette, validé, et l'endroit où il se fait.
+
+    Le défaut est `inconnu`, et ce choix se défend contre les deux autres :
+
+    - `auto` par défaut ferait dire au rapport que neuf émulateurs trouvent
+      leur manette seuls, ce que personne n'a mesuré. C'est très exactement le
+      mensonge de `steam_input = "required"`, que ce module typographie et
+      relit sans qu'aucun code ne l'applique jamais, et qui a fait croire
+      pendant tout un diagnostic que la question des manettes était traitée ;
+    - `a-relever` par défaut accuserait huit émulateurs d'une panne que
+      personne n'a constatée, et noierait la seule qui l'a été.
+
+    `inconnu` est le seul état vrai d'un profil qui se tait. Il n'est pas un
+    problème — mais il est NOMMÉ, faute de quoi « personne n'a regardé » et
+    « cet émulateur se débrouille » se lisent pareil.
+    """
+    etat = entree.get("mapping", MAPPING_INCONNU)
+    if etat not in MAPPINGS:
+        raise ProfileError(
+            f"{path} [input] : 'mapping' vaut {etat!r}, attendu l'un de "
+            f"{', '.join(MAPPINGS)}. Ce champ ne porte JAMAIS un identifiant "
+            "de manette — il dit où en est le RELEVÉ, seule chose qu'on "
+            "puisse écrire sans avoir mesuré. Une faute de frappe y "
+            "retomberait sur le défaut « inconnu » et ferait taire "
+            "« retro status » sur l'émulateur précisément concerné."
+        )
+    ou = entree.get("mapping_where", "")
+    if not isinstance(ou, str):
+        raise ProfileError(
+            f"{path} [input] : 'mapping_where' doit être un texte — le "
+            "fichier, et la section, que le propriétaire ouvrira sur la "
+            f"console. Reçu {ou!r}."
+        )
+    ou = ou.strip()
+    if etat == MAPPING_A_RELEVER and not ou:
+        raise ProfileError(
+            f"{path} [input] : 'mapping' vaut « {MAPPING_A_RELEVER} » mais "
+            "'mapping_where' est vide. « Un constat sans chemin ni action "
+            "n'aide personne » : le rapport dirait « la manette restera "
+            "muette » sans dire quel fichier ouvrir, et cette panne-là ne se "
+            "constate que le pad en main, devant la télévision."
+        )
+    return etat, ou
+
+
 # L'identifiant d'un profil n'est pas une étiquette : il NOMME un fichier et
 # il se DÉCOUPE, à trois endroits, dans trois langages différents.
 #
@@ -736,11 +809,14 @@ def load_profile(path: pathlib.Path) -> Profile:
 
     sortie = data.get("exit", {})
     entree = data.get("input", {})
+    mapping, mapping_ou = _lire_mapping(path, entree)
     return Profile(
         id=data["id"], exe=data["exe"], systems=tuple(systemes),
         exit_native=sortie.get("native", ""),
         exit_fallback=sortie.get("fallback", "alt+f4"),
         steam_input=entree.get("steam_input", "required"),
+        input_mapping=mapping,
+        input_mapping_where=mapping_ou,
         bootstrap=_lire_bootstrap(path, data.get("bootstrap")),
     )
 

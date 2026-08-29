@@ -39,7 +39,7 @@ from collections.abc import Sequence
 
 from retro import install as install_mod
 from retro import launcher as launcher_mod
-from retro import profiles
+from retro import profiles as profiles_mod
 from retro import render as render_mod
 from retro.bios import BiosNeed, SystemBios
 from retro.scan import IgnoredSystem
@@ -128,9 +128,73 @@ def etat_amorcage(profils: dict,
             profile_id=pid, declare=declare,
             date=date if declare else "",
             target=cible if declare else "",
-            imposees=(len(profiles.cles_ini(amorcage.enforced))
+            imposees=(len(profiles_mod.cles_ini(amorcage.enforced))
                       if declare else 0)))
     return etats
+
+
+# La page que `retro status` fait ouvrir au propriétaire quand une manette
+# reste à relever. Le chemin est relatif à la racine du dépôt : c'est la seule
+# forme qui vaille depuis la console comme depuis l'hôte.
+PROCEDURE_RELEVE = "docs/releve-manettes.md"
+
+
+@dataclasses.dataclass(frozen=True)
+class Manette:
+    """Où en est le relevé de la manette d'un émulateur.
+
+    Trois états, et il faut les trois : « il trouve sa manette seul », « il ne
+    la trouve pas et rien n'a été relevé », « personne n'a mesuré ». Réduits à
+    deux, le troisième se confondrait avec l'un des deux autres — et c'est
+    précisément cette confusion qui a laissé DuckStation muet sur Crash Team
+    Racing, le plan des manettes le rangeant parmi ceux qui « détectent bien
+    tout seuls » sans que ce soit vrai.
+
+    `where` n'est jamais un identifiant : c'est le fichier, et la section, que
+    le propriétaire ouvrira. Aucun identifiant relevé ailleurs que sur la
+    machine n'a le droit d'entrer dans ce projet.
+    """
+    profile_id: str
+    etat: str
+    where: str = ""
+
+
+def etat_manettes(profils: dict) -> list[Manette]:
+    """L'état de relevé de chaque profil, tel qu'il se déclare."""
+    return [Manette(profile_id=pid,
+                    etat=getattr(profils[pid], "input_mapping",
+                                 profiles_mod.MAPPING_INCONNU),
+                    where=getattr(profils[pid], "input_mapping_where", ""))
+            for pid in sorted(profils)]
+
+
+def _probleme_manettes(manettes: list[Manette]) -> list[Problem]:
+    """Un problème par émulateur dont la manette est MESURÉE muette.
+
+    Un seul problème groupé — la forme retenue pour les modes de rendu et pour
+    Steam Input — serait ici le mauvais choix : le fichier à ouvrir et la
+    section à remplir diffèrent d'un émulateur à l'autre, et un problème sans
+    son chemin est une accusation. Ils sont rares par construction : seul un
+    émulateur dont quelqu'un a CONSTATÉ la manette muette y figure.
+
+    `inconnu` n'en est pas un : personne n'a regardé, ce n'est pas une panne.
+    Il est dit dans la section Manettes, et nulle part ailleurs.
+    """
+    return [Problem(
+        what=f"{m.profile_id} : aucune liaison de manette n'a été relevée — "
+             "la manette restera muette, et l'émulateur ne le dira pas",
+        where=m.where,
+        action=f"jouer la procédure de relevé ({PROCEDURE_RELEVE}) sur la "
+               "console, session ouverte et manette branchée, puis reporter "
+               "dans le profil ce que l'émulateur a écrit lui-même",
+        # La phrase qui empêche la « correction » qui n'en est pas une. Sans
+        # elle, le prochain lecteur recopie un identifiant trouvé dans une
+        # recette, relance, et constate le MÊME symptôme qu'avant sans
+        # comprendre que sa valeur est simplement ignorée.
+        details=("une liaison qui ne correspond à aucun périphérique est "
+                 "ignorée en silence : le symptôme est identique avant et "
+                 "après une valeur inventée",),
+    ) for m in manettes if m.etat == profiles_mod.MAPPING_A_RELEVER]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -145,6 +209,7 @@ class Report:
     render_mode: str = ""
     render: list[SystemRender] = dataclasses.field(default_factory=list)
     amorcages: list[Amorcage] = dataclasses.field(default_factory=list)
+    manettes: list[Manette] = dataclasses.field(default_factory=list)
 
 
 def _joindre(racine: str, *parties: str) -> str:
@@ -527,6 +592,7 @@ def build_report(
     emulateurs, problemes_emulateurs = _etat_emulateurs(
         install_dirs, emulation_root, ignored_systems, emulator_exes)
     rendu = etat_rendu(profils) if profils else []
+    manettes = etat_manettes(profils) if profils else []
     return Report(
         emulators=emulateurs,
         systems=list(systems),
@@ -536,11 +602,13 @@ def build_report(
                   *_probleme_sans_modes(rendu),
                   *_probleme_remplissage_non_mesure(rendu),
                   *_probleme_steam_input(steam_input_muets, steam_input_echec),
-                  *_probleme_lanceur_perime(lanceur_perime, emulation_root)],
+                  *_probleme_lanceur_perime(lanceur_perime, emulation_root),
+                  *_probleme_manettes(manettes)],
         bios_root=bios_root,
         render_mode=render_mode,
         render=rendu,
         amorcages=etat_amorcage(profils, amorcages or {}) if profils else [],
+        manettes=manettes,
     )
 
 
@@ -712,6 +780,28 @@ def _lignes_amorcage(report: Report) -> list[str]:
     return lignes
 
 
+def _lignes_manettes(report: Report) -> list[str]:
+    """Où en est la manette de chaque émulateur.
+
+    Trois formulations, une par état, sur le modèle de la section Amorçage.
+    Celle de `a-relever` NOMME le fichier : c'est là que le propriétaire ira,
+    et un rapport qui dit « à relever » sans dire où ne fait que déplacer la
+    question.
+    """
+    lignes = []
+    for m in report.manettes:
+        if m.etat == profiles_mod.MAPPING_AUTO:
+            lignes.append(f"  · {m.profile_id} : trouve sa manette seul "
+                          "(mesuré)")
+        elif m.etat == profiles_mod.MAPPING_A_RELEVER:
+            lignes.append(f"  · {m.profile_id} : manette muette, liaison à "
+                          f"relever — {m.where}")
+        else:
+            lignes.append(f"  · {m.profile_id} : jamais mesuré — personne n'a "
+                          "vérifié que sa manette répond")
+    return lignes
+
+
 def format_report(report: Report) -> str:
     """Le texte que l'hôte relaie tel quel au propriétaire."""
     sections: list[str] = []
@@ -749,6 +839,14 @@ def format_report(report: Report) -> str:
     sections += _section(
         "Amorçage", _lignes_amorcage(report),
         "aucun profil chargé : l'amorçage se lit profil par profil")
+
+    # INCONDITIONNELLE, comme BIOS, Rendu et Amorçage. Elle l'est ici pour une
+    # raison de plus : une manette muette ne se constate que le pad en main,
+    # devant la télévision, et une section absente serait lue comme « rien à
+    # signaler » par quelqu'un qui vient justement de ne pas pouvoir jouer.
+    sections += _section(
+        "Manettes", _lignes_manettes(report),
+        "aucun profil chargé : l'état des manettes se lit profil par profil")
 
     nb = len(report.problems)
     # 0 et 1 prennent le singulier en français : « Problème (1) », pas

@@ -71,13 +71,14 @@ exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 # annoncer « BIOS présent » sur un émulateur qui n'en voit aucun.
 # DEUX RÉGIMES SUR CE FICHIER, arbitrés par le propriétaire le 2026-08-29.
 #
-# `enforced` — ce que la console IMPOSE, reposé à chaque lancement. Trois clés,
-# et pas une de plus : sans elles, un jeu ne démarre pas sans clavier.
-# L'assistant de première configuration s'ouvre par-dessus (SetupWizard), ou
-# une fenêtre « Mise à jour disponible » qu'aucune manette ne ferme
-# (AutoUpdater), ou le jeu s'ouvre en fenêtre sur la télévision
-# (StartFullscreen). Ce sont les trois causes mesurées d'un lancement qui
-# échoue, pas des préférences.
+# `enforced` — ce que la console IMPOSE, reposé à chaque lancement. Trois clés
+# de démarrage, et la section [Pad1] : sans elles, un jeu ne démarre pas sans
+# clavier, ou démarre sans qu'aucun bouton ne réponde. L'assistant de première
+# configuration s'ouvre par-dessus (SetupWizard), ou une fenêtre « Mise à jour
+# disponible » qu'aucune manette ne ferme (AutoUpdater), ou le jeu s'ouvre en
+# fenêtre sur la télévision (StartFullscreen), ou la manette reste muette
+# (Pad1). Ce sont les causes mesurées d'un lancement qui échoue, pas des
+# préférences.
 #
 # `content` — tout le reste, posé UNE FOIS parce que le fichier n'existait
 # pas, et plus jamais retouché. Ce sont des préférences : le propriétaire les
@@ -118,10 +119,58 @@ exe = 'duckstation-qt-x64-ReleaseLTCG.exe'
 [bootstrap]
 target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
 
-# Les clés que la console IMPOSE. D3 ajoutera sa section [Pad1] ICI, et rien
-# d'autre : le mécanisme, la sauvegarde et l'idempotence sont déjà en place.
-# Pas de commentaires dans ce fragment — la fusion ne reporte que les clés,
-# et un commentaire y serait un texte que personne ne lirait jamais.
+# Les clés que la console IMPOSE. Pas de commentaires dans ce fragment — la
+# fusion ne reporte que les clés, et un commentaire y serait un texte que
+# personne ne lirait jamais. Ce qu'il faut en savoir se lit donc ici.
+#
+# [Pad1] — LES VINGT-SEPT LIAISONS DE LA MANETTE, relevées le 2026-08-29 sur
+# l'invité NIVUUS-WIN (provision_version B1), DuckStation v0.1-11609, le pad
+# virtuel d'Apollo créé par ViGEmBus. Elles n'ont pas été recopiées d'une
+# recette : elles ont été ÉCRITES PAR L'ASSISTANT DE DUCKSTATION lui-même,
+# après un appariement automatique, puis relues dans le settings.ini qu'il
+# venait d'écrire. C'est le seul relevé valide — une liaison qui ne correspond
+# à rien est ignorée EN SILENCE, donc une valeur inventée est indiscernable de
+# l'absence de valeur, à l'œil comme au journal. La procédure jouée est
+# docs/releve-manettes.md.
+#
+# Ce que le relevé a tranché, et qui était ouvert jusque-là : les clés sont
+# NUES (« Cross », « LLeft »…) et non « Bindings/… » — cette dernière forme
+# est celle de PCSX2 ; l'identifiant est « SDL-0 » et non « XInput-0 » ; les
+# axes portent un préfixe « + » ou « - » ; et DuckStation n'écrit AUCUNE clé
+# « Type ». Elle n'est donc pas ajoutée : ce fragment est ce que l'émulateur
+# a produit, pas ce qu'on aurait cru bon d'y mettre.
+#
+# POURQUOI `enforced` ET NON `content`. Sous « -batch -nogui » — le seul mode
+# que la console emploie — DuckStation ne rouvre JAMAIS ce fichier (mesuré :
+# settings.ini du 28/08 13:21, playtime.dat du 28/08 18:55, cinq heures et
+# demie de jeu sans une écriture). Un régime « si-absent » ne poserait donc
+# ces liaisons sur AUCUNE console déjà jouée — le fichier y existe. C'est
+# exactement le cas d'usage pour lequel les deux régimes ont été séparés.
+#
+# FRAGILITÉ 1 — « SDL-0 » EST UN INDEX, PAS UN GUID. Le premier champ numérote
+# les manettes dans l'ordre où SDL les énumère ; il ne dit rien du
+# périphérique. Si un autre pad s'énumère avant celui d'Apollo — une DualShock
+# 4 laissée branchée, une manette du client, un pad virtuel de plus — le pad
+# d'Apollo devient SDL-1, et les vingt-sept liaisons ci-dessous visent un
+# périphérique qui n'est pas là. DuckStation ne le dira PAS : elles seront
+# ignorées en silence, et le symptôme sera exactement celui d'avant ce relevé,
+# manette muette et rien dans le journal. C'est le contraire de la fragilité
+# de D4 : un changement de type de pad ne casse pas ces liaisons (aucun GUID
+# n'y figure), mais un pad de PLUS les casse toutes.
+#
+# FRAGILITÉ 2 — LE PROPRIÉTAIRE NE PEUT PLUS REMAPPER SA MANETTE DANS
+# DUCKSTATION. `enforced` repose ces liaisons à CHAQUE lancement : un
+# remappage fait dans l'interface de DuckStation sera écrasé au lancement
+# suivant, sans message. C'est le prix assumé d'un émulateur jouable — sans
+# ces lignes, aucun bouton ne répond du tout — mais c'est un prix, et il est
+# écrit ici pour être vu plutôt que subi. Pour remapper vraiment, il faut
+# changer CE fragment ; pour rendre le remappage au propriétaire, il faut
+# déplacer [Pad1] dans `content` et accepter qu'il ne soit jamais posé sur une
+# console déjà jouée.
+#
+# LargeMotor et SmallMotor sont les deux liaisons de VIBRATION, et elles
+# étaient absentes jusqu'ici : c'est un maillon de la dette D1 qui devient
+# actionnable sans nouvelle mesure.
 enforced = '''
 [Main]
 SetupWizardIncomplete = false
@@ -129,6 +178,35 @@ StartFullscreen = true
 
 [AutoUpdater]
 CheckAtStartup = false
+
+[Pad1]
+Analog = SDL-0/Guide
+Circle = SDL-0/B
+Cross = SDL-0/A
+Down = SDL-0/DPadDown
+L1 = SDL-0/LeftShoulder
+L2 = SDL-0/+LeftTrigger
+L3 = SDL-0/LeftStick
+LDown = SDL-0/+LeftY
+LLeft = SDL-0/-LeftX
+LRight = SDL-0/+LeftX
+LUp = SDL-0/-LeftY
+LargeMotor = SDL-0/LargeMotor
+Left = SDL-0/DPadLeft
+R1 = SDL-0/RightShoulder
+R2 = SDL-0/+RightTrigger
+R3 = SDL-0/RightStick
+RDown = SDL-0/+RightY
+RLeft = SDL-0/-RightX
+RRight = SDL-0/+RightX
+RUp = SDL-0/-RightY
+Right = SDL-0/DPadRight
+Select = SDL-0/Back
+SmallMotor = SDL-0/SmallMotor
+Square = SDL-0/X
+Start = SDL-0/Start
+Triangle = SDL-0/Y
+Up = SDL-0/DPadUp
 '''
 
 content = '''
@@ -137,7 +215,9 @@ content = '''
 ;
 ;   1. les clés que la console IMPOSE, reposées à chaque lancement — elles
 ;      portent la marque « posé par « retro » ». Sans elles, un jeu ne démarre
-;      pas sans clavier. Les changer ici ne sert à rien : elles reviennent.
+;      pas sans clavier, ou démarre sans qu'aucun bouton ne réponde : les
+;      liaisons de manette de [Pad1] en font partie. Les changer ici ne sert à
+;      rien, y compris depuis l'interface de DuckStation : elles reviennent.
 ;   2. les clés ci-dessous, posées UNE FOIS parce que ce fichier n'existait
 ;      pas, et que « retro » ne retouche plus jamais. Ce sont des préférences :
 ;      changez-les dans DuckStation, votre choix tient.
@@ -172,16 +252,33 @@ HideCursorInFullscreen = true
 # Ce que cela contredit : le plan des manettes range DuckStation parmi les
 # émulateurs qui « détectent bien tout seuls » leur manette. C'est faux ici, ou
 # ne vaut que d'un pad physique — le pad d'Apollo n'existe que pendant la
-# session. Le mapping de DuckStation vit dans la section [Pad1] du settings.ini
-# ci-dessus, que l'amorçage écrit SANS aucune clé d'entrée.
+# session.
 #
-# À mesurer avant d'écrire une seule liaison : ce que [Pad1] attend — Type,
-# Bindings/..., et sous quelle forme d'identifiant. Une liaison qui ne
-# correspond à rien est ignorée EN SILENCE, et la manette reste muette
-# exactement comme si le fichier était vide. Voir docs/dettes.md, D3.
+# LES LIAISONS ONT ÉTÉ RELEVÉES le 2026-08-29, et elles sont dans `enforced`
+# ci-dessus : vingt-sept lignes écrites par l'assistant de DuckStation
+# lui-même. La procédure jouée, ses pièges et son coût sont dans
+# docs/releve-manettes.md.
+#
+# `mapping` RESTE « a-relever », et ce n'est pas un oubli. La procédure pose
+# trois conditions pour tenir un relevé pour bon : la section existe et porte
+# des clés qui n'y étaient pas (fait) ; ces lignes ont été écrites par
+# DuckStation et non à la main (fait) ; ET un jeu lancé depuis Steam répond à
+# la manette — CELLE-LÀ N'EST PAS VÉRIFIÉE. L'invité a été restauré après le
+# relevé, il ne porte plus de [Pad1], et rien n'a été joué depuis. « auto »
+# dirait que DuckStation trouve sa manette seul : c'est faux, il ne la trouve
+# que parce que la console lui impose ces vingt-sept liaisons. Tant qu'aucun
+# bouton n'a été VU répondre, l'état vrai reste celui d'une panne dont le
+# relevé n'est pas clos. Voir docs/dettes.md, D3.
+#
+# `mapping_where` n'est pas décoratif : c'est le « où » du problème que le
+# rapport énonce, et sans lui le propriétaire lirait « la manette restera
+# muette » sans savoir quel fichier ouvrir. C'est le fichier que l'amorçage
+# écrit, à l'endroit exact où DuckStation le lira.
 [input]
 steam_input = "required"
 mode        = "xinput"
+mapping       = "a-relever"
+mapping_where = '%USERPROFILE%\Documents\DuckStation\settings.ini, section [Pad1]'
 
 [exit]
 # DuckStation ne lie AUCUN bouton de manette par défaut à « Open Pause Menu » :
