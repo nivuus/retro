@@ -342,6 +342,19 @@ class Pad:
     minuscule (« 045e:028e »). Il n'est pas un GUID SDL et n'en tient pas
     lieu : il sert à comparer ce qui est branché à ce sous quoi les relevés
     ont été faits, jamais à écrire une liaison.
+
+    ⚠ ET `index` N'EST PAS L'INDEX SDL. Le lanceur énumère par winmm
+    (`joyGetNumDevs` / `joyGetDevCapsW`), choisi parce qu'il ne demande aucune
+    référence d'assemblage — donc aucune modification de `compiler.cmd`. Rien
+    ne garantit que la numérotation de winmm coïncide avec celle de SDL, dont
+    relèvent les « SDL-0 » de DuckStation. Elles coïncident quand il n'y a
+    qu'UNE manette, qui est le cas normal de cette console.
+
+    C'est pourquoi les deux constats que `status` en tire n'ont pas la même
+    solidité, et il vaut mieux le savoir : le NOMBRE de manettes ne dépend
+    d'aucune numérotation et se tient ; le « pad d'index 0 » suppose que les
+    deux ordres coïncident, ce qui n'a PAS été mesuré. Sur une console à une
+    seule manette — celle où ce filet sert — la question ne se pose pas.
     """
     index: int
     vid_pid: str

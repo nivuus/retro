@@ -1409,3 +1409,119 @@ def test_rpcs3_dit_que_son_gestionnaire_ne_survivra_pas_a_la_bascule():
         "rpcs3.toml ne dit pas que la panne sera SILENCIEUSE — c'est la "
         "moitié de l'information : une panne annoncée se corrige, celle-ci "
         "se confondra avec « rien ne marche depuis toujours »")
+
+
+# --- le lanceur écrit le témoin des manettes -------------------------------
+#
+# Il n'existe AUCUN cadre de test C# dans ce dépôt, et aucun compilateur C# sur
+# l'hôte. Ce que ces tests peuvent prouver est donc borné, et il vaut mieux le
+# dire que le laisser croire : ils vérifient que la source PORTE le mécanisme
+# et respecte les contrats testables depuis Python — le nom du fichier, le
+# format de date, l'absence de référence d'assemblage nouvelle. Ils ne
+# prouvent NI que le code compile, NI qu'il énumère correctement une manette.
+# Cela se mesure sur la console, et le plan dit comment (tâche 6).
+
+
+def _source_du_lanceur():
+    from retro import launcher
+    return (launcher.SOURCES / launcher.SOURCE).read_text(encoding="utf-8-sig")
+
+
+def test_le_lanceur_ecrit_le_temoin_que_python_va_lire():
+    """Le nom du fichier est un CONTRAT entre deux langages, et il n'a pas
+    d'autre gardien. Écrit sous un nom, lu sous un autre, il ne produirait
+    aucune erreur : `retro status` dirait « le lanceur n'a jamais relevé de
+    manette » à chaque lancement, indéfiniment, sur une console qui écrit
+    pourtant le fichier à chaque fois."""
+    from retro import launcher
+    assert launcher.TEMOIN_PADS == "pads.txt"
+    assert f'"{launcher.TEMOIN_PADS}"' in _source_du_lanceur(), (
+        "retro-launch.cs n'écrit pas le témoin sous le nom que "
+        "launcher.lire_pads va chercher")
+
+
+def test_le_lanceur_enumere_les_manettes_par_winmm():
+    """Le choix retenu par le plan, et il n'est pas esthétique : winmm ne
+    demande AUCUNE référence d'assemblage supplémentaire, là où
+    System.Management en exigerait une — donc une modification de
+    `compiler.cmd`, dont l'encodage cp850 est gardé par un test et dont chaque
+    ligne coupée rend le lanceur non compilable sur la console."""
+    source = _source_du_lanceur()
+    for symbole in ("winmm.dll", "joyGetNumDevs", "joyGetDevCapsW",
+                    "wMid", "wPid", "szPname"):
+        assert symbole in source, (
+            f"retro-launch.cs n'utilise plus « {symbole} » : l'énumération "
+            "des manettes a changé de moyen, et ce changement doit être "
+            "réexaminé au regard de compiler.cmd")
+    # Le contrôle porte sur l'USAGE, pas sur la mention : la source EXPLIQUE
+    # en commentaire pourquoi elle n'emprunte pas cette voie, et interdire le
+    # mot effacerait justement l'explication. Ce qu'on refuse est la directive
+    # « using », seule forme qui obligerait à ajouter une référence.
+    usings = [l.strip() for l in source.splitlines()
+              if l.strip().startswith("using ")]
+    assert not [u for u in usings if "System.Management" in u], (
+        "le lanceur importe System.Management : cela exigerait une référence "
+        "d'assemblage, donc une modification de compiler.cmd — dont chaque "
+        "ligne coupée rend le lanceur non compilable sur la console. C'est "
+        "très exactement ce que le recours à winmm existe pour éviter.")
+
+
+def test_le_temoin_des_manettes_porte_la_date_en_culture_invariante():
+    """LE MÊME CONTRAT QUE bootstrap.txt, ET POUR LA MÊME RAISON. Dans un
+    format personnalisé, « : » est le séparateur d'heure DE LA CULTURE et
+    l'année suit son calendrier : une culture exotique sur la console
+    écrirait une date que `lire_pads` ne reconnaîtrait pas — et le rapport
+    dirait « jamais relevé de manette » sans qu'un mot soit dit."""
+    source = _source_du_lanceur()
+    bloc = source[source.index("InscrireTemoinPads"):]
+    assert '"yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture' in bloc, (
+        "le témoin des manettes n'écrit pas sa date en culture invariante")
+
+
+def test_ecrire_le_temoin_des_manettes_ne_peut_pas_empecher_un_jeu(tmp_path):
+    """La règle du lanceur, et `InscrireTemoin` en est le modèle exact : rien
+    de ce qui SERT À OBSERVER ne doit pouvoir priver le propriétaire de son
+    jeu. Une manette illisible, un partage verrouillé, un pilote absent —
+    aucun de ces cas n'a de rapport avec le fait de lancer une ROM.
+
+    Le contrôle porte sur la STRUCTURE : la méthode entière doit être sous
+    try/catch, et le catch doit noter plutôt que se taire — un échec muet
+    ferait croire à zéro manette sur une console qui en a une.
+    """
+    source = _source_du_lanceur()
+    debut = source.index("static void InscrireTemoinPads")
+    corps = source[debut:source.index("\n    static ", debut + 10)]
+    assert "try" in corps and "catch (Exception" in corps, (
+        "InscrireTemoinPads n'est pas protégée : une exception y remonterait "
+        "à Main(), qui affiche une boîte MODALE — et une console de salon "
+        "pilotée à la manette n'a personne pour cliquer. Le jeu ne "
+        "démarrerait jamais.")
+    assert "Noter(" in corps, (
+        "l'échec est avalé sans un mot : un témoin non écrit se lirait comme "
+        "« aucune manette », qui est un constat, et non comme « on n'a pas "
+        "pu regarder », qui n'en est pas un")
+
+
+def test_le_lanceur_note_le_nombre_de_manettes_a_chaque_lancement():
+    """Le journal est la seule trace qui reste quand le témoin ne s'écrit
+    pas. Sans elle, un témoin absent ne se distingue pas d'un lanceur qui
+    n'a jamais essayé."""
+    source = _source_du_lanceur()
+    debut = source.index("static void InscrireTemoinPads")
+    corps = source[debut:source.index("\n    static ", debut + 10)]
+    assert "manette" in corps.lower(), (
+        "rien n'est noté au journal sur les manettes vues")
+
+
+def test_le_temoin_des_manettes_est_ecrit_avant_le_demarrage_de_l_emulateur():
+    """« L'énumération des manettes AVANT de démarrer l'émulateur » : une fois
+    le processus lancé, le lanceur peut être en train de rendre la main, et
+    le témoin décrirait alors une session déjà finie."""
+    source = _source_du_lanceur()
+    appel = source.index("InscrireTemoinPads(")
+    # Le second appel — la définition étant la première occurrence du nom.
+    appels = [n for n in range(len(source))
+              if source.startswith("InscrireTemoinPads(", n)]
+    assert len(appels) >= 2, "InscrireTemoinPads est définie mais jamais appelée"
+    demarrage = source.index("new ProcessStartInfo(")
+    assert min(appels) < demarrage and appel < demarrage
