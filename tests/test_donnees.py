@@ -1107,6 +1107,79 @@ def test_aucun_profil_livre_ne_porte_de_jeton_inconnu():
         f"{', '.join(profiles.JETONS_CIBLE)}) : {fautifs}")
 
 
+# --- RPCS3 : les huit modales de son dossier de dialogue -------------------
+#
+# LA LISTE VIENT DE LA SOURCE, PAS DE LA DETTE. D7 écrivait « sept boîtes de
+# dialogue » dans son titre et en énumérait huit dans son corps : le compte de
+# la phrase n'est donc pas un fait. Relevé le 2026-08-29 dans
+# rpcs3/rpcs3qt/gui_settings.h, où chaque modale est un `gui_save` du groupe
+# `main_window` — le nom du groupe est celui de la constante
+# `const QString main_window = "main_window";`, et c'est lui que QSettings écrit
+# entre crochets, pas le libellé de la fenêtre.
+#
+# HUIT clés, et huit seulement : ce sont TOUTES celles du groupe dont le défaut
+# est `true`. Le groupe en porte d'autres qui leur ressemblent et qui sont
+# écartées à dessein — `infoBoxSkipVersion` est une chaîne vide et non un
+# booléen, `recentGamesFrozen` et `mw_titleBarsVisible` sont déjà `false` par
+# défaut. Imposer `false` sur une clé déjà fausse serait du bruit qui se lit
+# comme un réglage, et masquerait le jour où un vrai défaut changerait.
+#
+# L'ordre est celui de la déclaration dans gui_settings.h : une liste gelée se
+# relit contre sa source, et la réordonner rendrait cette relecture pénible.
+RPCS3_MODALES = (
+    # gui_save ib_pkg_success — true
+    ("main_window", "infoBoxEnabledInstallPKG"),
+    # gui_save ib_pup_success — true. C'est CELLE-CI qui laissait RPCS3 ouvert
+    # après l'installation du firmware : la fenêtre de succès attend un clic
+    # qu'aucune manette ne donne.
+    ("main_window", "infoBoxEnabledInstallPUP"),
+    # gui_save ib_show_welcome — true
+    ("main_window", "infoBoxEnabledWelcome"),
+    # gui_save ib_confirm_exit — true
+    ("main_window", "confirmationBoxExitGame"),
+    # gui_save ib_confirm_boot — true. Celle-ci s'interpose à CHAQUE LANCEMENT
+    # DE JEU : sans elle, aucun jeu ne démarre depuis le canapé.
+    ("main_window", "confirmationBoxBootGame"),
+    # gui_save ib_obsolete_cfg — true
+    ("main_window", "confirmationObsoleteCfg"),
+    # gui_save ib_same_buttons — true
+    ("main_window", "confirmationSameButtons"),
+    # gui_save ib_restart_hint — true
+    ("main_window", "confirmationRestart"),
+)
+
+
+def _amorcage_visant(pid: str, fin: str):
+    """L'entrée [[bootstrap]] d'un profil livré dont la cible finit par `fin`."""
+    cibles = [b for b in profiles.load_profiles(PROFILS)[pid].bootstraps
+              if b.target.endswith(fin)]
+    assert len(cibles) == 1, (
+        f"{pid} : {len(cibles)} entrée(s) [[bootstrap]] visant « {fin} », "
+        "attendu exactement une")
+    return cibles[0]
+
+
+def test_rpcs3_impose_ses_modales():
+    """Huit modales, gelées, et l'écart se voit en revue.
+
+    Chacune est une fenêtre qu'AUCUNE MANETTE NE FERME : sur une console sans
+    clavier, elle ne se distingue pas d'un jeu qui ne démarre pas. En retirer
+    une, c'est rendre un lancement muet ; en ajouter une, c'est reprendre au
+    propriétaire un réglage qu'il croyait sien. Les deux doivent se voir ici.
+
+    IMPOSÉES et non posées une fois : la case se recoche d'un clic dans
+    l'interface de RPCS3, et le fichier existe déjà sur une console jouée, où
+    le régime « si-absent » passerait son chemin sans un mot.
+    """
+    b = _amorcage_visant("rpcs3", "CurrentSettings.ini")
+    assert b.target.startswith(profiles.JETON_INSTALL), b.target
+    assert tuple(_cles_ini(b.enforced)) == RPCS3_MODALES
+    # Et NULLE PART dans le régime « posé une fois » : le réglage serait décidé
+    # à deux endroits, et rien dans le profil ne dirait lequel gagne.
+    poses = set(_cles_ini(b.content)) & set(RPCS3_MODALES)
+    assert poses == set(), poses
+
+
 # --- le lanceur C# lit-il ce que le plan écrit ? ---------------------------
 #
 # Ce dépôt n'a AUCUN cadre de test C#. La seule chose vérifiable depuis ici est

@@ -22,14 +22,70 @@ schema = 1
 id  = "rpcs3"
 exe = 'rpcs3.exe'
 
-# Amorçage : pas de bloc [[bootstrap]]. Ce que RPCS3 doit recevoir pour
-# lancer un jeu au lieu de son assistant de première configuration reste À
-# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
-# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
-# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
-# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
-# « cet émulateur se débrouille » : voir
-# docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
+# AMORÇAGE — PREMIÈRE CIBLE : les huit modales du dossier de dialogue.
+#
+# RPCS3 ouvre huit boîtes de dialogue qu'aucune manette ne ferme. Sur une
+# console sans clavier, une modale ne se distingue pas d'un jeu qui ne démarre
+# pas : `confirmationBoxBootGame` s'interpose à CHAQUE lancement de jeu, et
+# `infoBoxEnabledInstallPUP` est ce qui laissait RPCS3 ouvert après
+# l'installation du firmware, l'écran figé sur une fenêtre de succès.
+#
+# LA LISTE VIENT DE LA SOURCE, pas d'une phrase. Elle est relevée dans
+# rpcs3/rpcs3qt/gui_settings.h, où chaque modale est un `gui_save` du groupe
+# `main_window` — le nom de section est celui de la constante
+# `const QString main_window = "main_window";`, celui que QSettings écrit entre
+# crochets, et non le libellé de la fenêtre. Ce sont TOUTES les clés du groupe
+# dont le défaut est `true` : `infoBoxSkipVersion` est une chaîne et non un
+# booléen, `recentGamesFrozen` et `titleBarsVisible` sont déjà faux. Imposer
+# `false` sur une clé déjà fausse serait du bruit qui se lit comme un réglage.
+# La liste est gelée dans tests/test_donnees.py (RPCS3_MODALES) : l'allonger
+# ou la raccourcir est un acte qui se voit en revue.
+#
+# LA FORME DE LA VALEUR est celle que QSettings écrit pour un booléen faux —
+# `false`, en minuscules, sans guillemets — et c'est le même mécanisme Qt qui a
+# été VÉRIFIÉ PAR L'EFFET le 2026-08-29 sur Vita3K (`warnAdminPrivileges=false`,
+# la modale a disparu). Ce qui reste à faire sur la machine, et que ce profil
+# ne peut pas faire à sa place : rouvrir un CurrentSettings.ini que RPCS3 a
+# lui-même écrit après avoir décoché les cases, et confirmer la forme de là.
+#
+# IMPOSÉ, et pas « posé une fois » : chaque case se recoche d'un clic dans
+# l'interface, et sur une console déjà jouée le fichier existe — le régime
+# « si-absent » passerait son chemin sans un mot.
+[[bootstrap]]
+# Le jeton {install_dir} est substitué à l'écriture du plan (retro/launcher.py,
+# resoudre_cible). Écrire « RPCS3 » en clair ici réécrirait une seconde fois un
+# nom que le manifeste décide, et qu'une surcharge du manifeste du propriétaire
+# peut changer : la cible raterait EN SILENCE.
+target = '{install_dir}\GuiConfigs\CurrentSettings.ini'
+
+# L'en-tête distingue les TROIS catégories, et ce n'est pas une formule : le
+# propriétaire CROIT ce qu'il lit en tête d'un fichier de configuration et
+# règle son comportement dessus.
+#
+# Rien d'autre que l'en-tête : aucune préférence de RPCS3 n'a été mesurée, et
+# en inventer une la rendrait indiscernable d'un relevé.
+content = '''
+; Écrit par « retro », qui distingue trois choses :
+;   · ce qu'il IMPOSE et repose à CHAQUE lancement — les huit modales
+;     ci-dessous ; les recocher dans l'interface ne tiendrait pas ;
+;   · ce qu'il a posé UNE FOIS, à la création de ce fichier, et ne retouche
+;     plus jamais : vos réglages tiennent ;
+;   · tout le reste, qui est à vous et qu'il ne lit même pas.
+'''
+
+# Huit clés, dans l'ordre de leur déclaration dans gui_settings.h — une liste
+# gelée se relit contre sa source.
+enforced = '''
+[main_window]
+infoBoxEnabledInstallPKG=false
+infoBoxEnabledInstallPUP=false
+infoBoxEnabledWelcome=false
+confirmationBoxExitGame=false
+confirmationBoxBootGame=false
+confirmationObsoleteCfg=false
+confirmationSameButtons=false
+confirmationRestart=false
+'''
 
 # `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
 # l'identifiant lui-même : un identifiant n'est pas une propriété du
