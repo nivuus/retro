@@ -19,3 +19,7 @@ secrets.toml
 # roue, pas un état du dépôt. Versionné, il ferait mentir toute construction
 # qui ne le régénère pas.
 retro/_identite.py
+
+# Les worktrees isolés que le harnais crée pour les agents. Non ignorés,
+# un « git add -A » y embarquerait des copies entières de l arbre.
+.claude/worktrees/
