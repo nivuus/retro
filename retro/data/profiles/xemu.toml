@@ -28,9 +28,22 @@ exe = 'xemu.exe'
 # « cet émulateur se débrouille » : voir
 # docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
 
+# `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
+# l'identifiant lui-même : un identifiant n'est pas une propriété du
+# périphérique, c'est une propriété de l'émulateur qui le nomme, et le seul
+# relevé valide est celui que l'émulateur écrit lui-même dans sa propre
+# configuration (plan des manettes, tâche 1 — quatre identifiants relevés pour
+# une seule manette physique, un seul bon).
+#
+# « inconnu » : personne n'a vérifié, le pad en main, que la manette répond
+# dans cet émulateur. Ce n'est PAS « il se débrouille » — le plan des manettes
+# le supposait de DuckStation, et c'était faux (dette D3). Les deux seules
+# lignes mesurées de son tableau sont l'émulateur personnel et DuckStation ;
+# celle-ci n'en est pas. `retro status` le nomme sans l'accuser.
 [input]
 steam_input = "required"
 mode        = "xinput"
+mapping     = "inconnu"
 
 [exit]
 # Rien à déclarer : le menu de xemu est une interface ImGui pilotée à la souris

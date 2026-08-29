@@ -100,6 +100,86 @@ CheckAtStartup = false
 [Display]
 ; « Masquer le curseur en plein écran », cochée.
 HideCursorInFullscreen = true
+
+; ---------------------------------------------------------------------
+; [Pad1] — LE SQUELETTE À REMPLIR. Il est ENTIÈREMENT en commentaire, et
+; ce n'est pas un oubli : c'est la seule forme honnête qu'il puisse
+; prendre tant que personne n'a joué la procédure de relevé.
+;
+; TOUT CE QUI SUIT A ÉTÉ RELEVÉ SUR L'INVITÉ le 2026-08-29 (NIVUUS-WIN,
+; provision_version B1), dans CE fichier et dans l'exécutable livré —
+; la méthode que ce profil emploie déjà pour ses dix-sept arguments et
+; sa liste d'extensions.
+;
+; CE QUI A ÉTÉ CONSTATÉ
+;
+; 1. Ce settings.ini est, sur la console, OCTET POUR OCTET le fichier que
+;    « retro » a posé — commentaires compris — augmenté de la seule
+;    section [BIOS] ajoutée à la main. Il ne porte AUCUNE section [Pad1],
+;    et aucune clé de manette d'aucune sorte.
+; 2. DuckStation ne le réécrit jamais dans cette configuration :
+;    settings.ini datait du 28/08 13:21 quand playtime.dat datait du même
+;    jour à 18:55. Il a donc joué cinq heures et demie APRÈS la dernière
+;    écriture du fichier sans y toucher. Sous « -batch -nogui », il ne
+;    persiste pas ses réglages.
+; 3. L'assistant de première configuration porte une page nommée
+;    « Controller Setup », et l'appariement automatique n'existe que
+;    comme geste d'interface (« Automatic Mapping », « Automatic mapping
+;    failed, no devices are available »).
+;
+; LA CAUSE, qui suit des trois : « SetupWizardIncomplete = false », posé
+; plus haut dans ce même fichier pour qu'un jeu puisse démarrer sans
+; clavier, SAUTE l'assistant — donc sa page « Controller Setup », donc
+; le seul geste qui aurait écrit [Pad1]. Et comme DuckStation ne
+; réécrit jamais ce fichier, rien ne le répare ensuite. Le correctif du
+; défaut précédent est la cause du défaut actuel ; les deux sont
+; nécessaires, et c'est la procédure de relevé qui les concilie.
+;
+; LA FORME DES CLÉS, relevée dans l'exécutable :
+;   - sections « Pad1 » à « Pad8 », et une section « ControllerPorts » ;
+;   - une clé « Type » ;
+;   - des clés de bouton NUES — « Square », « Triangle », « LLeft »,
+;     « LRight », « LUp », « LDown », « RLeft », « RRight », « RUp »,
+;     « RDown »… — et NON des clés « Bindings/… ». Cette dernière forme
+;     est celle de PCSX2 ; elle est ABSENTE du binaire de DuckStation, et
+;     docs/dettes.md la supposait à tort.
+;   - les valeurs suivent les gabarits « SDL-{}/{} », « SDL-{}/Button{} »,
+;     « SDL-{}/Hat{}{} », « SDL-{}/+{} », « SDL-{}/-{} », et la même
+;     famille en « XInput-{}/… ». Le premier champ est un INDEX de
+;     manette, JAMAIS un GUID — contrairement à l'émulateur personnel,
+;     dont l'identifiant est « <index>-<GUID> ».
+;
+; CE QUI N'A PAS PU ÊTRE RELEVÉ, et pourquoi : les VALEURS. Aucune
+; manette n'était connectée au moment de la mesure — le pad d'Apollo
+; (USB\VID_045E&PID_028E) et une DualShock 4 (VID_054C&PID_05C4)
+; figurent tous deux dans les périphériques de l'invité, mais avec un
+; état « Unknown », c'est-à-dire absents. Le pad n'existe QUE pendant une
+; session Moonlight, et DuckStation aurait répondu mot pour mot
+; « Automatic mapping failed, no devices are available ».
+;
+; POURQUOI RIEN N'EST ÉCRIT PLUTÔT QU'UNE VALEUR PLAUSIBLE. Une liaison
+; qui ne correspond à aucun périphérique est ignorée EN SILENCE : la
+; manette reste muette exactement comme si cette section était vide. Une
+; valeur recopiée ne se distingue donc PAS de l'absence de valeur — ni à
+; l'œil, ni au journal, ni le pad en main. Décommenter une ligne sans
+; l'avoir relevée n'est pas une tentative : c'est le même défaut, avec
+; la conviction en plus. Et une section [Pad1] ACTIVE mais incomplète
+; serait pire que pas de section du tout.
+;
+; LA PROCÉDURE : docs/releve-manettes.md, dans le dépôt « retro ». Elle
+; ne demande de recopier aucune valeur : elle fait écrire cette section
+; par DuckStation lui-même, session Moonlight ouverte et manette
+; branchée, ce qui est le seul relevé valide.
+;
+; [Pad1]
+; Type = À RELEVER
+; <NomDeBouton> = À RELEVER
+;     une ligne par bouton, clé nue, valeur « SDL-<index>/<liaison> » ou
+;     « XInput-<index>/<liaison> ». Les deux gabarits existent dans le
+;     binaire ; lequel DuckStation emploie dépend de la source d'entrée
+;     active, et cela n'a PAS été relevé. Ne pas choisir est le seul acte
+;     honnête possible tant que la procédure n'a pas été jouée.
+; ---------------------------------------------------------------------
 '''
 
 # DETTE — la manette ne répond pas dans DuckStation, constaté le 2026-08-28,
@@ -114,13 +194,30 @@ HideCursorInFullscreen = true
 # session. Le mapping de DuckStation vit dans la section [Pad1] du settings.ini
 # ci-dessus, que l'amorçage écrit SANS aucune clé d'entrée.
 #
-# À mesurer avant d'écrire une seule liaison : ce que [Pad1] attend — Type,
-# Bindings/..., et sous quelle forme d'identifiant. Une liaison qui ne
-# correspond à rien est ignorée EN SILENCE, et la manette reste muette
+# Ce que [Pad1] attend a été RELEVÉ le 2026-08-29 sur l'invité, dans
+# l'exécutable livré : des clés de bouton NUES, et des valeurs en
+# « SDL-<index>/... » ou « XInput-<index>/... » — un index, jamais un GUID. Le
+# détail, et la cause mesurée du silence de la manette, sont dans le squelette
+# du bloc [bootstrap] ci-dessus. Ce qui reste à relever, ce sont les VALEURS :
+# elles n'existent que manette branchée, pendant une session. Une liaison qui
+# ne correspond à rien est ignorée EN SILENCE, et la manette reste muette
 # exactement comme si le fichier était vide. Voir docs/dettes.md, D3.
+#
+# `mapping` porte ce constat, et rien d'autre : « a-relever » veut dire
+# « MESURÉ muet, et aucun identifiant relevé ». C'est le seul des trois états
+# qui produise un problème dans `retro status` — « inconnu » dit seulement que
+# personne n'a regardé, et « auto » que l'émulateur trouve seul, ce que ce
+# profil a AFFIRMÉ à tort jusqu'au 2026-08-28.
+#
+# `mapping_where` n'est pas décoratif : c'est le « où » du problème que le
+# rapport énonce, et sans lui le propriétaire lirait « la manette restera
+# muette » sans savoir quel fichier ouvrir. Le squelette à remplir est dans le
+# bloc [bootstrap] ci-dessus, à l'endroit exact où DuckStation le lira.
 [input]
 steam_input = "required"
 mode        = "xinput"
+mapping       = "a-relever"
+mapping_where = '%USERPROFILE%\Documents\DuckStation\settings.ini, section [Pad1]'
 
 [exit]
 # DuckStation ne lie AUCUN bouton de manette par défaut à « Open Pause Menu » :

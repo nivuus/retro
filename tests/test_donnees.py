@@ -533,3 +533,141 @@ def test_chaque_profil_livre_dit_ou_en_est_son_amorcage():
             "mesurer sur la machine — sans quoi rien ne distingue « pas "
             "encore regardé » de « cet émulateur se débrouille »"
         )
+
+
+# --- Manettes livrées : ce qu'aucun profil n'a le droit d'inventer --------
+
+def test_chaque_profil_livre_dit_ce_qu_il_sait_de_sa_manette():
+    """Le défaut du code — « inconnu » — est le bon état d'un profil du
+    propriétaire qui se tait. Il n'est PAS acceptable d'un profil livré : le
+    lecteur de `retroarch.toml` doit pouvoir y lire si sa manette a été
+    mesurée, sans aller déduire un silence d'une valeur par défaut écrite
+    ailleurs. C'est la même exigence que le bloc [bootstrap] absent, qui doit
+    dire pourquoi il est absent.
+    """
+    for f in sorted(PROFILS.glob("*.toml")):
+        with f.open("rb") as fh:
+            brut = tomllib.load(fh)
+        assert "mapping" in brut.get("input", {}), (
+            f"{f.name} : [input] ne déclare pas 'mapping'. Rien n'y distingue "
+            "« cet émulateur trouve sa manette seul » de « personne n'a "
+            "jamais regardé » — et c'est cette confusion qui a laissé "
+            "DuckStation muet sur Crash Team Racing."
+        )
+
+
+def test_duckstation_declare_sa_manette_a_relever():
+    """Dette D3, mesurée le 2026-08-28 : le jeu démarre, la manette ne répond
+    pas. Le plan des manettes rangeait pourtant DuckStation parmi les
+    émulateurs qui « détectent bien tout seuls » — le profil doit porter la
+    mesure, pas le souvenir."""
+    profil = profiles.load_profile(PROFILS / "duckstation.toml")
+    assert profil.input_mapping == profiles.MAPPING_A_RELEVER
+    assert "Pad1" in profil.input_mapping_where
+
+
+def test_aucun_profil_livre_ne_pose_de_liaison_de_manette():
+    """La garde de D3, et la seule mécanisable.
+
+    Aucun identifiant de manette n'a été relevé sur la machine à ce jour : le
+    relevé n'est valide que fait par l'émulateur lui-même, dans sa propre
+    configuration, une fois le pad choisi dans son interface (plan des
+    manettes, tâche 1 — quatre identifiants relevés pour une seule manette
+    physique, un seul bon). Une liaison écrite d'après une recette est donc
+    fausse, et son échec est INDISCERNABLE de l'absence de liaison :
+    l'émulateur l'ignore sans un mot.
+
+    Le squelette [Pad1] de DuckStation est là pour être rempli — il doit donc
+    rester ENTIÈREMENT en commentaire tant qu'il ne l'est pas. Une ligne
+    active y serait une valeur inventée, et le test la refuse.
+    """
+    for f in sorted(PROFILS.glob("*.toml")):
+        profil = profiles.load_profile(f)
+        if profil.bootstrap is None:
+            continue
+        if profil.input_mapping == profiles.MAPPING_AUTO:
+            continue
+        actives = [l.strip() for l in profil.bootstrap.content.splitlines()
+                   if l.strip() and not l.lstrip().startswith((";", "#"))]
+        fautives = [l for l in actives if l.lower().startswith("bindings/")]
+        assert fautives == [], (
+            f"{f.name} : le bloc [bootstrap] pose des liaisons de manette "
+            f"alors que son [input] mapping vaut « {profil.input_mapping} » : "
+            + " | ".join(fautives)
+        )
+
+
+def test_le_squelette_pad1_de_duckstation_est_entierement_commente():
+    """Contrôle DIRECT du fichier, et non du profil chargé : un `[Pad1]` actif
+    priverait DuckStation de la détection qu'il fait peut-être encore tout
+    seul, et le remplacerait par des liaisons vides — le même symptôme, en
+    pire, puisque plus rien ne pourrait le corriger sans rouvrir le fichier.
+    """
+    profil = profiles.load_profile(PROFILS / "duckstation.toml")
+    lignes = profil.bootstrap.content.splitlines()
+    section = ""
+    for ligne in lignes:
+        nu = ligne.strip()
+        if not nu or nu.startswith((";", "#")):
+            continue
+        if nu.startswith("[") and nu.endswith("]"):
+            section = nu
+        assert section.lower() != "[pad1]", (
+            "duckstation.toml : le squelette [Pad1] porte une ligne ACTIVE — "
+            f"« {nu} ». Aucun identifiant n'a été relevé sur la machine ; "
+            "une liaison fausse est ignorée en silence par DuckStation."
+        )
+    assert any("[Pad1]" in l for l in lignes), (
+        "duckstation.toml : le squelette [Pad1] a disparu du bloc "
+        "[bootstrap]. Il est ce que le propriétaire remplit, à l'endroit "
+        "exact où DuckStation le lira."
+    )
+
+
+def test_la_procedure_de_releve_existe_et_est_atteignable():
+    """`retro status` renvoie le propriétaire vers cette page : un renvoi qui
+    ne mène nulle part est pire que pas de renvoi — il se lit comme une
+    procédure existante que le lecteur n'arriverait pas à trouver."""
+    from retro import status
+    procedure = RACINE / "docs" / "releve-manettes.md"
+    assert procedure.is_file(), f"{procedure} n'existe pas"
+    assert status.PROCEDURE_RELEVE.endswith("releve-manettes.md")
+    assert (RACINE / status.PROCEDURE_RELEVE).is_file()
+
+
+def test_le_squelette_pad1_porte_la_forme_relevee_et_pas_la_forme_supposee():
+    """La forme des clés de `[Pad1]` a été RELEVÉE, le 2026-08-29, dans
+    l'exécutable livré sur l'invité (DuckStation v0.1-11609, NIVUUS-WIN,
+    provision_version B1) — la méthode que ce profil emploie déjà pour ses
+    dix-sept arguments et sa liste d'extensions.
+
+    Elle contredit ce que la dette supposait. `docs/dettes.md` annonçait des
+    clés « Bindings/… » : cette forme est celle de PCSX2, elle n'existe pas
+    dans le binaire de DuckStation, et un squelette qui la porterait enverrait
+    le propriétaire remplir des clés que DuckStation ne lira jamais — la panne
+    exacte que la procédure de relevé sert à éviter.
+
+    Ce qui a été relevé : des sections `Pad1`…`Pad8`, une clé `Type`, et des
+    clés de bouton NUES (`Square`, `Triangle`, `LLeft`, `RUp`, …). Les valeurs
+    suivent les gabarits `SDL-{}/{}` et `XInput-{}/{}` — un INDEX, jamais un
+    GUID, contrairement à l'émulateur personnel.
+    """
+    contenu = profiles.load_profile(PROFILS / "duckstation.toml").bootstrap.content
+    # Le contrôle porte sur la forme d'une CLÉ, pas sur la prose : le
+    # squelette doit pouvoir NOMMER la forme écartée — sans quoi le prochain
+    # lecteur, qui aura lu « Bindings/… » dans la dette, la réintroduira faute
+    # de savoir qu'elle a été mesurée fausse.
+    cles = [l.lstrip("; \t") for l in contenu.splitlines()
+            if "=" in l and not l.lstrip("; \t").startswith("«")]
+    fautives = [c for c in cles if c.startswith("Bindings/")]
+    assert fautives == [], (
+        "duckstation.toml : le squelette [Pad1] porte des clés « Bindings/ », "
+        "forme relevée ABSENTE de l'exécutable de DuckStation le 2026-08-29. "
+        "C'est la forme de PCSX2 ; la supposition de docs/dettes.md a été "
+        "mesurée fausse : " + " | ".join(fautives)
+    )
+    assert "SDL-" in contenu and "XInput-" in contenu, (
+        "duckstation.toml : le squelette ne nomme plus les deux gabarits "
+        "d'identifiant relevés dans l'exécutable. Ne pas choisir entre eux "
+        "est honnête ; ne pas les nommer laisse le propriétaire deviner."
+    )
