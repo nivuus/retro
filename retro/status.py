@@ -39,7 +39,7 @@ from collections.abc import Sequence
 
 from retro import install as install_mod
 from retro import launcher as launcher_mod
-from retro import launcher as launcher_mod
+from retro import profiles
 from retro import render as render_mod
 from retro.bios import BiosNeed, SystemBios
 from retro.scan import IgnoredSystem
@@ -104,10 +104,11 @@ class Amorcage:
     declare: bool
     date: str = ""
     target: str = ""
-    # Comment le fichier est écrit — voir `launcher.STRATEGIES`. La fusion
-    # ROUVRE un fichier qui existe, ce que « si-absent » ne fait jamais : le
-    # propriétaire doit le lire AVANT, pas le découvrir après.
-    strategy: str = ""
+    # Combien de clés la console IMPOSE dans ce fichier — reposées à chaque
+    # lancement, donc rendues à cette valeur chaque fois que le propriétaire
+    # les changerait dans l'interface de son émulateur. Il doit le lire AVANT,
+    # pas le découvrir après. Zéro pour les profils qui n'imposent rien.
+    imposees: int = 0
 
 
 def etat_amorcage(profils: dict,
@@ -123,10 +124,12 @@ def etat_amorcage(profils: dict,
         declare = getattr(profils[pid], "bootstrap", None) is not None
         date, cible = amorcages.get(pid, ("", ""))
         amorcage = getattr(profils[pid], "bootstrap", None)
-        etats.append(Amorcage(profile_id=pid, declare=declare,
-                              date=date if declare else "",
-                              target=cible if declare else "",
-                              strategy=amorcage.strategy if declare else ""))
+        etats.append(Amorcage(
+            profile_id=pid, declare=declare,
+            date=date if declare else "",
+            target=cible if declare else "",
+            imposees=(len(profiles.cles_ini(amorcage.enforced))
+                      if declare else 0)))
     return etats
 
 
@@ -695,11 +698,17 @@ def _lignes_amorcage(report: Report) -> list[str]:
         # Dit à CHAQUE état, y compris « déjà amorcé » : c'est justement
         # l'émulateur déjà amorcé dont le fichier sera rouvert, et le taire
         # là serait le taire au seul endroit où ça compte.
-        if a.declare and a.strategy == launcher_mod.FUSION:
-            lignes.append(f"      ce profil MODIFIE ce fichier s'il existe "
-                          "déjà : seules ses propres clés sont réécrites, le "
-                          "reste est préservé, et une sauvegarde est faite "
-                          "avant toute écriture")
+        #
+        # Le COMPTE, et pas seulement le fait : « impose 3 clés » et « impose
+        # tout le fichier » n'appellent pas la même réaction, et sans le
+        # nombre il faudrait ouvrir le profil pour savoir laquelle des deux
+        # on lit.
+        if a.imposees:
+            lignes.append(
+                f"      la console y impose {a.imposees} clé(s), reposée(s) à "
+                "chaque lancement ; tout le reste du fichier vous appartient "
+                "et n'est jamais touché, et une sauvegarde précède chaque "
+                "modification")
     return lignes
 
 

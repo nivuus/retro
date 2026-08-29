@@ -726,44 +726,55 @@ def test_un_emulateur_sans_reglage_de_remplissage_dit_pourquoi_sur_sa_ligne(tmp_
     assert sum("pas de clé Integer" in l for l in lignes) == 1
 
 
-# --- la section « Amorçage » : ce que retro va MODIFIER -------------------
+# --- la section « Amorçage » : ce que la console IMPOSE --------------------
 
-def _profils_strategie(tmp_path, strategie: str):
-    (tmp_path / "d.toml").write_text(f'''
+def _profils_imposes(tmp_path, enforced: bool):
+    bloc = """
+enforced = '''
+[Main]
+SetupWizardIncomplete = false
+StartFullscreen = true
+'''
+""" if enforced else ""
+    (tmp_path / "d.toml").write_text('''
 schema = 1
 id = "d"
 exe = "d.exe"
 [bootstrap]
-strategy = "{strategie}"
 target = 'C:\\d\\settings.ini'
 content = """
-; Écrit par « retro », qui MODIFIE ce fichier.
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé UNE FOIS, et le reste, qui est à vous.
 [Main]
-X = 1
-"""
+ConfirmPowerOff = false
+"""''' + bloc + '''
 [[system]]
 id = "psx"
 name = "PlayStation"
 extensions = [".cue"]
-launch = '"{{rom}}"'
+launch = '"{rom}"'
 ''', encoding="utf-8")
     return {"d": profiles.load_profile(tmp_path / "d.toml")}
 
 
-def test_le_rapport_dit_quand_retro_modifiera_un_fichier_existant(tmp_path):
-    """Le propriétaire doit lire AVANT, pas découvrir APRÈS, que l'outil ne se
-    contente plus de poser un fichier absent. C'est la promesse du README qui
-    change ; le rapport doit changer avec elle."""
-    etats = status.etat_amorcage(_profils_strategie(tmp_path, "fusion"), {})
-    lignes = "\n".join(status._lignes_amorcage(status.Report(
+def _texte_amorcage(profils):
+    return "\n".join(status._lignes_amorcage(status.Report(
         emulators=[], systems=[], bios=[], problems=[],
-        bios_root=pathlib.Path("/BIOS"), amorcages=etats)))
-    assert "modifi" in lignes.lower()
+        bios_root=pathlib.Path("/BIOS"),
+        amorcages=status.etat_amorcage(profils, {}))))
 
 
-def test_un_amorcage_si_absent_ne_promet_pas_de_modifier(tmp_path):
-    etats = status.etat_amorcage(_profils_strategie(tmp_path, "si-absent"), {})
-    lignes = "\n".join(status._lignes_amorcage(status.Report(
-        emulators=[], systems=[], bios=[], problems=[],
-        bios_root=pathlib.Path("/BIOS"), amorcages=etats)))
-    assert "modifi" not in lignes.lower()
+def test_le_rapport_dit_combien_de_cles_la_console_impose(tmp_path):
+    """Le propriétaire doit lire AVANT, pas découvrir après, que deux de ses
+    réglages reviendront à chaque lancement. Le compte évite d'avoir à ouvrir
+    le profil pour savoir si c'est « une clé » ou « tout le fichier »."""
+    texte = _texte_amorcage(_profils_imposes(tmp_path, enforced=True))
+    assert "impose" in texte.lower()
+    assert "2" in texte
+
+
+def test_un_profil_qui_n_impose_rien_ne_le_dit_pas(tmp_path):
+    """Huit profils livrés n'imposent rien : leur ajouter une ligne muette
+    noierait celui qui, lui, impose."""
+    texte = _texte_amorcage(_profils_imposes(tmp_path, enforced=False))
+    assert "impose" not in texte.lower()
