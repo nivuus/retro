@@ -94,6 +94,21 @@ def clean_title(filename: str, dossier: bool = False) -> str:
     return f"{_PARENTHESES.sub('', sans_disque).strip()} {m.group(0)}".strip()
 
 
+def titre_de_fiche(nom: str) -> str:
+    """Le titre affiché pour un nom reconnu dans une base de données.
+
+    Même nettoyage qu'un nom de fichier, et pour les mêmes raisons : la région
+    et les drapeaux entre parenthèses ne se lisent pas depuis un canapé, et
+    SteamGridDB ne trouve aucune jaquette pour « Super Mario Kart (USA) ». Le
+    marqueur de disque, lui, est CONSERVÉ — voir `clean_title`.
+    """
+    m = _DISQUE.search(nom)
+    if not m:
+        return _PARENTHESES.sub("", nom).strip()
+    sans_disque = nom[: m.start()] + nom[m.end():]
+    return f"{_PARENTHESES.sub('', sans_disque).strip()} {m.group(0)}".strip()
+
+
 def discriminant(filename: str, dossier: bool = False) -> str:
     """Le premier fragment parenthésé d'un nom de fichier — en pratique la
     région. Sert à départager deux fichiers dont le titre nettoyé serait le
@@ -114,6 +129,12 @@ class _Candidat:
     # titre ne se coupe pas sur un point (`_tige`), et le chemin donné à
     # l'émulateur est celui du dossier.
     dossier: bool = False
+    # LE TITRE QU'UNE BASE A RECONNU, vide s'il n'y en a pas. Il l'emporte sur
+    # le nom de fichier : « mslug2 » est un nom de romset, pas un nom de jeu —
+    # il ne dit rien au propriétaire et ne trouve aucune jaquette. Vide veut
+    # dire « aucune base ne le reconnaît », jamais « pas cherché » : le scan
+    # NOMME ceux qui gardent leur nom de fichier.
+    titre_reconnu: str = ""
 
 
 # Ce qui départage deux jeux de même titre, du plus lisible au plus sûr. Un
@@ -155,7 +176,9 @@ def _desambiguiser(candidats: list[_Candidat]) -> list[str]:
     Les titres uniques ne sont jamais touchés : la bibliothèque reste propre
     dans le cas courant, qui est de loin le plus fréquent.
     """
-    titres = [clean_title(c.fichier.name, c.dossier) for c in candidats]
+    titres = [titre_de_fiche(c.titre_reconnu) if c.titre_reconnu
+              else clean_title(c.fichier.name, c.dossier)
+              for c in candidats]
     for extraire in _QUALIFICATIFS:
         groupes: dict[str, list[int]] = {}
         for i, t in enumerate(titres):
@@ -454,6 +477,7 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
          roms_root_windows: str = "G:\\ROMs",
          emulation_root_local: pathlib.Path | str | None = None,
          ignored: Sequence[IgnoredSystem] | None = None,
+         resolveur=None,
          ) -> list[entry.RomEntry]:
     """L'inventaire des ROMs, tel que Steam le verra.
 
@@ -508,6 +532,23 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
         if chemin not in ignores
         for f, est_dossier in _retenus(dossier, systeme)
     ]
+
+    # LE VRAI TITRE, quand une base le reconnaît. Fait ICI et non plus haut :
+    # les candidats sont déjà tous connus, et la désambiguïsation qui suit doit
+    # comparer les titres FINAUX — deux jeux dont seuls les noms de fichiers
+    # diffèrent peuvent porter le même titre reconnu, et c'est exactement la
+    # collision que `_desambiguiser` existe pour attraper.
+    if resolveur is not None:
+        reconnus = []
+        for c in candidats:
+            t = resolveur.resoudre(c.fichier, c.systeme.id)
+            if t is None:
+                # NOMMÉ, jamais compté en silence : « 2 jeux gardent leur nom
+                # de fichier » laisse chercher lesquels.
+                resolveur.non_reconnus.append(f"{c.systeme.name} : {c.fichier.name}")
+            reconnus.append(dataclasses.replace(
+                c, titre_reconnu=(t.nom if t else "")))
+        candidats = reconnus
 
     # Steam n'appelle PAS l'émulateur : il appelle le lanceur commun, qui
     # mesure la session et compose la commande au moment du clic. Le raccourci

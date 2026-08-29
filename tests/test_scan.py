@@ -863,3 +863,47 @@ def test_sans_marqueur_declare_rien_n_est_signale(tmp_path, profils):
     faire_roms(tmp_path, ["snes/Zelda.sfc"])
     (tmp_path / "ROMs" / "snes" / "Zelda patch").mkdir(parents=True)
     assert scan.suspected_update_dirs(tmp_path / "ROMs", profils) == []
+
+
+# --- le titre reconnu l'emporte sur le nom de fichier ----------------------
+
+class _ResolveurFactice:
+    """Rend un titre pour les fichiers qu'on lui nomme, rien pour les autres."""
+
+    def __init__(self, par_nom):
+        self.par_nom = par_nom
+        self.echecs = []
+        self.non_reconnus = []
+
+    def resoudre(self, chemin, sid):
+        from retro.titres import Titre
+        nom = self.par_nom.get(chemin.name)
+        return Titre(nom, "essai") if nom else None
+
+
+def test_un_titre_reconnu_remplace_le_nom_de_fichier(tmp_path, profils):
+    """« mslug2 » est un nom de romset : dans Steam il ne dit rien au
+    proprietaire, et envoye a SteamGridDB il ne trouve aucune jaquette."""
+    racine = faire_roms(tmp_path, ["snes/mslug2.sfc"])
+    inv = scan.scan(racine, profils, "D:\\Emulation",
+                    {"retroarch": "RetroArch"},
+                    resolveur=_ResolveurFactice(
+                        {"mslug2.sfc": "Metal Slug 2 (World)"}))
+    assert [e.title for e in inv] == ["Metal Slug 2"]
+
+
+def test_un_jeu_non_reconnu_garde_son_nom_et_est_nomme(tmp_path, profils):
+    """Ce n'est pas une panne — c'est le comportement d'avant — mais le
+    rapport le NOMME : un titre reste brut est le seul signe visible qu'une
+    base manque ou qu'un dump est inconnu."""
+    racine = faire_roms(tmp_path, ["snes/inconnu.sfc"])
+    r = _ResolveurFactice({})
+    inv = scan.scan(racine, profils, "D:\\Emulation",
+                    {"retroarch": "RetroArch"}, resolveur=r)
+    assert [e.title for e in inv] == ["inconnu"]
+    assert r.non_reconnus == ["Super Nintendo : inconnu.sfc"]
+
+
+def test_sans_resolveur_le_comportement_ne_change_pas(tmp_path, profils):
+    racine = faire_roms(tmp_path, ["snes/mslug2.sfc"])
+    assert [e.title for e in scanner(racine, profils)] == ["mslug2"]

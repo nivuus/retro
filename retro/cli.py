@@ -331,6 +331,7 @@ def _cmd_scan(args) -> int:
             pathlib.Path(args.roms), profils, args.emulation_root, install_dirs,
             roms_root_windows=args.roms_windows,
             emulation_root_local=racine_locale, ignored=ignores,
+            resolveur=(resolveur := _resolveur(args)),
         )
     except Exception as exc:  # noqa: BLE001 - toute panne devient un message clair
         print(str(exc), file=sys.stderr)
@@ -378,6 +379,17 @@ def _cmd_scan(args) -> int:
         print(f"écriture de l'inventaire impossible : {exc}", file=sys.stderr)
         return 2
     print(f"{len(donnees)} ROM(s) répertoriée(s) dans {args.output}")
+    # LES TITRES QU'AUCUNE BASE N'A RECONNUS. Ces jeux gardent leur nom de
+    # fichier — ce qui marche, mais ne dit rien au propriétaire et ne trouve
+    # aucune jaquette. Les compter sans les nommer laisserait chercher.
+    if resolveur is not None and resolveur.non_reconnus:
+        print(f"{len(resolveur.non_reconnus)} jeu(x) gardent leur nom de "
+              "fichier, faute d'être reconnus dans une base :")
+        for ligne in resolveur.non_reconnus:
+            print(f"  - {ligne}")
+    if resolveur is not None and resolveur.echecs:
+        print("base(s) de titres illisibles : "
+              + ", ".join(resolveur.echecs), file=sys.stderr)
     # Des dossiers non reconnus sont signalés DÈS QU'IL Y EN A, pas seulement
     # quand l'inventaire est vide. La première version ne parlait que du cas
     # vide ; sur la bibliothèque réelle, trois systèmes sur six étaient passés
@@ -416,6 +428,22 @@ def _cmd_identite(args) -> int:
     """
     print(identite.VERSION)
     return 0
+
+
+def _resolveur(args):
+    """Le résolveur de titres, ou None. NE LÈVE JAMAIS : un titre est un
+    confort, et une base abîmée ne doit pas emporter l'inventaire — le pire
+    qu'il puisse arriver est que les jeux gardent leur nom de fichier."""
+    dossier = _dossier(getattr(args, "databases", None))
+    if dossier is None:
+        return None
+    try:
+        from retro import titres as titres_mod
+        return titres_mod.Resolveur(dossier)
+    except Exception as exc:  # noqa: BLE001 - voir la docstring
+        print(f"avertissement : bases de titres inutilisables ({exc}) ; les "
+              "jeux gardent leur nom de fichier.", file=sys.stderr)
+        return None
 
 
 def _cmd_bios(args) -> int:
@@ -538,6 +566,7 @@ def _cmd_status(args) -> int:
         inventaire = scan.scan(
             pathlib.Path(args.roms), profils, args.emulation_root, install_dirs,
             roms_root_windows=args.roms_windows,
+            resolveur=_resolveur(args),
         )
 
         comptes: dict[str, int] = {}
@@ -845,6 +874,8 @@ def _build_parser() -> argparse.ArgumentParser:
                         "émulateurs ; donné, les systèmes dont l'exécutable "
                         "manque sont ignorés et signalés")
     s.add_argument("--output", required=True)
+    s.add_argument("--databases", default=None,
+                   help="dossier des bases de donnees de RetroArch (RetroArch-Win64\\database\\rdb). Donne, un jeu reconnu porte son VRAI titre plutot que son nom de fichier — « mslug2 » devient « Metal Slug 2 », que SteamGridDB sait illustrer. Son absence est normale et ne change rien")
     s.set_defaults(func=_cmd_scan)
 
     lan = sous.add_parser(
@@ -919,6 +950,8 @@ def _build_parser() -> argparse.ArgumentParser:
                         "rend comme avant, sans cette section.")
     st.add_argument("--bios", required=True,
                     help="dossier où le propriétaire dépose ses BIOS")
+    st.add_argument("--databases", default=None,
+                   help="dossier des bases de donnees de RetroArch (RetroArch-Win64\\database\\rdb). Donne, un jeu reconnu porte son VRAI titre plutot que son nom de fichier — « mslug2 » devient « Metal Slug 2 », que SteamGridDB sait illustrer. Son absence est normale et ne change rien")
     st.set_defaults(func=_cmd_status)
 
     return parser

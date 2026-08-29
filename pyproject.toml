@@ -57,7 +57,7 @@ include = ["retro*"]
 # package-data suit le paquet partout : dépôt nu, éditable, wheel installé.
 [tool.setuptools.package-data]
 retro = ["data/manifests/*.toml", "data/profiles/*.toml",
-         "data/launcher/*"]
+         "data/launcher/*", "data/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

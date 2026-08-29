@@ -1,0 +1,80 @@
+# QUELLE BASE RETROARCH DÉCRIT QUEL SYSTÈME, et par quoi s'y reconnaît un jeu.
+#
+# C'est une CORRESPONDANCE ENTRE DEUX CHOSES EXTERNES : les identifiants de
+# système de ce paquet d'un côté, les noms de fichiers de base que RetroArch
+# livre de l'autre. Ni l'un ni l'autre ne nous appartient, donc ça se déclare
+# ici plutôt que de se deviner dans le code — une heuristique sur les noms
+# (« psx » → « Sony - PlayStation ») aurait échoué en silence au premier
+# système dont le nom ne s'y prête pas, et le jeu aurait gardé son nom de
+# fichier sans que rien ne dise pourquoi.
+#
+# Les noms de base sont RELEVÉS sur la console le 2026-08-29, dans
+# RetroArch-Win64\database\rdb\ de la révision 1.22.2 épinglée au manifeste.
+#
+# `serie` dit COMMENT lire le numéro de série gravé dans une image de disque,
+# quand le nom de fichier et l'empreinte ne suffisent pas. Son vocabulaire est
+# fermé et gelé par un test : une valeur inconnue serait ignorée en silence,
+# et le jeu resterait sous son nom de fichier.
+
+schema = 1
+
+# --- Cartouches : l'empreinte du fichier tranche, il n'y a pas de série. ----
+[systeme.atari2600]
+base = "Atari - 2600"
+[systeme.nes]
+base = "Nintendo - Nintendo Entertainment System"
+[systeme.snes]
+base = "Nintendo - Super Nintendo Entertainment System"
+[systeme.megadrive]
+base = "Sega - Mega Drive - Genesis"
+[systeme.gb]
+base = "Nintendo - Game Boy"
+[systeme.gbc]
+base = "Nintendo - Game Boy Color"
+[systeme.gba]
+base = "Nintendo - Game Boy Advance"
+[systeme.n64]
+base = "Nintendo - Nintendo 64"
+[systeme.nds]
+base = "Nintendo - Nintendo DS"
+
+# --- L'arcade : le nom du romset EST l'identité du jeu. --------------------
+[systeme.arcade]
+base = "FBNeo - Arcade Games"
+
+# --- Disques : la série gravée dans l'image tranche. -----------------------
+[systeme.gamecube]
+base = "Nintendo - GameCube"
+serie = "disque-nintendo"
+[systeme.wii]
+base = "Nintendo - Wii"
+serie = "disque-nintendo"
+[systeme.psx]
+base = "Sony - PlayStation"
+serie = "playstation"
+[systeme.ps2]
+base = "Sony - PlayStation 2"
+serie = "playstation"
+[systeme.psp]
+base = "Sony - PlayStation Portable"
+serie = "psp"
+[systeme.ps3]
+base = "Sony - PlayStation 3"
+serie = "ps3"
+[systeme.vita]
+base = "Sony - PlayStation Vita"
+serie = "vita"
+[systeme.saturn]
+base = "Sega - Saturn"
+serie = "saturn"
+[systeme.dreamcast]
+base = "Sega - Dreamcast"
+serie = "dreamcast"
+
+# La Xbox a bien sa base, mais AUCUN extracteur de série : le numéro vit dans
+# le default.xbe, à l'intérieur du système de fichiers XDVDFS de l'image, que
+# ce paquet ne sait pas ouvrir. Déclarer une `serie` qu'aucun code ne sert
+# ferait croire à une reconnaissance qui n'a pas lieu ; l'omettre dit vrai, et
+# le rapport nomme le jeu resté sans titre.
+[systeme.xbox]
+base = "Microsoft - Xbox"

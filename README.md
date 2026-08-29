@@ -115,6 +115,32 @@ profil déclare `bios_dir` quand on a **mesuré** où son émulateur cherche ;
 profil qui ne le déclare pas est **nommé** plutôt que deviné : un dossier
 inventé déposerait les fichiers à côté, sans autre symptôme qu'un écran noir.
 
+### Le vrai titre d'un jeu
+
+« mslug2 » est un nom de romset, pas un nom de jeu : dans Steam il ne dit rien,
+et envoyé à SteamGridDB il ne trouve **aucune jaquette**. Donnez `--databases`
+à `retro scan` — le dossier `database\rdb\` que RetroArch livre — et chaque
+jeu reconnu porte son vrai titre.
+
+**Trois clés, essayées dans cet ordre, et aucune n'est floue :**
+
+1. **le nom du fichier**, comparé à celui que la base porte. Pour l'arcade
+   c'est l'identité même : `mslug2.zip` **est** Metal Slug 2 ;
+2. **l'empreinte MD5** du fichier, qui ne dépend d'aucun nom. Réservée à ce
+   qui est assez petit pour se hacher — une cartouche, jamais un disque ;
+3. **le numéro de série gravé dans l'image**, pour les disques. C'est ce qui
+   rattrape `Crash Team Racing-PSX-PAL.cue`, qu'aucun nom ne reconnaît : ses
+   octets disent SCES-02105, et la base répond « CTR - Crash Team Racing ».
+
+**Ça ne devine jamais.** Aucune comparaison approximative, aucun score de
+similarité, aucun « le plus proche ». Un jeu qu'aucune clé ne reconnaît garde
+son nom de fichier, et `retro scan` le **nomme** — un titre faux se lit
+exactement comme un titre juste, et personne ne le vérifierait.
+
+Quelle base décrit quel système se déclare dans `retro/data/databases.toml` :
+c'est une correspondance entre nos identifiants et les noms de fichiers que
+RetroArch livre, dont ni l'un ni l'autre ne nous appartient.
+
 ### Ce que Steam ne sait pas afficher
 
 Pour un jeu non-Steam : description, date de sortie, éditeur. Le format
