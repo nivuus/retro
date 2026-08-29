@@ -168,6 +168,28 @@ def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> str:
     étape à chaque reconstruction, et retélécharger des gigaoctets déjà
     présents serait une panne à lui seul.
     """
+    # Une empreinte VIDE dit « pas encore relevée », et c'est une réponse :
+    # elle vaut mieux qu'une empreinte inventée, qui passerait la revue et
+    # casserait à l'installation, sur la console, sans rien expliquer. Le
+    # refus vient donc avant le téléchargement — comparer l'archive à une
+    # empreinte vide aurait fait télécharger cent mégaoctets pour rendre
+    # « attendue :  », un message qui n'envoie nulle part.
+    #
+    # `install_all` capture cet échec comme les autres : les émulateurs
+    # épinglés s'installent quand même.
+    if not emu.sha256.strip():
+        # La version est vide elle aussi quand l'empreinte l'est : les deux
+        # décrivent la même archive et se relèvent ensemble. On ne laisse donc
+        # pas un blanc traîner au milieu du message.
+        raise AcquireError(
+            f"{emu.name} {emu.version}".strip()
+            + " : empreinte SHA256 non relevée dans le "
+            "manifeste. Rien n'a été téléchargé — un binaire que rien ne "
+            "vérifie ne s'installe pas. Relever l'empreinte revient à "
+            "télécharger l'archive hors de la console et à passer son contenu "
+            "à hashlib.sha256(), puis à l'inscrire au manifeste ; le "
+            "commentaire de l'entrée dit ce qui manque pour cet émulateur-là."
+        )
     cible = emulation_root / emu.install_dir
     temoin = cible / TEMOIN
     if temoin.exists() and temoin.read_text(encoding="utf-8").strip() == emu.version:

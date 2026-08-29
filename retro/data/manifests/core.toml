@@ -160,15 +160,53 @@ profile     = "cemu"
 # Ce préfixe contient le numéro de version : il change à chaque mise à jour du
 # manifeste, et le profil doit changer avec lui.
 
-# DETTE — la PS Vita n'est couverte par aucun des neuf émulateurs ci-dessus, et
-# c'est un manque, pas une exclusion juridique : le candidat est Vita3K, dont
-# le statut est aussi clair que celui de RPCS3 ou de xemu.
+# La PS Vita, dixième système — et la seule entrée de ce manifeste qui ne
+# s'installe PAS. Son empreinte est VIDE, ce qui veut dire « pas encore
+# relevée » : `acquire` la refuse avant de télécharger quoi que ce soit, et
+# `retro scan` ignore puis signale le système Vita, faute d'émulateur
+# installé. Une empreinte inventée aurait passé la revue et cassé à
+# l'installation, sur la console, sans que rien n'explique pourquoi.
 #
-# Ce n'est pas qu'une entrée à ajouter ici. Le point dur est le profil : le scan
-# compte des FICHIERS, alors qu'une bibliothèque Vita est faite de dossiers
-# d'applications installées (ux0:app) à côté de .vpk. Ajouter l'émulateur sans
-# trancher cette question d'abord remplirait Steam d'une entrée par fichier de
-# jeu. S'y ajoutent les modules PUP du firmware, qui se comportent comme un
-# BIOS — sans eux, le jeu apparaît, se lance, écran noir.
+# Ce n'est pas seulement que personne ne l'a relevée : POUR L'INSTANT, ELLE NE
+# PEUT PAS L'ÊTRE DURABLEMENT. Vérifié le 2026-08-29 sur l'API de publication
+# du projet lui-même : Vita3K ne publie qu'UNE release, l'étiquette roulante
+# « continuous », dont l'archive Windows s'appelle windows-latest.zip et se
+# réécrit à chaque construction (celle du jour portait « Vita3K Build: 4074 »,
+# commit 496939b, publiée le 2026-08-09). Il n'existe aucune archive
+# versionnée. C'est exactement ce que la règle du haut de ce fichier interdit,
+# et pour la raison qu'elle donne : une empreinte qui vieillit d'un jour fait
+# échouer l'installation sans un mot.
 #
-# Voir docs/dettes.md, D5, qui donne l'ordre des quatre étapes.
+# Ce qu'il faut donc faire, et dans cet ordre :
+#   1. relever ENSEMBLE la version et l'empreinte, sur la MÊME archive :
+#      télécharger l'URL ci-dessous hors du dépôt, passer son contenu à
+#      hashlib.sha256(), et noter le numéro de construction que la page de
+#      publication affiche pour cette archive-là ;
+#   2. lister l'archive au passage — le profil suppose « Vita3K.exe » à la
+#      racine sans qu'aucune archive l'ait confirmé, et un dossier racine
+#      oublié donnerait un raccourci qui ne démarre pas ;
+#   3. savoir que ce couple expire dès la construction suivante. Tant que le
+#      projet ne publie pas d'archive versionnée, la place durable de Vita3K
+#      est le manifeste du PROPRIÉTAIRE (G:\retro\emulators.toml), où
+#      l'empreinte se relève au moment de l'installation et n'engage que sa
+#      machine — c'est déjà ce que ce manifeste-là fait pour un autre
+#      émulateur.
+#
+# Le statut juridique, lui, est aussi clair que celui de RPCS3 ou de xemu :
+# rien n'exclut Vita3K de ce dépôt public. Ce qui l'exclut de l'installation
+# est une empreinte, pas une politique.
+[emulator.vita3k]
+name        = "Vita3K"
+version     = ""
+url         = "https://github.com/Vita3K/Vita3K/releases/download/continuous/windows-latest.zip"
+sha256      = ""
+archive     = "zip"
+install_dir = "Vita3K"
+profile     = "vita3k"
+
+# Le point dur de cette dette n'était pas l'entrée ci-dessus : c'était le
+# scan. Il comptait des FICHIERS, quand une bibliothèque Vita est faite de
+# dossiers d'applications installées (ux0:app) à côté des .vpk. C'est réglé —
+# un profil déclare désormais à quoi se reconnaît un jeu qui est un dossier
+# (`app_dir_marker`), et le dossier est inventorié tel quel, jamais ouvert.
+# Voir docs/dettes.md, D5.

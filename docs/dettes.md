@@ -369,28 +369,106 @@ mouvement. Inverser, c'est déboguer deux inconnues à la fois.
 
 ---
 
-## D5 — Aucun émulateur PS Vita
+## D5 — PS Vita : le scan sait lire une bibliothèque en dossiers, Vita3K ne s'installe toujours pas
 
-Le manifeste (`retro/data/manifests/core.toml`) en installe neuf : RetroArch,
-Dolphin, DuckStation, PCSX2, PPSSPP, Flycast, xemu, RPCS3, Cemu. **La PS Vita
-n'est couverte par aucun.** Le candidat est **Vita3K**, seul émulateur Vita
-utilisable.
+**Constaté le 2026-08-28. Repris le 2026-08-29** : le point dur est levé, le
+reste tient à une empreinte que le projet Vita3K ne permet pas d'épingler.
 
-**Ce qu'il faut, dans l'ordre où le dépôt le demande :**
+### Ce qui est fait
 
-1. Une entrée `[emulator.vita3k]` au manifeste : URL du projet lui-même,
-   empreinte SHA256 de la version épinglée, jamais une redistribution.
-2. Un profil `retro/data/profiles/vita3k.toml` : `exe`, extensions
-   (`.vpk`, dossiers `ux0:app` — **à mesurer**, une Vita installée n'est pas un
-   fichier unique, ce qui casse l'hypothèse « une ROM = un fichier » du scan),
-   ligne de commande de lancement, `cost`, modes de rendu.
-3. Son amorçage : Vita3K ouvre un assistant de première configuration et
-   réclame les modules `PUP` du firmware. Sans eux, mêmes symptômes que
-   DuckStation sans BIOS — le jeu apparaît, se lance, écran noir. Le mécanisme
-   `bios` du profil doit donc les couvrir, ou dire honnêtement qu'il ne les
-   couvre pas.
-4. Le mouvement (D4) : une part notable du catalogue Vita s'en sert.
+**Le point dur, l'étape 2 : le scan comptait des FICHIERS.** `_retenus`
+filtrait `is_file()` sur une extension déclarée, et un dossier de système
+reconnu n'est jamais ouvert plus loin — sur une bibliothèque Vita, faite
+d'applications installées (`ux0:app\<TITLEID>\`) à côté des `.vpk`, le scan
+rendait zéro jeu sans un mot, ce qui ressemble à une bibliothèque vide.
 
-**Le point dur :** l'étape 2. Le scan compte des fichiers ; une bibliothèque
-Vita est faite de dossiers d'applications installées. À trancher avant d'écrire
-le profil, sous peine d'une entrée Steam par fichier de jeu.
+Deux réponses étaient possibles : généraliser le scan, ou donner au profil de
+quoi déclarer qu'il scanne des dossiers. **C'est le profil qui déclare**, avec
+`app_dir_marker` :
+
+```toml
+app_dir_marker = "eboot.bin"   # « un jeu peut être un DOSSIER, le voici »
+```
+
+Généraliser aurait voulu dire « tout sous-dossier est un jeu », donc une
+entrée Steam pour `savedata` et pour chaque dossier d'extras, et une règle
+propre à un seul émulateur logée dans le code — alors que tout ce qui est
+propre à un émulateur vit dans son TOML. Le scan, lui, ne connaît toujours
+aucun émulateur : il applique une règle déclarée. Sans la clé — les neuf
+profils livrés — rien ne change, aucun dossier n'est retenu.
+
+Le dossier retenu est inventorié TEL QUEL et n'est jamais ouvert : c'est ce
+qui empêche l'entrée Steam par fichier de jeu que cette dette redoutait.
+Vérifié de bout en bout sur une bibliothèque fabriquée — un `.vpk` posé
+DANS le dossier du jeu ne produit aucune entrée.
+
+**L'étape 2, le profil** : `retro/data/profiles/vita3k.toml` existe, avec ses
+deux formes de bibliothèque (`extensions = [".vpk"]` et le marqueur ci-dessus),
+sa ligne de commande, et ce qu'il ne sait pas écrit comme tel.
+
+### Ce qui reste, et pourquoi
+
+**L'étape 1, l'empreinte — bloquée par le projet lui-même.** Vérifié le
+2026-08-29 sur son API de publication : Vita3K ne publie qu'UNE release,
+l'étiquette roulante `continuous`, dont l'archive Windows s'appelle
+`windows-latest.zip` et se réécrit à chaque construction. Aucune archive
+versionnée n'existe. Or ce manifeste refuse les étiquettes roulantes, et pour
+une raison mesurée : une empreinte qui vieillit d'un jour fait échouer
+l'installation sur la console sans que rien ne l'explique.
+
+L'entrée `[emulator.vita3k]` existe donc avec une empreinte et une version
+VIDES — « pas encore relevées ». `acquire` la refuse avant de télécharger quoi
+que ce soit, `retro install` affiche un échec nommé, et `retro scan` ignore
+puis SIGNALE le système Vita. Rien n'apparaît dans Steam qui ne se lancerait
+pas.
+
+Pour la lever : relever ensemble version et empreinte sur la MÊME archive,
+lister l'archive au passage (le profil suppose `Vita3K.exe` à la racine sans
+qu'aucune archive l'ait confirmé), et savoir que le couple expire à la
+construction suivante. **La place durable de Vita3K est le manifeste du
+propriétaire** (`G:\retro\emulators.toml`), hors dépôt, où l'empreinte se
+relève au moment de l'installation et n'engage que sa machine.
+
+**L'étape 3, le firmware : le profil ne le couvre pas, et le dit.** Le
+mécanisme `bios` vérifie des fichiers déposés dans un dossier partagé à leur
+empreinte MD5 et pointe l'émulateur dessus. Le firmware Vita n'est pas de
+cette nature : c'est un PUP qui s'INSTALLE une fois dans l'arborescence de
+l'émulateur, comme le PS3UPDAT.PUP de RPCS3, et son empreinte change à chaque
+version sans que rien de publiquement citable n'existe. Sans lui, mêmes
+symptômes que DuckStation sans BIOS — le jeu apparaît, se lance, écran noir.
+
+Le patron se lit sur le partage, sans rien demander à l'invité (2026-08-29) :
+`G:\retro\bios\` ne contient que des BIOS-fichiers, sur lesquels l'émulateur
+est pointé par sa configuration — `duckstation.toml` documente déjà
+`[BIOS] SearchDirectory`. Un firmware est rangé à côté, **hors** de `bios\`,
+parce qu'il ne se lit pas : il s'installe. Le PUP Vita suivra ce rangement-là.
+
+Un fait vu une fois **dans** l'invité le 2026-08-29, et que personne ne peut
+re-vérifier depuis — l'accès à l'invité est fermé, il est donc consigné ici
+comme une observation datée et non comme un état courant : **RPCS3 n'avait ni
+`dev_flash` ni `dev_hdd0`, son firmware n'ayant jamais été installé**, et rien
+dans `retro status` ne le disait. Si l'observation tient toujours, c'est
+exactement la panne muette qui attend la Vita ; la reprendre demande un accès
+à la machine, pas un raisonnement.
+
+Ce que Vita3K a de plus que RPCS3 : `--firmware <chemin.pup>` installe le
+firmware depuis la ligne de commande, donc sans souris. Il reste à trancher où
+le PUP est rangé et comment on constate qu'il est déjà installé.
+
+**L'amorçage, bloqué par autre chose que la mesure.** Le `config.yml` de
+Vita3K est chargé depuis `<Vita3K>\config.yml`, c'est-à-dire depuis son
+dossier d'INSTALLATION. Or `bootstrap.target` doit être un chemin Windows
+absolu ou partir d'une variable d'environnement : la racine d'émulation est un
+paramètre de `retro scan`, aucune constante ne la désigne. Il faudra un jeton
+substitué à la synchronisation, sur le modèle de `{render_config}`. Et, comme
+pour Cemu, une configuration qui vit sous le dossier d'installation disparaît
+à chaque montée de version : l'amorçage devra se rejouer.
+
+**L'étape 4, le mouvement : c'est D4, elle n'a pas bougé.** Ce qui restera à
+faire dans ce profil-ci est noté dans le profil.
+
+**Ce que ça coûte aujourd'hui :** la PS Vita reste absente de la console — mais
+elle est absente FRANCHEMENT : nommée dans le manifeste, refusée à
+l'installation avec sa cause, signalée au scan. Et le scan sait désormais lire
+une bibliothèque en dossiers, ce dont profitera n'importe quel émulateur qui
+en aura une.

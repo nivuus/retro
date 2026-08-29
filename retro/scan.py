@@ -55,37 +55,45 @@ class IgnoredSystem:
     reason: str
 
 
-def base_title(filename: str) -> str:
+def _tige(nom: str, dossier: bool) -> str:
+    """Le nom d'où part un titre, extension retirée.
+
+    Un DOSSIER n'a pas d'extension : le point de « Jeu v1.02 » fait partie de
+    son nom, et le retirer comme on retire « .iso » renommerait le jeu dans
+    Steam — en silence, puisque le titre resterait plausible.
+    """
+    return nom if dossier else pathlib.PurePosixPath(nom).stem
+
+
+def base_title(filename: str, dossier: bool = False) -> str:
     """Le titre SANS son marqueur de disque.
 
     C'est la clé de regroupement : les trois disques d'un même jeu et le .m3u
     qui les rassemble ont tous le même titre de base.
     """
-    tige = pathlib.PurePosixPath(filename).stem
-    return _PARENTHESES.sub("", tige).strip()
+    return _PARENTHESES.sub("", _tige(filename, dossier)).strip()
 
 
-def clean_title(filename: str) -> str:
+def clean_title(filename: str, dossier: bool = False) -> str:
     """Le titre affiché dans Steam, marqueur de disque compris.
 
     Le marqueur est CONSERVÉ : deux disques du même jeu donneraient sinon le
     même titre, donc le même identifiant Steam, et une seule entrée survivrait
     aux deux.
     """
-    tige = pathlib.PurePosixPath(filename).stem
+    tige = _tige(filename, dossier)
     m = _DISQUE.search(tige)
     if not m:
-        return base_title(filename)
+        return base_title(filename, dossier)
     sans_disque = tige[: m.start()] + tige[m.end():]
     return f"{_PARENTHESES.sub('', sans_disque).strip()} {m.group(0)}".strip()
 
 
-def discriminant(filename: str) -> str:
+def discriminant(filename: str, dossier: bool = False) -> str:
     """Le premier fragment parenthésé d'un nom de fichier — en pratique la
     région. Sert à départager deux fichiers dont le titre nettoyé serait le
     même, et seulement dans ce cas."""
-    tige = pathlib.PurePosixPath(filename).stem
-    m = _PARENTHESES.search(tige)
+    m = _PARENTHESES.search(_tige(filename, dossier))
     return m.group(0).strip(" ()[]") if m else ""
 
 
@@ -96,6 +104,11 @@ class _Candidat:
     chemin: str          # relatif à la racine, en séparateurs Windows
     pid: str
     systeme: object
+    # Un jeu n'est pas toujours un fichier : sur PS Vita, une application
+    # installée est un DOSSIER. Ce qui en découle tient en deux points — le
+    # titre ne se coupe pas sur un point (`_tige`), et le chemin donné à
+    # l'émulateur est celui du dossier.
+    dossier: bool = False
 
 
 # Ce qui départage deux jeux de même titre, du plus lisible au plus sûr. Un
@@ -108,7 +121,7 @@ _QUALIFICATIFS = (
     # bibliothèque.
     lambda c: c.systeme.name,
     # Puis la région, qui départage deux éditions d'un même jeu.
-    lambda c: discriminant(c.fichier.name),
+    lambda c: discriminant(c.fichier.name, c.dossier),
     # Puis le nom de fichier entier, extension comprise.
     lambda c: c.fichier.name,
     # Enfin le chemin complet. C'est le SEUL qualificatif qu'un système de
@@ -137,7 +150,7 @@ def _desambiguiser(candidats: list[_Candidat]) -> list[str]:
     Les titres uniques ne sont jamais touchés : la bibliothèque reste propre
     dans le cas courant, qui est de loin le plus fréquent.
     """
-    titres = [clean_title(c.fichier.name) for c in candidats]
+    titres = [clean_title(c.fichier.name, c.dossier) for c in candidats]
     for extraire in _QUALIFICATIFS:
         groupes: dict[str, list[int]] = {}
         for i, t in enumerate(titres):
@@ -292,22 +305,63 @@ def unmatched_folders(roms_root: pathlib.Path,
     return orphelins, attendus
 
 
-def _retenus(dossier: pathlib.Path, systeme) -> list[pathlib.Path]:
-    """Les fichiers de ce dossier qui méritent une entrée Steam.
+def _est_application(candidat: pathlib.Path, marqueur: str) -> bool:
+    """Ce dossier est-il une application installée, et non un dossier quelconque ?
 
-    Un .m3u regroupe les disques d'un même jeu. Lancer un disque isolé alors
-    qu'un .m3u existe est une erreur : le jeu réclamerait le disque suivant
-    sans pouvoir l'obtenir. Le titre de BASE est la clé de regroupement — il
-    ignore le marqueur de disque, que le titre affiché conserve.
+    La réponse est le fichier que le profil DÉCLARE : une application PS Vita
+    porte son eboot.bin à sa racine, un dossier de sauvegardes n'en a pas.
+    Sans cette condition, « savedata » deviendrait une entrée de la
+    bibliothèque, qui ne lancerait rien.
+
+    La comparaison ignore la casse, comme `folder_key` : ce scan tourne sous
+    Linux mais décrit une machine Windows, où « EBOOT.BIN » et « eboot.bin »
+    sont le même fichier. Sans cela, un dumper qui majuscule ses noms perdrait
+    toute sa bibliothèque.
+    """
+    cle = marqueur.strip().casefold()
+    try:
+        return any(e.name.casefold() == cle and e.is_file()
+                   for e in candidat.iterdir())
+    except OSError:
+        # Un dossier illisible ne peut pas être ATTESTÉ comme un jeu ; le
+        # déclarer tel produirait une entrée Steam dont rien ne garantit
+        # qu'elle lance quoi que ce soit. Comme dans `_explorer`, l'ennui d'un
+        # dossier n'arrête pas le scan des autres.
+        return False
+
+
+def _retenus(dossier: pathlib.Path, systeme) -> list[tuple[pathlib.Path, bool]]:
+    """Ce que ce dossier de système offre à Steam, et sous quelle forme.
+
+    Rend des couples (chemin, est-un-dossier). Deux formes cohabitent :
+
+    - les FICHIERS, à l'extension déclarée. Un .m3u regroupe les disques d'un
+      même jeu : lancer un disque isolé alors qu'un .m3u existe est une erreur,
+      le jeu réclamerait le disque suivant sans pouvoir l'obtenir. Le titre de
+      BASE est la clé de regroupement — il ignore le marqueur de disque, que le
+      titre affiché conserve ;
+    - les DOSSIERS d'application, quand le profil déclare à quoi ils se
+      reconnaissent. Une bibliothèque PS Vita en est faite. Le dossier est
+      rendu TEL QUEL et n'est jamais ouvert : ce qu'il contient est le jeu, pas
+      une liste de jeux — l'inventorier ferait une entrée Steam par fichier du
+      jeu, ce qui était exactement le risque de cette dette.
+
+    Sans `app_dir_marker` — les neuf profils livrés — rien ne change : aucun
+    dossier n'est jamais retenu.
     """
     fichiers = sorted(f for f in dossier.iterdir()
                       if f.is_file() and f.suffix.lower() in
                       tuple(e.lower() for e in systeme.extensions))
     titres_m3u = {base_title(f.name) for f in fichiers
                   if f.suffix.lower() == ".m3u"}
-    return [f for f in fichiers
-            if f.suffix.lower() == ".m3u"
-            or base_title(f.name) not in titres_m3u]
+    retenus = [(f, False) for f in fichiers
+               if f.suffix.lower() == ".m3u"
+               or base_title(f.name) not in titres_m3u]
+    if systeme.app_dir_marker:
+        retenus += [(d, True) for d in sorted(dossier.iterdir())
+                    if d.is_dir()
+                    and _est_application(d, systeme.app_dir_marker)]
+    return retenus
 
 
 def ignored_systems(roms_root: pathlib.Path, profils: dict,
@@ -399,11 +453,12 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
     # arrêté : deux jeux homonymes rangés sous deux systèmes différents ne se
     # rencontraient jamais, et l'un des deux disparaissait de Steam.
     candidats = [
-        _Candidat(fichier=f, chemin=chemin, pid=pid, systeme=systeme)
+        _Candidat(fichier=f, chemin=chemin, pid=pid, systeme=systeme,
+                  dossier=est_dossier)
         for dossier, chemin, pid, systeme in _dossiers_couverts(roms_root, profils)
         # émulateur absent : ces jeux ne se lanceraient pas
         if chemin not in ignores
-        for f in _retenus(dossier, systeme)
+        for f, est_dossier in _retenus(dossier, systeme)
     ]
 
     # Steam n'appelle PAS l'émulateur : il appelle le lanceur commun, qui
