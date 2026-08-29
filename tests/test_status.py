@@ -804,11 +804,19 @@ launch = '-batch "{{rom}}"'
 """
 
 
-def _profil_manette(tmp_path, pid, mapping, ou=""):
-    ligne = f"mapping_where = '{ou}'" if ou else ""
+def _profil_manette(tmp_path, pid, mapping, ou="", pad=""):
+    """Un profil de fixture, et le pad sous lequel son relevé a été fait.
+
+    `pad` est EXPLICITE et non deviné : un relevé clos l'exige, et le laisser
+    se remplir tout seul reviendrait à tester une valeur que la fixture aurait
+    inventée plutôt que celle qu'un profil déclare.
+    """
+    lignes = [f"mapping_where = '{ou}'" if ou else "",
+              f'pad_releve = "{pad}"' if pad else ""]
     p = tmp_path / f"{pid}.toml"
-    p.write_text(_PROFIL_MANETTE.format(pid=pid, mapping=mapping, ou=ligne),
-                 encoding="utf-8")
+    p.write_text(_PROFIL_MANETTE.format(
+        pid=pid, mapping=mapping,
+        ou="\n".join(l for l in lignes if l)), encoding="utf-8")
     return {pid: profiles.load_profile(p)}
 
 
@@ -861,7 +869,8 @@ def test_un_releve_clos_n_est_plus_un_probleme_mais_reste_dit(tmp_path):
     """
     profils = _profil_manette(
         tmp_path, "duckstation", "releve",
-        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]")
+        "%USERPROFILE%\\Documents\\DuckStation\\settings.ini, section [Pad1]",
+        pad="x360")
     rapport = _rapport_manette(profils)
     assert [p for p in rapport.problems if "manette" in p.what] == []
     assert [(m.profile_id, m.etat) for m in rapport.manettes] == [

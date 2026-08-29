@@ -1241,7 +1241,8 @@ def test_un_profil_declare_un_releve_clos_sans_dire_que_l_emulateur_trouve_seul(
     p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
         '[input]\nmapping = "releve"\n'
         "mapping_where = '%USERPROFILE%\\\\Documents\\\\D\\\\settings.ini, "
-        "section [Pad1]'\n")))
+        "section [Pad1]'\n"
+        'pad_releve = "x360"\n')))
     assert p.input_mapping == profiles.MAPPING_RELEVE
     assert p.input_mapping != profiles.MAPPING_AUTO
     assert "[Pad1]" in p.input_mapping_where
@@ -1291,6 +1292,68 @@ def test_mapping_where_reste_facultatif_quand_rien_n_est_a_relever(tmp_path):
         p = profiles.load_profile(ecrire(tmp_path, f"{etat}.toml", _avec_input(
             f'[input]\nmapping = "{etat}"\n')))
         assert p.input_mapping_where == ""
+
+
+# --- [input] pad_releve : SOUS QUEL PAD la mesure a été faite ---------------
+#
+# Un relevé n'est vrai que du pad sous lequel il a été fait. Le profil disait
+# « relevé » sans dire « de quoi », et cette information n'existait nulle part
+# — alors que c'est très exactement elle qui décide si la mesure survit au
+# jour où Apollo annoncera une DualShock au lieu d'un Xbox 360.
+
+
+def test_un_releve_clos_dit_sous_quel_pad_il_a_ete_fait(tmp_path):
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+        '[input]\nmapping = "releve"\n'
+        "mapping_where = '%USERPROFILE%\\\\Documents\\\\D\\\\settings.ini, "
+        "section [Pad1]'\n"
+        'pad_releve = "x360"\n')))
+    assert p.input_pad_releve == "x360"
+
+
+def test_un_releve_clos_sans_pad_est_refuse(tmp_path):
+    """Un relevé sans son pad est une mesure sans ses conditions.
+
+    `retro status` ne peut alors NI dire que le pad vu au dernier lancement
+    correspond, NI dire qu'il ne correspond pas : il se tait, et le silence se
+    lit comme « tout va bien » par quelqu'un qui vient de ne pas pouvoir
+    jouer. C'est le filet de D4 qui devient inerte, sans un mot.
+    """
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nmapping = "releve"\n'
+            "mapping_where = 'D\\\\settings.ini, section [Pad1]'\n")))
+
+
+def test_un_pad_declare_sans_releve_est_refuse(tmp_path):
+    """`a-relever` veut dire QUE RIEN N'A ÉTÉ RELEVÉ. Y déclarer un pad serait
+    un mensonge de la même famille que `steam_input = "required"` : une valeur
+    d'apparence mesurée que personne n'a mesurée, et que `retro status`
+    relaierait comme un fait."""
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nmapping = "a-relever"\n'
+            "mapping_where = 'D\\\\settings.ini, section [Pad1]'\n"
+            'pad_releve = "x360"\n')))
+
+
+def test_un_type_de_pad_inconnu_du_code_est_refuse(tmp_path):
+    """Le vocabulaire est GELÉ. Une faute de frappe — « X360 », « ds-4 » —
+    donnerait un type que la table vid:pid ne reconnaît jamais : la
+    discordance ne serait alors JAMAIS détectée, et le filet passerait pour
+    vert alors qu'il ne compare plus rien."""
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nmapping = "releve"\n'
+            "mapping_where = 'D\\\\settings.ini, section [Pad1]'\n"
+            'pad_releve = "X360"\n')))
+
+
+def test_pad_releve_est_vide_quand_rien_n_a_ete_releve(tmp_path):
+    for etat in ("auto", "inconnu"):
+        p = profiles.load_profile(ecrire(tmp_path, f"{etat}.toml", _avec_input(
+            f'[input]\nmapping = "{etat}"\n')))
+        assert p.input_pad_releve == ""
 
 
 # --- un jeu qui est un DOSSIER ---------------------------------------------

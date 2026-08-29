@@ -100,6 +100,26 @@ steam_input = "required"
 mode        = "xinput"
 mapping       = "releve"
 mapping_where = 'RPCS3\config\input_configs\global\Default.yml (sous la racine emulation), section « Player 1 Input »'
+# SOUS QUEL PAD ce releve a ete fait. Mesure le 2026-08-29 : Apollo annonce
+# un Xbox 360, et l'invite porte 045e:028e.
+#
+# ⚠ ET C'EST LE PREMIER QUI MOURRA A LA BASCULE. Le jour ou Apollo annoncera
+# une DualShock, les deux lignes posees plus haut cesseront de designer quoi
+# que ce soit :
+#   - « Handler: XInput » depend du GESTIONNAIRE, pas d'un index. Contrairement
+#     aux vingt-sept « SDL-0 » de DuckStation, qui survivent parce qu'un index
+#     ne depend d'aucun VID/PID, celui-ci ne survit pas ;
+#   - « Device » nomme le peripherique tel que ce gestionnaire-la le nomme —
+#     le nom vient de m_name_string dans xinput_pad_handler.cpp. Un autre
+#     gestionnaire, un autre nom.
+#
+# ET LA PANNE SERA SILENCIEUSE, deux fois plutot qu'une : RPCS3 ne dira pas
+# qu'un peripherique nomme est absent, et le fichier qui porte ces lignes a ete
+# pose A LA MAIN sur la console (D7). Il n'est dans aucun fichier versionne,
+# donc dans le champ d'AUCUNE garde de ce depot — la garde anti-GUID des
+# profils ne peut rien pour lui. Ces lignes de commentaire sont tout ce qui
+# reliera la panne a sa cause le jour venu.
+pad_releve    = "x360"
 
 [exit]
 # L'exécutable livré porte « Open Home Menu », « PS Button », « Exit Game? » et

@@ -1349,3 +1349,63 @@ def test_le_bloc_dette_d4_de_vita3k_ne_promet_pas_une_substitution_absente():
     assert "tactile" in bloc, (
         "le bloc a perdu l'écran tactile avant et le pavé arrière de la "
         "Vita : un manque distinct du gyroscope, traité nulle part")
+
+
+def test_le_vocabulaire_des_types_de_pad_ne_se_rallonge_pas_tout_seul():
+    """Gelé, exactement comme INTERDITS et pour la même raison.
+
+    Un type de pad ajouté sans y penser serait un type que la table vid:pid de
+    `status` ne connaît pas : la discordance ne serait jamais détectée, et le
+    filet de D4 passerait pour vert en ne comparant plus rien. L'ajout doit se
+    faire ici ET dans la table, ou pas du tout.
+    """
+    assert profiles.PADS_CONNUS == ("x360", "ds4")
+
+
+def test_les_deux_profils_au_releve_clos_disent_sous_quel_pad_il_a_ete_fait():
+    """Les seuls relevés du dépôt ont été faits sous un Xbox 360, et ils ne
+    valent que sous lui.
+
+    Deux sources concordantes, le 2026-08-29 : Apollo annonce « Gamepad 0 will
+    be Xbox 360 controller (default) » dans son journal, et l'invité porte le
+    VID/PID d'une manette Xbox 360 filaire, 045e:028e. Le jour où ce sera une
+    DualShock, ce champ deviendra faux, et c'est précisément ce que
+    `retro status` doit pouvoir dire.
+    """
+    charges = profiles.load_profiles(PROFILS)
+    clos = {pid for pid, p in charges.items()
+            if p.input_mapping == profiles.MAPPING_RELEVE}
+    assert clos == {"duckstation", "rpcs3"}, (
+        f"les profils au relevé clos ont changé : {sorted(clos)}. Le champ "
+        "'pad_releve' est exigé de chacun d'eux — et de ceux-là seulement.")
+    for pid in sorted(clos):
+        assert charges[pid].input_pad_releve == "x360", (
+            f"{pid} ne dit pas sous quel pad son relevé a été fait")
+
+
+def test_rpcs3_dit_que_son_gestionnaire_ne_survivra_pas_a_la_bascule():
+    """C'est la seule ligne du dépôt qui reliera la panne à sa cause.
+
+    Mesuré dans la source de RPCS3 le 2026-08-29 : son gestionnaire XInput et
+    le nom de périphérique qui va avec dépendent du gestionnaire, pas d'un
+    index — le nom vient de `m_name_string` dans `xinput_pad_handler.cpp`. Le
+    fichier qui les porte a été posé À LA MAIN sur la console (D7) : aucune
+    garde du dépôt ne le voit, rien ne le repose, et il mourra à la bascule
+    sans qu'un mot soit dit.
+
+    Contrairement à DuckStation, dont les vingt-sept liaisons ne portent qu'un
+    index et survivent. Les deux cas se ressemblent et n'ont pas le même sort ;
+    sans cette note, personne ne saura lequel il lit.
+    """
+    texte = (PROFILS / "rpcs3.toml").read_text(encoding="utf-8")
+    commentaires = "\n".join(l for l in texte.splitlines()
+                             if l.lstrip().startswith("#")).lower()
+    assert "bascule" in commentaires, (
+        "rpcs3.toml ne dit pas ce que le changement de type de pad fera de "
+        "son gestionnaire")
+    assert "handler" in commentaires and "xinput" in commentaires, (
+        "rpcs3.toml ne nomme pas le gestionnaire qui ne survivra pas")
+    assert "silence" in commentaires, (
+        "rpcs3.toml ne dit pas que la panne sera SILENCIEUSE — c'est la "
+        "moitié de l'information : une panne annoncée se corrige, celle-ci "
+        "se confondra avec « rien ne marche depuis toujours »")

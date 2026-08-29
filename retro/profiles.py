@@ -128,6 +128,27 @@ MAPPINGS = (MAPPING_AUTO, MAPPING_A_RELEVER, MAPPING_RELEVE, MAPPING_INCONNU)
 # liaisons relevées sont reposées. `mapping_where` y est donc exigé.
 MAPPINGS_AVEC_OU = (MAPPING_A_RELEVER, MAPPING_RELEVE)
 
+# LE TYPE DE MANETTE SOUS LEQUEL UN RELEVÉ A ÉTÉ FAIT. Vocabulaire GELÉ, et
+# c'est le point : un relevé n'est vrai QUE du pad sous lequel il a été fait.
+#
+# Apollo annonce aujourd'hui un Xbox 360 (`Gamepad 0 will be Xbox 360
+# controller (default)`, relevé dans son journal). Le jour où il annoncera une
+# DualShock, le VID/PID change, donc le GUID SDL, donc tout identifiant qu'une
+# configuration d'entrée contiendrait — et une liaison qui ne correspond à
+# aucun périphérique est ignorée EN SILENCE. La console redevient muette
+# partout, sans un message. Ce champ est ce qui permet de le CONSTATER
+# autrement qu'en jouant : `status` compare ce qui a été relevé au pad que le
+# lanceur a vu au dernier lancement.
+#
+# Le vocabulaire est gelé, et un type inconnu est REFUSÉ plutôt que toléré :
+# une valeur libre — « X360 », « ds-4 », « dualshock » — ne correspondrait
+# jamais à la table vid:pid, la discordance ne serait jamais détectée, et le
+# filet passerait pour vert alors qu'il ne compare plus rien. Ajouter un type
+# de pad doit être un ACTE EXPLICITE, ici et dans la table de `status`.
+PAD_X360 = "x360"
+PAD_DS4 = "ds4"
+PADS_CONNUS = (PAD_X360, PAD_DS4)
+
 
 @dataclasses.dataclass(frozen=True)
 class Bootstrap:
@@ -201,6 +222,11 @@ class Profile:
     # une accusation, pas un diagnostic.
     input_mapping: str = MAPPING_INCONNU
     input_mapping_where: str = ""
+    # SOUS QUEL PAD ce relevé a été fait. Vide veut dire « rien n'a été
+    # relevé », jamais « n'importe lequel » : c'est la condition de validité
+    # de la mesure, pas une préférence. Exigé quand `input_mapping` vaut
+    # « releve », interdit partout ailleurs.
+    input_pad_releve: str = ""
     # Facultatif, et PLURIEL : un émulateur qui démarre nu n'a rien à recevoir,
     # et le profil doit alors DIRE pourquoi il n'a pas de bloc — sans quoi rien
     # ne distingue « cet émulateur se débrouille » d'un bloc oublié. Plusieurs,
@@ -657,7 +683,8 @@ def _valider_regimes(path: pathlib.Path, content: str, enforced: str) -> None:
         )
 
 
-def _lire_mapping(path: pathlib.Path, entree: dict) -> tuple[str, str]:
+def _lire_mapping(path: pathlib.Path,
+                  entree: dict) -> tuple[str, str, str]:
     """L'état du relevé de la manette, validé, et l'endroit où il se fait.
 
     Le défaut est `inconnu`, et ce choix se défend contre les trois autres :
@@ -706,7 +733,58 @@ def _lire_mapping(path: pathlib.Path, entree: dict) -> tuple[str, str]:
             "clos doit nommer le même fichier, pour la raison inverse : c'est "
             "là que le propriétaire ira voir si ses liaisons y sont encore."
         )
-    return etat, ou
+    return etat, ou, _lire_pad_releve(path, entree, etat)
+
+
+def _lire_pad_releve(path: pathlib.Path, entree: dict, etat: str) -> str:
+    """Le type de manette sous lequel le relevé a été fait, validé.
+
+    EXIGÉ quand le relevé est clos, INTERDIT partout ailleurs, et les deux
+    règles ont la même racine — une valeur qui n'a pas été mesurée ne doit pas
+    pouvoir s'écrire :
+
+    - sans lui, un relevé clos est une mesure privée de ses conditions.
+      `status` ne peut alors ni confirmer ni infirmer que le pad vu au dernier
+      lancement est celui-là : il se tait, et son silence se lit comme « tout
+      va bien » par quelqu'un qui vient justement de ne pas pouvoir jouer ;
+    - avec lui sur un `a-relever`, c'est l'inverse : `a-relever` veut dire que
+      RIEN n'a été relevé, et y déclarer un pad serait un mensonge de la même
+      famille que `steam_input = "required"` — une valeur d'apparence mesurée
+      que personne n'a mesurée, et que le rapport relaierait comme un fait.
+    """
+    pad = entree.get("pad_releve", "")
+    if not isinstance(pad, str):
+        raise ProfileError(
+            f"{path} [input] : 'pad_releve' doit être un texte, l'un de "
+            f"{', '.join(PADS_CONNUS)}. Reçu {pad!r}."
+        )
+    pad = pad.strip()
+    if pad and pad not in PADS_CONNUS:
+        raise ProfileError(
+            f"{path} [input] : 'pad_releve' vaut {pad!r}, attendu l'un de "
+            f"{', '.join(PADS_CONNUS)}. Ce vocabulaire est GELÉ : un type "
+            "hors liste ne correspondrait à aucun périphérique connu, la "
+            "discordance avec le pad vu au dernier lancement ne serait JAMAIS "
+            "détectée, et le rapport passerait pour vert en ne comparant plus "
+            "rien. Ajouter un type de pad est un acte explicite."
+        )
+    if etat == MAPPING_RELEVE and not pad:
+        raise ProfileError(
+            f"{path} [input] : 'mapping' vaut « {MAPPING_RELEVE} » mais "
+            "'pad_releve' est vide. Un relevé n'est vrai QUE du pad sous "
+            "lequel il a été fait : changer de type de manette change le "
+            "VID/PID, donc le GUID SDL, et une liaison qui ne correspond à "
+            "aucun périphérique est ignorée en silence. Sans ce champ, rien "
+            "ne pourra dire que la mesure a cessé d'être vraie."
+        )
+    if etat != MAPPING_RELEVE and pad:
+        raise ProfileError(
+            f"{path} [input] : 'pad_releve' vaut {pad!r} alors que 'mapping' "
+            f"vaut « {etat} ». Ce champ dit sous quel pad un relevé a été "
+            "fait ; hors d'un relevé clos, il n'y a pas de relevé, et "
+            "l'écrire serait affirmer une mesure que personne n'a faite."
+        )
+    return pad
 
 
 # L'identifiant d'un profil n'est pas une étiquette : il NOMME un fichier et
@@ -962,7 +1040,7 @@ def load_profile(path: pathlib.Path) -> Profile:
 
     sortie = data.get("exit", {})
     entree = data.get("input", {})
-    mapping, mapping_ou = _lire_mapping(path, entree)
+    mapping, mapping_ou, pad_releve = _lire_mapping(path, entree)
     return Profile(
         id=data["id"], exe=data["exe"], systems=tuple(systemes),
         exit_native=sortie.get("native", ""),
@@ -970,6 +1048,7 @@ def load_profile(path: pathlib.Path) -> Profile:
         steam_input=entree.get("steam_input", "required"),
         input_mapping=mapping,
         input_mapping_where=mapping_ou,
+        input_pad_releve=pad_releve,
         bootstraps=_lire_bootstraps(path, data.get("bootstrap")),
     )
 
