@@ -143,7 +143,7 @@ différence de fond avec l'émulateur personnel, dont l'identifiant est
 **un changement de type de pad (dette D4) ne l'invalide donc pas** de la même
 façon. À vérifier avant de s'en servir, mais c'est ce que le binaire dit.
 
-**5. Ce qui n'a PAS pu être relevé : les valeurs.**
+**5. Les valeurs, au premier passage : aucune.**
 
 Aucune manette n'était connectée. Le pad d'Apollo
 (`USB\VID_045E&PID_028E`) et une DualShock 4 (`VID_054C&PID_05C4`) figurent
@@ -152,8 +152,87 @@ c'est-à-dire **absents**. Le pad n'existe que pendant une session Moonlight, et
 DuckStation aurait répondu mot pour mot « Automatic mapping failed, no devices
 are available ».
 
-C'est exactement ce que la procédure ci-dessous va chercher, et c'est la seule
-partie qui exige le propriétaire, une manette et un canapé.
+Les vingt-sept liaisons ont été obtenues **le même jour**, par une autre voie —
+un pad virtuel créé directement par ViGEmBus, sans session Moonlight. C'est
+l'objet de la section suivante ; elles sont depuis dans
+`retro/data/profiles/duckstation.toml`, champ `enforced`.
+
+---
+
+## Ce que ce relevé a coûté, et qui n'était pas devinable
+
+Cette section n'est pas une procédure : c'est ce qu'il a fallu apprendre le
+2026-08-29 pour faire écrire `[Pad1]` par DuckStation **sans manette physique
+et sans session Moonlight**. Rien de tout cela n'est dans une documentation ; le
+prochain qui automatisera un relevé le paiera deux fois s'il ne le lit pas ici.
+
+### Les codes IOCTL de ViGEmBus
+
+ViGEmBus crée le pad virtuel qu'Apollo emploie. On peut le piloter directement,
+sans Apollo et sans client : c'est ce qui a rendu le relevé possible depuis
+l'hôte. Ses codes de contrôle ne sont **pas** documentés dans le pilote livré,
+et la valeur qu'on devine est fausse.
+
+**La base de fonction est `0x801`, PAS `0x800`.** C'est le seul point dur ;
+tout le reste en découle :
+
+| Opération | IOCTL |
+|---|---|
+| `PLUGIN` | `0x2AA004` |
+| `UNPLUG` | `0x2AA008` |
+| `CHECK_VERSION` | `0x2AA00C` |
+| `WAIT_READY` | `0x2AA010` |
+| `XUSB_SUBMIT_REPORT` | `0x2AA808` |
+
+L'interface à ouvrir :
+
+```
+\\?\ROOT#SYSTEM#0001#{96e42b22-f5e9-42f8-b043-ed0f932f014f}
+```
+
+**Comment ces codes ont été obtenus**, parce que la méthode se réemploie :
+balayage de l'espace `FILE_DEVICE_BUS_EXTENDER`, en lisant le code d'erreur
+plutôt que le succès —
+
+- code **inconnu** → erreur **50** (`ERROR_NOT_SUPPORTED`) ;
+- code **connu** → erreur **122** (`ERROR_INSUFFICIENT_BUFFER`), le pilote
+  ayant commencé à traiter la requête avant de se plaindre de la taille.
+
+C'est cette différence 50/122 qui sépare « ce code n'existe pas » de « ce code
+existe, mon tampon est mauvais ». Sans elle, un balayage ne rapporte que des
+échecs indiscernables.
+
+### Deux pièges d'automatisation de l'assistant
+
+L'assistant de DuckStation doit être piloté dans la **session interactive**
+(voir « le piège qui invalide tout » plus haut). Deux choses y font échouer
+l'automatisation sans rien dire :
+
+1. **La console PowerShell d'une tâche `schtasks /it` passe au premier plan et
+   FERME le popup.** La fenêtre de l'assistant perd le focus au moment précis
+   où la tâche démarre, et le geste suivant tombe dans le vide. Correctif :
+   lancer PowerShell avec `-WindowStyle Hidden`.
+2. **`InvokePattern.Invoke()` n'ouvre PAS un `QMenu`.** L'automatisation UI
+   accepte l'appel, ne signale aucune erreur, et rien ne s'ouvre — Qt ne câble
+   pas ce motif sur ses menus. Il faut un **clic souris synthétisé**
+   (`SetCursorPos` + `mouse_event`). Et il faut cliquer **le bouton ET l'entrée
+   de menu dans la même exécution** : le menu se referme entre deux tâches, donc
+   un découpage en deux appels ne clique jamais que dans le vide.
+
+### La voie Moonlight n'a pas abouti : `403 Permission denied`
+
+La première voie essayée était d'ouvrir une session Moonlight depuis l'hôte pour
+faire exister le pad. Elle **échoue au `/launch`** avec `403 Permission denied`.
+
+La cause est mesurée : le client appairé porte `perm=0x3000000`, là où les
+clients fonctionnels portent `0x7131f00`. C'est un défaut d'appairage, pas un
+défaut de relevé — et la voie ViGEmBus l'a remplacée, ce qui est pourquoi cette
+page ne l'exige plus.
+
+**Ce que cela laisse à faire à qui voudra un essai AU FLUX** — c'est-à-dire
+vérifier qu'un jeu répond à la manette dans les conditions réelles, la
+troisième condition de l'étape 4 : régler ce `perm` sur le client appairé.
+Tant qu'il vaut `0x3000000`, aucun lancement par Moonlight ne passera.
 
 ---
 
@@ -252,19 +331,33 @@ python3 <installer>/console/guest/winrm_exec.py ps '$f="$env:USERPROFILE\Documen
 
 ### 5. Ce qu'on en fait
 
-- **Ne pas figer l'identifiant relevé dans le profil livré.** Le pad d'Apollo
-  n'existe que pendant une session. Ce que le relevé établit, c'est la
-  **forme** — et un exemplaire réel de ce que DuckStation écrit, qui devient le
-  gabarit à jetons substitué au lancement par le lanceur (le patron de
-  `{render_config}`, tâche 3 du plan des manettes).
+- **Ce qui a été fait pour DuckStation le 2026-08-29, et qui n'est pas la règle
+  générale.** Les vingt-sept liaisons relevées ont été figées TELLES QUELLES
+  dans le profil livré, champ `enforced` de
+  `retro/data/profiles/duckstation.toml`. C'est défendable ici pour une raison
+  précise : l'identifiant de DuckStation est un **index** (`SDL-0`), pas un
+  GUID — il ne porte donc ni VID, ni PID, ni rien qui soit propre à la machine
+  de mesure. Un émulateur dont l'identifiant contient un GUID (l'émulateur
+  personnel, `<index>-<GUID>`) ne peut PAS être traité ainsi : il lui faudra le
+  gabarit à jetons substitué au lancement (le patron de `{render_config}`,
+  tâche 3 du plan des manettes).
+- **Le prix de ce figeage, et il est réel.** Un index dépend de l'ORDRE
+  d'énumération : qu'un autre pad s'énumère avant celui d'Apollo, et les
+  vingt-sept liaisons visent un périphérique absent — en silence, DuckStation ne
+  dit rien. Et comme elles sont dans `enforced`, elles sont reposées à chaque
+  lancement : le propriétaire ne peut plus remapper sa manette depuis
+  l'interface de DuckStation. Les deux fragilités sont écrites dans le profil,
+  à côté du fragment.
+- **`enforced` ou `content` n'est pas un détail de rangement.** Sous
+  `-batch -nogui`, DuckStation ne rouvre jamais son `settings.ini` : un régime
+  « posé si absent » ne poserait ces liaisons sur AUCUNE console déjà jouée. Une
+  manette relevée doit donc être IMPOSÉE, ou elle n'arrivera jamais là où elle
+  manque.
 - **Basculer le profil** : `retro/data/profiles/duckstation.toml`, bloc
-  `[input]`, de `mapping = "a-relever"` vers ce que la mesure dit. Si la
-  manette répond sans qu'on ait rien eu à écrire, c'est `auto`. `retro status`
-  cessera alors de le signaler.
-- **La configuration écrite par DuckStation reste en place** : l'amorçage ne
-  repose son fichier que s'il est absent. Une manette relevée le reste tant que
-  personne n'ordonne un ré-amorçage — et un ré-amorçage la perdrait, ce que
-  `retro launcher --reamorcer` fait précédé d'une sauvegarde.
+  `[input]`, de `mapping = "a-relever"` vers ce que la mesure dit. Il y reste
+  tant que la **troisième condition de l'étape 4** — un jeu qui répond à la
+  manette — n'a pas été vue. Si la manette répond sans qu'on ait rien eu à
+  écrire, c'est `auto`. `retro status` cessera alors de le signaler.
 
 ---
 
