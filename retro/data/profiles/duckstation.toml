@@ -102,6 +102,22 @@ CheckAtStartup = false
 HideCursorInFullscreen = true
 '''
 
+# DETTE — la manette ne répond pas dans DuckStation, constaté le 2026-08-28,
+# APRÈS les correctifs de manette du même jour (le lanceur retire
+# SDL_GAMECONTROLLER_IGNORE_DEVICES, la synchronisation éteint
+# UseSteamControllerConfig). Le jeu démarre — Crash Team Racing, c'était le
+# défaut d'origine, et il est réglé — mais aucun bouton ne fait rien.
+#
+# Ce que cela contredit : le plan des manettes range DuckStation parmi les
+# émulateurs qui « détectent bien tout seuls » leur manette. C'est faux ici, ou
+# ne vaut que d'un pad physique — le pad d'Apollo n'existe que pendant la
+# session. Le mapping de DuckStation vit dans la section [Pad1] du settings.ini
+# ci-dessus, que l'amorçage écrit SANS aucune clé d'entrée.
+#
+# À mesurer avant d'écrire une seule liaison : ce que [Pad1] attend — Type,
+# Bindings/..., et sous quelle forme d'identifiant. Une liaison qui ne
+# correspond à rien est ignorée EN SILENCE, et la manette reste muette
+# exactement comme si le fichier était vide. Voir docs/dettes.md, D3.
 [input]
 steam_input = "required"
 mode        = "xinput"

@@ -426,9 +426,28 @@ personnel muet.
 
 - **Le mapping par jeu.** Un jeu qui veut une disposition à lui est un cas
   particulier ; la console doit d'abord marcher dans le cas général.
-- **Le gyroscope, le retour de force fin, le tactile.** Apollo les transmet,
-  les émulateurs les gèrent inégalement, et rien de tout cela ne bloque une
-  partie.
+- **Le gyroscope, le retour de force fin, le tactile.** Les émulateurs les
+  gèrent inégalement, et rien de tout cela ne bloque une partie.
+
+  **Rectification du 2026-08-28 :** « Apollo les transmet » est faux. Apollo
+  annonce un **Xbox 360** — `Gamepad 0 will be Xbox 360 controller (default)`,
+  dans le `sunshine.log` que cette page cite déjà — et un pad X360 n'a ni
+  capteur de mouvement, ni tactile, ni haptique fin. Rien à transmettre. C'est
+  la dette D4 de `docs/dettes.md`, dont la moitié se règle dans
+  `nivuus/installer` (`docs/console-dettes.md`, C2), et qui a un coût caché :
+  changer le type de pad change son GUID SDL, donc tous les identifiants des
+  configurations d'entrée écrites pour un X360.
+
+  **L'absence TOTALE de vibration est autre chose**, et n'a jamais été mesurée
+  maillon par maillon comme l'a été le masquage Steam Input : ni les
+  émulateurs, ni les jeux Steam, ni le client Moonlight ne font vibrer quoi que
+  ce soit. Dette D1.
+
+- **La manette dans DuckStation.** Après les correctifs de cette page, le jeu
+  démarre et la manette reste muette — mesuré le 2026-08-28 sur Crash Team
+  Racing. Le fait n° 4 ci-dessus, qui range DuckStation parmi les émulateurs
+  détectant « bien tout seuls » leur manette, est donc faux ou ne vaut que d'un
+  pad physique. Dette D3.
 - **Steam Input.** Le pont Steam sert à lancer et à quitter ; y ajouter une
   couche de remappage par-dessus celle des émulateurs ferait deux endroits où
   un bouton est décidé.

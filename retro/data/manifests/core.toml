@@ -159,3 +159,16 @@ profile     = "cemu"
 # Le profil porte donc ce préfixe dans son exe, comme RetroArch et Dolphin.
 # Ce préfixe contient le numéro de version : il change à chaque mise à jour du
 # manifeste, et le profil doit changer avec lui.
+
+# DETTE — la PS Vita n'est couverte par aucun des neuf émulateurs ci-dessus, et
+# c'est un manque, pas une exclusion juridique : le candidat est Vita3K, dont
+# le statut est aussi clair que celui de RPCS3 ou de xemu.
+#
+# Ce n'est pas qu'une entrée à ajouter ici. Le point dur est le profil : le scan
+# compte des FICHIERS, alors qu'une bibliothèque Vita est faite de dossiers
+# d'applications installées (ux0:app) à côté de .vpk. Ajouter l'émulateur sans
+# trancher cette question d'abord remplirait Steam d'une entrée par fichier de
+# jeu. S'y ajoutent les modules PUP du firmware, qui se comportent comme un
+# BIOS — sans eux, le jeu apparaît, se lance, écran noir.
+#
+# Voir docs/dettes.md, D5, qui donne l'ordre des quatre étapes.

@@ -92,6 +92,15 @@ nom du système.
   tourne — il réécrirait le fichier à sa fermeture et le travail serait perdu,
   sans le moindre message. Fermez Steam d'abord.
 
+### Ce qui manque, et qui est écrit quelque part
+
+Cinq manques constatés sont consignés dans `docs/dettes.md`, chacun avec ce
+qu'il coûte vu du canapé et où il se joue dans le code : aucune vibration nulle
+part, rien qui garantisse une image maximale sans déformation, la manette muette
+dans DuckStation, ni capteur de mouvement ni manette PlayStation, et aucun
+émulateur PS Vita. Les deux derniers débordent sur l'invité Windows, qui a son
+propre fichier dans `nivuus/installer` : `docs/console-dettes.md`.
+
 ## Utilisation
 
 ```bash

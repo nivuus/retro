@@ -18,6 +18,16 @@ La décision est toujours EXPLICABLE : chaque résolution rend son motif, et
 `retro status` l'affiche. Un mode automatique qui déciderait en silence
 donnerait un jeu qui rame sans que rien ne dise pourquoi — le propriétaire
 croirait son matériel en cause.
+
+DETTE — ce module ne dit rien du REMPLISSAGE de l'écran. « Occuper le plus
+possible de l'écran sans étirer l'image » est un troisième réglage, distinct
+des deux qui existent ici : la résolution interne (combien de pixels
+l'émulateur calcule) et le ratio d'époque (la forme de l'image). Un ratio
+d'époque correctement rendu sur un 16:9 laisse des bandes noires — c'est
+voulu, et ce n'est pas de la déformation ; ce qui manque est la politique
+d'agrandissement, entier ou non, par système. Aujourd'hui chaque émulateur en
+décide seul, ce qui fait neuf comportements. Voir docs/dettes.md, D2, et son
+cas dur : DuckStation n'accepte AUCUN réglage de rendu en ligne de commande.
 """
 from __future__ import annotations
 
