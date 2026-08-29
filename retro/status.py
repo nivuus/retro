@@ -143,12 +143,18 @@ PROCEDURE_RELEVE = "docs/releve-manettes.md"
 class Manette:
     """Où en est le relevé de la manette d'un émulateur.
 
-    Trois états, et il faut les trois : « il trouve sa manette seul », « il ne
-    la trouve pas et rien n'a été relevé », « personne n'a mesuré ». Réduits à
-    deux, le troisième se confondrait avec l'un des deux autres — et c'est
-    précisément cette confusion qui a laissé DuckStation muet sur Crash Team
-    Racing, le plan des manettes le rangeant parmi ceux qui « détectent bien
-    tout seuls » sans que ce soit vrai.
+    Quatre états, et il faut les quatre : « il trouve sa manette seul », « il
+    ne la trouve pas et rien n'a été relevé », « le relevé est fait, imposé, et
+    un bouton a été vu répondre », « personne n'a mesuré ». Réduits, ils se
+    confondraient — et c'est précisément cette confusion qui a laissé
+    DuckStation muet sur Crash Team Racing, le plan des manettes le rangeant
+    parmi ceux qui « détectent bien tout seuls » sans que ce soit vrai.
+
+    Le quatrième est né le 2026-08-29, à la clôture de D3, parce qu'aucun des
+    trois premiers ne pouvait porter ce qui venait d'être constaté : la manette
+    répond dans Crash Team Racing, et elle ne répond QUE parce que la console
+    impose vingt-sept liaisons. « il trouve sa manette seul » aurait été le
+    mensonge exact que D3 a réfuté.
 
     `where` n'est jamais un identifiant : c'est le fichier, et la section, que
     le propriétaire ouvrira. Aucun identifiant relevé ailleurs que sur la
@@ -179,6 +185,11 @@ def _probleme_manettes(manettes: list[Manette]) -> list[Problem]:
 
     `inconnu` n'en est pas un : personne n'a regardé, ce n'est pas une panne.
     Il est dit dans la section Manettes, et nulle part ailleurs.
+
+    `releve` n'en est pas un non plus, et c'est le sens même de sa création :
+    un émulateur dont un bouton a été VU agir dans un jeu n'a plus de panne à
+    signaler. Il reste dit dans la section Manettes — avec le fichier où ses
+    liaisons vivent, parce qu'elles peuvent en disparaître.
     """
     return [Problem(
         what=f"{m.profile_id} : aucune liaison de manette n'a été relevée — "
@@ -783,10 +794,12 @@ def _lignes_amorcage(report: Report) -> list[str]:
 def _lignes_manettes(report: Report) -> list[str]:
     """Où en est la manette de chaque émulateur.
 
-    Trois formulations, une par état, sur le modèle de la section Amorçage.
+    Quatre formulations, une par état, sur le modèle de la section Amorçage.
     Celle de `a-relever` NOMME le fichier : c'est là que le propriétaire ira,
     et un rapport qui dit « à relever » sans dire où ne fait que déplacer la
-    question.
+    question. Celle de `releve` le nomme aussi, pour la raison inverse : les
+    liaisons y sont reposées à chaque lancement, et c'est le seul endroit où
+    vérifier qu'elles y sont encore.
     """
     lignes = []
     for m in report.manettes:
@@ -796,6 +809,9 @@ def _lignes_manettes(report: Report) -> list[str]:
         elif m.etat == profiles_mod.MAPPING_A_RELEVER:
             lignes.append(f"  · {m.profile_id} : manette muette, liaison à "
                           f"relever — {m.where}")
+        elif m.etat == profiles_mod.MAPPING_RELEVE:
+            lignes.append(f"  · {m.profile_id} : liaisons relevées et "
+                          f"imposées, réponse vue en jeu — {m.where}")
         else:
             lignes.append(f"  · {m.profile_id} : jamais mesuré — personne n'a "
                           "vérifié que sa manette répond")
