@@ -39,6 +39,7 @@ from collections.abc import Sequence
 
 from retro import install as install_mod
 from retro import launcher as launcher_mod
+from retro import launcher as launcher_mod
 from retro import render as render_mod
 from retro.bios import BiosNeed, SystemBios
 from retro.scan import IgnoredSystem
@@ -103,6 +104,10 @@ class Amorcage:
     declare: bool
     date: str = ""
     target: str = ""
+    # Comment le fichier est écrit — voir `launcher.STRATEGIES`. La fusion
+    # ROUVRE un fichier qui existe, ce que « si-absent » ne fait jamais : le
+    # propriétaire doit le lire AVANT, pas le découvrir après.
+    strategy: str = ""
 
 
 def etat_amorcage(profils: dict,
@@ -117,9 +122,11 @@ def etat_amorcage(profils: dict,
     for pid in sorted(profils):
         declare = getattr(profils[pid], "bootstrap", None) is not None
         date, cible = amorcages.get(pid, ("", ""))
+        amorcage = getattr(profils[pid], "bootstrap", None)
         etats.append(Amorcage(profile_id=pid, declare=declare,
                               date=date if declare else "",
-                              target=cible if declare else ""))
+                              target=cible if declare else "",
+                              strategy=amorcage.strategy if declare else ""))
     return etats
 
 
@@ -685,6 +692,14 @@ def _lignes_amorcage(report: Report) -> list[str]:
             lignes.append(f"  · {a.profile_id} : pas encore amorcé — sa "
                           "configuration sera posée au premier lancement "
                           "d'un de ses jeux")
+        # Dit à CHAQUE état, y compris « déjà amorcé » : c'est justement
+        # l'émulateur déjà amorcé dont le fichier sera rouvert, et le taire
+        # là serait le taire au seul endroit où ça compte.
+        if a.declare and a.strategy == launcher_mod.FUSION:
+            lignes.append(f"      ce profil MODIFIE ce fichier s'il existe "
+                          "déjà : seules ses propres clés sont réécrites, le "
+                          "reste est préservé, et une sauvegarde est faite "
+                          "avant toute écriture")
     return lignes
 
 

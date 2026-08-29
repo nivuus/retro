@@ -724,3 +724,46 @@ def test_un_emulateur_sans_reglage_de_remplissage_dit_pourquoi_sur_sa_ligne(tmp_
         (("native", "non-reglable", "aucun réglage — pas de clé Integer"),
          ("full", "non-reglable", "aucun réglage — pas de clé Integer")))
     assert sum("pas de clé Integer" in l for l in lignes) == 1
+
+
+# --- la section « Amorçage » : ce que retro va MODIFIER -------------------
+
+def _profils_strategie(tmp_path, strategie: str):
+    (tmp_path / "d.toml").write_text(f'''
+schema = 1
+id = "d"
+exe = "d.exe"
+[bootstrap]
+strategy = "{strategie}"
+target = 'C:\\d\\settings.ini'
+content = """
+; Écrit par « retro », qui MODIFIE ce fichier.
+[Main]
+X = 1
+"""
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '"{{rom}}"'
+''', encoding="utf-8")
+    return {"d": profiles.load_profile(tmp_path / "d.toml")}
+
+
+def test_le_rapport_dit_quand_retro_modifiera_un_fichier_existant(tmp_path):
+    """Le propriétaire doit lire AVANT, pas découvrir APRÈS, que l'outil ne se
+    contente plus de poser un fichier absent. C'est la promesse du README qui
+    change ; le rapport doit changer avec elle."""
+    etats = status.etat_amorcage(_profils_strategie(tmp_path, "fusion"), {})
+    lignes = "\n".join(status._lignes_amorcage(status.Report(
+        emulators=[], systems=[], bios=[], problems=[],
+        bios_root=pathlib.Path("/BIOS"), amorcages=etats)))
+    assert "modifi" in lignes.lower()
+
+
+def test_un_amorcage_si_absent_ne_promet_pas_de_modifier(tmp_path):
+    etats = status.etat_amorcage(_profils_strategie(tmp_path, "si-absent"), {})
+    lignes = "\n".join(status._lignes_amorcage(status.Report(
+        emulators=[], systems=[], bios=[], problems=[],
+        bios_root=pathlib.Path("/BIOS"), amorcages=etats)))
+    assert "modifi" not in lignes.lower()
