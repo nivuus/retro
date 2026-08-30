@@ -121,7 +121,7 @@ choisir un des deux fichiers, et l'autre axe serait resté muet.
 **nommé** par `status`, jamais un silence — exactement comme `crt_absent` et
 `fill_absent` le font pour le rendu.
 
-### Trois refus au chargement du profil
+### Quatre refus au chargement du profil
 
 Ils rejoignent les gardes de `profiles.py`. Chacun attrape une panne qui serait
 autrement muette :
@@ -132,7 +132,16 @@ autrement muette :
 2. **Un repli qui n'est pas lui-même déclaré.** La ligne de repli du plan
    pointerait vers un fragment qui n'existe pas, et le lanceur crierait au
    lancement d'un jeu — au pire moment, sur la console, loin des tests.
-3. **Un bloc langue sur un profil dont l'en-tête ne prévient pas qu'il impose
+3. **Deux langues d'une même entrée qui ne posent pas LES MÊMES clés.**
+   Découvert en écrivant le plan, et c'est le plus vicieux des quatre : la
+   fusion n'écrit que les clés que le fragment apporte. Si `french` pose
+   `[Main] Language` et `japanese` pose `[Main] Langue`, passer du premier au
+   second **laisse la clé du premier en place** — l'émulateur lit alors deux
+   réglages dont l'ancien gagne, et le symptôme est une langue qui refuse de
+   changer sans que rien n'ait échoué. L'ensemble des couples
+   « (section, clé) » doit donc être **identique** dans toutes les langues
+   déclarées d'une entrée.
+4. **Un bloc langue sur un profil dont l'en-tête ne prévient pas qu'il impose
    des clés.** `profiles.py` fait déjà ce contrôle pour `enforced` ; les clés de
    langue sont des clés imposées et doivent y être soumises. Sans quoi le
    fichier promettrait au propriétaire un régime qu'il n'applique pas.
@@ -322,7 +331,7 @@ tenu.
 - **`tests/test_launcher.py`** — les lignes du plan (une par langue, celle du
   repli résolue, `defaut`), les fragments déposés, leur nom, leur saut de ligne
   final, et une entrée sans bloc langue qui n'écrit aucune ligne.
-- **`tests/test_profiles.py`** — les trois refus.
+- **`tests/test_profiles.py`** — les quatre refus.
 - **`tests/test_status.py`** — les trois états par émulateur, la valeur brute du
   témoin affichée même inutilisée, et un témoin absent qui rend « aucun jeu
   lancé depuis » plutôt qu'une langue supposée.
