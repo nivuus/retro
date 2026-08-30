@@ -158,6 +158,58 @@ input_driver = "dinput"
 input_menu_toggle_btn = "63"
 """
 
+# LA LANGUE DE L'INTERFACE DE RETROARCH.
+#
+# RELEVÉE le 2026-08-30, et en deux temps. D'abord sur la console : le
+# retroarch.cfg de l'invité porte « user_language = "0" », écrit par RetroArch
+# lui-même — c'est donc bien la clé, et sa valeur est un ENTIER, pas un nom.
+# Ensuite à la source, pour savoir ce que cet entier numérote :
+# libretro-common/include/libretro.h, « enum retro_language », dont
+# RETRO_LANGUAGE_ENGLISH = 0 — ce qui concorde avec la console, en anglais.
+#
+# UN ENTIER EST LE PIRE DES CAS pour ce mécanisme, et c'est pourquoi il se
+# relève au lieu de se deviner : un nom faux ne veut rien dire et se repère,
+# un entier faux désigne une AUTRE langue, parfaitement valide. « 3 » au lieu
+# de « 2 » donne de l'espagnol à qui demandait du français, sans un mot.
+#
+# CE QUE STEAM DISTINGUE ET QUE LIBRETRO NE DISTINGUE PAS : « latam » y est
+# rendu par SPANISH (3), le même que « spanish ». C'est un choix DÉCLARÉ, pas
+# un repli : l'espagnol d'Espagne sert un hispanophone d'Amérique latine
+# infiniment mieux que l'anglais, et l'énumération n'offre rien d'autre.
+#
+# Les langues de Steam absentes de l'énumération — bulgare, danois, malais,
+# roumain — ne sont pas déclarées ici : elles prennent le repli, et
+# « retro status » les nomme.
+[bootstrap.langue]
+repli = "english"
+english    = 'user_language = "0"'
+japanese   = 'user_language = "1"'
+french     = 'user_language = "2"'
+spanish    = 'user_language = "3"'
+latam      = 'user_language = "3"'
+german     = 'user_language = "4"'
+italian    = 'user_language = "5"'
+dutch      = 'user_language = "6"'
+brazilian  = 'user_language = "7"'
+portuguese = 'user_language = "8"'
+russian    = 'user_language = "9"'
+koreana    = 'user_language = "10"'
+tchinese   = 'user_language = "11"'
+schinese   = 'user_language = "12"'
+polish     = 'user_language = "14"'
+vietnamese = 'user_language = "15"'
+arabic     = 'user_language = "16"'
+greek      = 'user_language = "17"'
+turkish    = 'user_language = "18"'
+finnish    = 'user_language = "23"'
+indonesian = 'user_language = "24"'
+swedish    = 'user_language = "25"'
+ukrainian  = 'user_language = "26"'
+czech      = 'user_language = "27"'
+hungarian  = 'user_language = "31"'
+norwegian  = 'user_language = "34"'
+thai       = 'user_language = "36"'
+
 # --- L'ÉCRAN TACTILE DE LA NINTENDO DS. -----------------------------------
 #
 # MESURÉ dans la source du cœur (src/libretro/input.cpp), qui départage ses

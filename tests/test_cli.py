@@ -1017,16 +1017,37 @@ def test_langue_sans_aucune_table_declaree_avertit_et_rend_1(tmp_path, capsys):
     assert launcher.lire_langue(tmp_path) == "french"
 
 
-def test_les_profils_livres_ne_peuvent_pas_appliquer_une_langue(tmp_path,
-                                                                capsys):
-    """La cause universelle, mesurée sur LES PROFILS LIVRÉS et non sur un
-    montage de test : c'est l'état réel de la console aujourd'hui, et le jour
-    où une table sera relevée, ce test tombera — c'est voulu, il tient la
-    dette D12 en vue."""
+def test_les_profils_livres_appliquent_desormais_une_langue(tmp_path, capsys):
+    """CE TEST A REMPLACÉ SON CONTRAIRE le 2026-08-30, et c'était prévu.
+
+    Il tenait jusque-là la cause universelle — aucun profil livré ne déclarait
+    de table, donc « retro langue french » ne pouvait rien appliquer —, et son
+    commentaire disait : « le jour où une table sera relevée, ce test tombera,
+    c'est voulu ». Les tables de DuckStation et de RetroArch ont été relevées
+    ce jour-là, et il est tombé. Le fil-piège a fait son travail.
+
+    Ce qu'il tient maintenant est l'autre moitié de la même propriété : sur les
+    profils LIVRÉS, la commande réussit. Le jour où quelqu'un casserait le
+    chargement des tables, elle se remettrait à avertir, et ce test le dirait.
+    """
     (tmp_path / launcher.DIR).mkdir(parents=True)
     (tmp_path / launcher.DIR / launcher.EXE).write_bytes(b"MZ")
     code = cli.main(["langue", "--emulation-root-local", str(tmp_path),
                      "--langue", "french"])
+    assert code == 0
+    assert "aucun profil ne déclare de table de langues" not in \
+        capsys.readouterr().err
+
+
+def test_un_parc_sans_aucune_table_avertit_toujours(tmp_path, capsys):
+    """L'avertissement lui-même, sur un montage de test — puisque les profils
+    livrés ne peuvent plus le produire. Sans ce test, le chemin qui empêche un
+    propriétaire de croire son choix appliqué ne serait plus couvert du tout."""
+    profils = _profil_minimal(tmp_path)
+    (tmp_path / launcher.DIR).mkdir(parents=True)
+    (tmp_path / launcher.DIR / launcher.EXE).write_bytes(b"MZ")
+    code = cli.main(["langue", "--emulation-root-local", str(tmp_path),
+                     "--profiles", str(profils), "--langue", "french"])
     assert code == 1
     assert "aucun profil ne déclare de table de langues" in \
         capsys.readouterr().err

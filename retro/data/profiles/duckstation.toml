@@ -390,6 +390,62 @@ InhibitScreensaver = true
 HideCursorInFullscreen = true
 '''
 
+# LA LANGUE DE L'INTERFACE DE DUCKSTATION.
+#
+# RELEVÉE le 2026-08-30, à la source, parce que la console ne pouvait pas la
+# donner : son settings.ini existe et ne porte AUCUNE ligne de langue —
+# DuckStation n'écrit cette clé que si elle s'écarte du défaut. Un fichier
+# muet n'est donc pas la preuve qu'il n'y a pas de clé, seulement qu'on n'y a
+# jamais touché.
+#
+# LA CLÉ : src/duckstation-qt/qthost.cpp l'écrit et la relit en quatre
+# endroits, tous « Main » / « Language » — dont
+# Core::SetBaseStringSettingValue("Main", "Language", ...) quand l'utilisateur
+# la change dans l'interface. La valeur VIDE y signifie « langue du système »,
+# ce que ce profil n'emploie pas : la console décide, elle ne délègue pas.
+#
+# LES VALEURS : src/duckstation-qt/qttranslations.inl, une ligne
+# TRANSLATION_LIST_ENTRY(nom, code, ...) par langue. Ce sont ces codes-là,
+# recopiés sans en déduire aucun autre.
+#
+# LE PIÈGE, ET IL SE LIT DANS CE FICHIER-LÀ SEULEMENT : « es » est
+# « Español de Hispanoamérica » et « es-ES » est « Español de España ». Le
+# raccourci naturel — « es » pour l'Espagne — donnerait donc l'espagnol
+# d'Amérique latine à qui demande « spanish », et l'erreur serait invisible :
+# un émulateur en espagnol, simplement pas le bon. C'est exactement pourquoi
+# ces codes se relèvent au lieu de se deviner.
+#
+# Les langues de Steam que DuckStation ne traduit pas — arabe, bulgare,
+# chinois traditionnel, tchèque, danois, finnois, grec, hongrois, malais,
+# norvégien, roumain, thaï, vietnamien — ne sont pas déclarées : elles
+# prennent le repli, et « retro status » les nomme une par une.
+#
+# CE PROFIL NE POSE QUE L'INTERFACE. La PlayStation n'a pas de langue système
+# qu'un jeu interrogerait : sur ce matériel-là, la langue est gravée dans le
+# disque, et c'est la région du jeu qui la porte. Il n'y a donc rien à
+# déclarer sur ce second axe, et ne rien y déclarer est ici la réponse JUSTE,
+# pas une mesure qui manque.
+[bootstrap.langue]
+repli = "english"
+english    = "[Main]\nLanguage = en"
+german     = "[Main]\nLanguage = de"
+latam      = "[Main]\nLanguage = es"
+spanish    = "[Main]\nLanguage = es-ES"
+french     = "[Main]\nLanguage = fr"
+indonesian = "[Main]\nLanguage = id"
+japanese   = "[Main]\nLanguage = ja"
+koreana    = "[Main]\nLanguage = ko"
+italian    = "[Main]\nLanguage = it"
+dutch      = "[Main]\nLanguage = nl"
+polish     = "[Main]\nLanguage = pl"
+portuguese = "[Main]\nLanguage = pt-PT"
+brazilian  = "[Main]\nLanguage = pt-BR"
+russian    = "[Main]\nLanguage = ru"
+swedish    = "[Main]\nLanguage = sv"
+turkish    = "[Main]\nLanguage = tr"
+ukrainian  = "[Main]\nLanguage = uk"
+schinese   = "[Main]\nLanguage = zh-CN"
+
 # D3 EST RÉGLÉE — la manette répond, confirmé par le propriétaire le
 # 2026-08-29 sur Crash Team Racing, le jeu qui était le défaut d'origine.
 #

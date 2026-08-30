@@ -1548,8 +1548,28 @@ def _cles_de_plan(bootstraps) -> list[str]:
         if ligne.startswith("#") or "=" not in ligne:
             continue
         cle = ligne.split("=", 1)[0]
-        noms.append(cle[:cle.rindex(".") + 1] if re.search(r"\.\d+$", cle)
-                    else cle)
+        # DEUX formes indicées, et la seconde a été ajoutée le 2026-08-30 :
+        # « bootstrap_target.1 », que le lanceur compose en « prefixe + n », et
+        # « bootstrap_langue.1.french », qu'il compose en « prefixe + n + "." +
+        # langue ». Les deux se réduisent à leur préfixe, parce que c'est le
+        # préfixe — et lui seul — qui apparaît en littéral dans la source C#.
+        #
+        # SANS la seconde forme, cette garde criait sur soixante-quatre clés
+        # parfaitement lues (mesuré le 2026-08-30, à la pose des deux premières
+        # tables de langues). Une garde qui crie à tort est une garde qu'on
+        # finit par désarmer : c'est la corriger, ici, ou la perdre.
+        # UNE seule règle pour les DEUX formes indicées, et elle réduit
+        # toujours au PRÉFIXE — c'est lui, et lui seul, qui apparaît en
+        # littéral dans la source C# ; le reste, le lanceur le compose.
+        #
+        #   bootstrap_target.1          -> bootstrap_target.
+        #   bootstrap_langue.1.french   -> bootstrap_langue.
+        #
+        # La seconde forme a été ajoutée le 2026-08-30, à la pose des deux
+        # premières tables de langues : sans elle, cette garde criait sur
+        # soixante-quatre clés parfaitement lues. Une garde qui crie à tort
+        # est une garde qu'on finit par désarmer.
+        noms.append(re.sub(r"\.\d+(\.[a-z]+)?$", ".", cle))
     return sorted(set(noms))
 
 
