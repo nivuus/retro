@@ -351,6 +351,211 @@ IR/Right = `Right X+`
 Rumble/Motor = `Motor L` | `Motor R`
 """
 
+# --- LA LANGUE, ET C'EST LA SEULE ENTRÉE QUI PORTE LES DEUX AXES. ----------
+#
+# Les deux autres entrées de ce profil visent des fichiers de manettes ;
+# celle-ci vise le fichier de réglages général, où Dolphin range à la fois la
+# langue de son interface et LA LANGUE SYSTÈME DE LA CONSOLE ÉMULÉE — celle
+# qu'un jeu GameCube interroge pour choisir la sienne.
+#
+# RELEVÉ le 2026-08-30, les deux clés dans Source/Core/Core/Config/
+# MainSettings.cpp :
+#   MAIN_INTERFACE_LANGUAGE {Main, "Interface", "LanguageCode"}, défaut ""
+#   MAIN_GC_LANGUAGE        {Main, "Core", "SelectedLanguage"},  défaut 0
+#
+# LES VALEURS DE L'INTERFACE viennent de la version installée : les fichiers
+# de Dolphin-x64\Languages\<code>.mo, énumérés sur la console — vingt-neuf.
+# Une langue que Dolphin traduit ailleurs mais que cette construction ne livre
+# pas laisserait l'interface en anglais, réglage écrit et accepté.
+#
+# LES VALEURS DE LA CONSOLE viennent de DolphinQt/Settings/GameCubePane.cpp :
+# le combo est construit sur la liste { English, German, French, Spanish,
+# Italian, Dutch } et lié à MAIN_GC_LANGUAGE, donc L'INDICE DANS CETTE LISTE
+# EST LA VALEUR. English 0, German 1, French 2, Spanish 3, Italian 4, Dutch 5.
+#
+# POURQUOI TANT DE ZÉROS, ET CE N'EST PAS UN OUBLI. La GameCube n'a que SIX
+# langues système — c'est le matériel, pas une lacune du relevé. Pour les
+# vingt autres, il n'existe AUCUNE valeur à poser : zéro (anglais) est ce que
+# la console d'origine emploie quand la langue demandée n'est pas une des
+# siennes. L'interface de Dolphin, elle, suit Steam exactement.
+#
+# Ce que cela donne, et il faut le lire en clair : demander le japonais met
+# l'interface de Dolphin en japonais et laisse la GameCube en anglais. Un jeu
+# japonais s'affichera dans sa langue parce que c'est SA RÉGION qui le décide,
+# pas ce réglage.
+#
+# Les langues de Steam que cette construction ne livre pas — bulgare,
+# indonésien, thaï, ukrainien, vietnamien — prennent le repli, et
+# « retro status » les nomme.
+[[bootstrap]]
+target = '%APPDATA%\Dolphin Emulator\Config\Dolphin.ini'
+content = """#
+# Écrit par « retro ». Ce fichier porte TROIS sortes de réglages : ce que la
+# console IMPOSE et repose à chaque lancement — la langue, et elle seule —,
+# ce qu'elle a posé UNE FOIS et ne retouche plus, et tout le reste, qui vous
+# appartient : Dolphin le réécrit lui-même en quittant.
+#
+"""
+
+[bootstrap.langue]
+repli = "english"
+arabic     = """
+[Interface]
+LanguageCode = ar
+[Core]
+SelectedLanguage = 0
+"""
+czech      = """
+[Interface]
+LanguageCode = cs
+[Core]
+SelectedLanguage = 0
+"""
+danish     = """
+[Interface]
+LanguageCode = da
+[Core]
+SelectedLanguage = 0
+"""
+german     = """
+[Interface]
+LanguageCode = de
+[Core]
+SelectedLanguage = 1
+"""
+greek      = """
+[Interface]
+LanguageCode = el
+[Core]
+SelectedLanguage = 0
+"""
+english    = """
+[Interface]
+LanguageCode = en
+[Core]
+SelectedLanguage = 0
+"""
+spanish    = """
+[Interface]
+LanguageCode = es
+[Core]
+SelectedLanguage = 3
+"""
+latam      = """
+[Interface]
+LanguageCode = es
+[Core]
+SelectedLanguage = 3
+"""
+finnish    = """
+[Interface]
+LanguageCode = fi
+[Core]
+SelectedLanguage = 0
+"""
+french     = """
+[Interface]
+LanguageCode = fr
+[Core]
+SelectedLanguage = 2
+"""
+hungarian  = """
+[Interface]
+LanguageCode = hu
+[Core]
+SelectedLanguage = 0
+"""
+italian    = """
+[Interface]
+LanguageCode = it
+[Core]
+SelectedLanguage = 4
+"""
+japanese   = """
+[Interface]
+LanguageCode = ja
+[Core]
+SelectedLanguage = 0
+"""
+koreana    = """
+[Interface]
+LanguageCode = ko
+[Core]
+SelectedLanguage = 0
+"""
+malay      = """
+[Interface]
+LanguageCode = ms
+[Core]
+SelectedLanguage = 0
+"""
+norwegian  = """
+[Interface]
+LanguageCode = nb
+[Core]
+SelectedLanguage = 0
+"""
+dutch      = """
+[Interface]
+LanguageCode = nl
+[Core]
+SelectedLanguage = 5
+"""
+polish     = """
+[Interface]
+LanguageCode = pl
+[Core]
+SelectedLanguage = 0
+"""
+portuguese = """
+[Interface]
+LanguageCode = pt
+[Core]
+SelectedLanguage = 0
+"""
+brazilian  = """
+[Interface]
+LanguageCode = pt_BR
+[Core]
+SelectedLanguage = 0
+"""
+romanian   = """
+[Interface]
+LanguageCode = ro
+[Core]
+SelectedLanguage = 0
+"""
+russian    = """
+[Interface]
+LanguageCode = ru
+[Core]
+SelectedLanguage = 0
+"""
+swedish    = """
+[Interface]
+LanguageCode = sv
+[Core]
+SelectedLanguage = 0
+"""
+turkish    = """
+[Interface]
+LanguageCode = tr
+[Core]
+SelectedLanguage = 0
+"""
+schinese   = """
+[Interface]
+LanguageCode = zh_CN
+[Core]
+SelectedLanguage = 0
+"""
+tchinese   = """
+[Interface]
+LanguageCode = zh_TW
+[Core]
+SelectedLanguage = 0
+"""
+
 [input]
 steam_input   = "required"
 mode          = "xinput"

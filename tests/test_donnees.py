@@ -2192,10 +2192,24 @@ def test_dolphin_impose_quatre_ports_par_index_xinput():
         "GCPadNew.ini": [f"GCPad{n + 1}" for n in range(4)],
         "WiimoteNew.ini": [f"Wiimote{n + 1}" for n in range(4)],
     }
+    # LA TROISIÈME CIBLE, ajoutée le 2026-08-30 : Dolphin.ini ne porte aucune
+    # manette — c'est le fichier de réglages général, et « retro » n'y touche
+    # que la langue. Elle est nommée ICI plutôt que laissée passer, pour que
+    # la garde ci-dessous continue de refuser une cible que personne n'a
+    # voulue : c'est elle qui a signalé cet ajout, et elle doit pouvoir
+    # signaler le suivant.
+    SANS_MANETTE = {"Dolphin.ini"}
     vus = {}
     for b in profil.bootstraps:
         nom = b.target.rsplit("\\", 1)[-1]
-        assert nom in attendu, f"cible d'amorçage inattendue : {b.target}"
+        assert nom in attendu or nom in SANS_MANETTE, (
+            f"cible d'amorçage inattendue : {b.target}")
+        if nom in SANS_MANETTE:
+            assert not b.enforced.strip(), (
+                f"dolphin.toml : {nom} impose des clés hors du régime des "
+                "langues. Si c'est voulu, ce test doit le dire ; sinon, c'est "
+                "un réglage qui échappe au propriétaire sans être documenté.")
+            continue
         triplets = _valeurs_ini(b.enforced)
         sections = [s for s, _, _ in triplets]
         # dict.fromkeys : les sections DANS L'ORDRE, sans doublon.
