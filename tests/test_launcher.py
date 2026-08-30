@@ -875,6 +875,52 @@ def test_le_lanceur_accepte_un_jeu_qui_est_un_dossier():
     )
 
 
+# --- les fragments de langue ----------------------------------------------
+
+def test_le_nom_d_un_fragment_de_langue_porte_le_rang_ET_la_langue():
+    """Sans le rang, les deux cibles d'un même profil se disputeraient un
+    nom ; sans la langue, les fragments s'écraseraient entre eux."""
+    assert launcher.langue_name(
+        "retroarch", 2, "french", r"{install_dir}\config\melonDS\melonDS.opt"
+    ) == "retroarch.langue.2.french.opt"
+
+
+def test_un_fragment_de_langue_est_attendu_par_langue_declaree():
+    amorcage = profiles.Bootstrap(
+        target=r"%USERPROFILE%\Documents\DuckStation\settings.ini",
+        content="; Écrit par « retro »\n",
+        langues=(("english", "[Main]\nLanguage = en\n"),
+                 ("french", "[Main]\nLanguage = fr\n")),
+        langue_repli="english",
+    )
+    noms = dict(launcher.fragments_attendus("duckstation", 1, amorcage))
+    assert "duckstation.langue.1.english.ini" in noms
+    assert "duckstation.langue.1.french.ini" in noms
+    assert noms["duckstation.langue.1.french.ini"] == "[Main]\nLanguage = fr\n"
+
+
+def test_un_fragment_de_langue_se_termine_par_un_saut_de_ligne():
+    """Le contrôle de conformité compare à l'octet près : sans ce saut, il
+    crierait au loup sur un fragment tout neuf."""
+    amorcage = profiles.Bootstrap(
+        target=r"%USERPROFILE%\Documents\DuckStation\settings.ini",
+        content="; Écrit par « retro »\n",
+        langues=(("english", "[Main]\nLanguage = en"),),
+        langue_repli="english",
+    )
+    noms = dict(launcher.fragments_attendus("duckstation", 1, amorcage))
+    assert noms["duckstation.langue.1.english.ini"].endswith("\n")
+
+
+def test_une_entree_sans_langues_n_attend_aucun_fragment_de_langue():
+    amorcage = profiles.Bootstrap(
+        target=r"%USERPROFILE%\Documents\DuckStation\settings.ini",
+        content="; Écrit par « retro »\n",
+    )
+    noms = [n for n, _ in launcher.fragments_attendus("duckstation", 1, amorcage)]
+    assert not [n for n in noms if ".langue." in n]
+
+
 def test_le_lanceur_substitue_l_identifiant_du_jeu():
     """{rom_id} rend le NOM du jeu, sans chemin ni extension.
 

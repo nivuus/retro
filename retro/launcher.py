@@ -109,6 +109,8 @@ STRATEGIES = (SI_ABSENT, FUSION)
 
 IMPOSE = "impose"
 
+LANGUE = "langue"
+
 
 def _suffixe(target: str) -> str:
     """L'extension de la CIBLE, ou « .txt » si elle n'en a pas.
@@ -146,6 +148,21 @@ def bootstrap_name(profile_id: str, index: int, target: str) -> str:
     return f"{profile_id}.{BOOTSTRAP}.{index}{_suffixe(target)}"
 
 
+def langue_name(profile_id: str, index: int, langue: str, target: str) -> str:
+    """Le nom du fragment d'UNE langue, déposé à côté des plans.
+
+    Le rang ET la langue, pour deux raisons distinctes : sans le rang, les
+    deux cibles d'un même profil se disputeraient un nom de fichier — c'est ce
+    qui a fait indicer `enforced_name` ; sans la langue, les fragments
+    s'écraseraient l'un l'autre et la console poserait la dernière langue
+    écrite, quelle que soit celle demandée.
+
+    L'extension vient de la cible BRUTE, comme partout ailleurs : c'est elle
+    qui dit le format, et la substitution ne la change pas.
+    """
+    return f"{profile_id}.{LANGUE}.{index}.{langue}{_suffixe(target)}"
+
+
 def fragments_attendus(profile_id: str, index: int,
                        amorcage) -> list[tuple[str, str]]:
     """Ce qu'une entrée d'amorçage FAIT DÉPOSER : (nom de fichier, texte).
@@ -167,6 +184,15 @@ def fragments_attendus(profile_id: str, index: int,
         # au loup à chaque passage sur un fragment tout neuf.
         fragments.append((enforced_name(profile_id, index, amorcage.target),
                           amorcage.enforced + "\n"))
+    # Un fichier par langue déclarée. Le lanceur en choisira UN, désigné par
+    # le plan ; les autres restent sur le disque, prêts pour le jour où la
+    # langue de Steam changera — c'est ce qui rend le changement de langue
+    # gratuit, sans resynchronisation.
+    for nom, texte in amorcage.langues:
+        # Le saut de ligne final, pour la raison exacte du fragment imposé :
+        # le contrôle compare à l'octet près.
+        fragments.append((langue_name(profile_id, index, nom, amorcage.target),
+                          texte.strip() + "\n"))
     return fragments
 
 
