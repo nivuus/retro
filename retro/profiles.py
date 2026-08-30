@@ -794,6 +794,14 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
             "fragment de configuration que la console REPOSE à chaque "
             "lancement."
         )
+    # Le dialecte se vérifie ICI, à la lecture du profil, et non au lancement
+    # sur la console : une extension inconnue doit faire échouer la personne
+    # qui écrit le profil, pas le propriétaire devant sa télévision.
+    if enforced.strip():
+        try:
+            dialecte(target)
+        except ProfileError as exc:
+            raise ProfileError(f"{path} [[bootstrap]] : {exc}") from exc
     _valider_regimes(path, target, content, enforced)
     return Bootstrap(target=target, content=content,
                      enforced=enforced.strip())
@@ -835,6 +843,39 @@ def cles_ini(fragment: str) -> list[tuple[str, str]]:
 # ne se déclencherait donc JAMAIS, et le seul régime qui s'applique est celui
 # qui lit et fusionne.
 _YAML = (".yml", ".yaml")
+
+# LES EXTENSIONS DONT LE CONTENU EST UN INI PLAT — « clé = valeur », avec ou
+# sans sections. Elles sont ÉNUMÉRÉES plutôt que supposées, et c'est le fond
+# de l'affaire : la fusion traite en INI tout ce qui n'est pas YAML, donc une
+# extension inconnue serait fusionnée en INI SANS QUE PERSONNE NE L'AIT
+# DÉCIDÉ. Si le fichier n'en est pas un, aucune clé n'est posée, aucun
+# message n'est produit, et le réglage n'est jamais imposé — le défaut le
+# plus muet de ce mécanisme.
+#
+# .cfg est le retroarch.cfg, .opt le fichier d'options d'un cœur libretro :
+# deux formats « clé = valeur » sans sections, vérifiés sur la console.
+_INI = (".ini", ".cfg", ".opt", ".toml")
+
+
+def dialecte(target: str) -> str:
+    """« yaml » ou « ini », d'après l'EXTENSION de la cible — jamais d'après
+    un champ déclaré, qui pourrait contredire ce que le fragment contient.
+
+    Lève sur une extension inconnue : la deviner reviendrait à choisir INI en
+    silence, et un fragment fusionné dans le mauvais dialecte ne pose RIEN.
+    """
+    ext = pathlib.PureWindowsPath(target).suffix.lower()
+    if ext in _YAML:
+        return "yaml"
+    if ext in _INI:
+        return "ini"
+    raise ProfileError(
+        f"cible d'amorçage à l'extension inconnue : {target!r} ({ext!r}). Les "
+        f"dialectes connus sont {', '.join(_YAML)} pour le YAML et "
+        f"{', '.join(_INI)} pour l'INI. Une extension non déclarée serait "
+        "fusionnée en INI sans que personne ne l'ait décidé : si le fichier "
+        "n'en est pas un, aucune clé ne serait posée et rien ne le dirait."
+    )
 
 
 def cles_yaml(fragment: str) -> list[tuple[str, str]]:

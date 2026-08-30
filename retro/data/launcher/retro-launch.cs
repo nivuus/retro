@@ -221,6 +221,26 @@ static class RetroLaunch
         return ext == ".yml" || ext == ".yaml";
     }
 
+    // LES EXTENSIONS DONT LE CONTENU EST UN INI PLAT, enumerees plutot que
+    // supposees. Le miroir exact de `_INI` dans retro/profiles.py.
+    //
+    // Sans cette liste, la fusion traitait en INI TOUT ce qui n'etait pas
+    // YAML : une cible d'un troisieme format y aurait ete fusionnee sans que
+    // personne ne l'ait decide, et si le fichier n'en etait pas un, aucune
+    // cle n'aurait ete posee — sans message, le reglage jamais impose. C'est
+    // le defaut le plus muet de ce mecanisme, et le meme que la fusion YAML
+    // a deja coute une fois.
+    //
+    // .cfg est le retroarch.cfg, .opt le fichier d'options d'un coeur
+    // libretro : deux formats « cle = valeur », verifies sur la console.
+    static bool EstIni(string cible)
+    {
+        string ext = Path.GetExtension(cible);
+        if (ext == null) return false;
+        ext = ext.ToLowerInvariant();
+        return ext == ".ini" || ext == ".cfg" || ext == ".opt" || ext == ".toml";
+    }
+
     static int Main()
     {
         try
@@ -752,6 +772,19 @@ static class RetroLaunch
                             out int posees)
     {
         bool yaml = EstYaml(cible);
+        // REFUSER PLUTOT QUE DE SUPPOSER. Sans ce refus, tout ce qui n'etait
+        // pas YAML etait fusionne en INI — y compris un format que personne
+        // n'avait examine. Si le fichier n'en est pas un, `CleDe` ne trouve
+        // aucun « = », aucune cle n'est posee, et le reglage n'est jamais
+        // impose : pas de message, pas de trace, le jeu se lance simplement
+        // sans ce qu'on croyait lui avoir donne.
+        if (!yaml && !EstIni(cible))
+            throw new Exception(
+                "Le plan demande de fusionner un fichier dont ce lanceur ne "
+                + "connait pas le format :\n\n" + cible
+                + "\n\nLes formats connus sont .yml et .yaml (YAML), .ini, "
+                + ".cfg, .opt et .toml (INI). Declarer l'extension dans "
+                + "retro/profiles.py et dans ce lanceur, ou changer la cible.");
         // Ce que la source apporte, dans l'ordre : (section, cle) -> ligne.
         var ordre = new List<string>();
         var lignesApportees = new Dictionary<string, string>();

@@ -2073,3 +2073,39 @@ def test_le_temoin_des_manettes_est_ecrit_avant_le_demarrage_de_l_emulateur():
     assert len(appels) >= 2, "InscrireTemoinPads est définie mais jamais appelée"
     demarrage = source.index("new ProcessStartInfo(")
     assert min(appels) < demarrage and appel < demarrage
+
+
+def test_le_lanceur_refuse_une_extension_de_cible_inconnue():
+    """Avant ce refus, la fusion traitait en INI TOUT ce qui n'etait pas YAML.
+
+    Une cible d'un troisieme format y aurait ete fusionnee sans que personne
+    ne l'ait decide, et si le fichier n'en etait pas un, `CleDe` n'aurait
+    trouve aucun « = » : aucune cle posee, aucun message, le reglage jamais
+    impose. C'est exactement le defaut que la fusion YAML a deja coute une
+    fois — et la meme mesure y avait repondu, en NOMMANT les dialectes.
+
+    Ce test lit la SOURCE, faute de compilateur C# sur cette machine.
+    """
+    source = _source_lanceur()
+    assert "EstIni(" in source, (
+        "le lanceur n'enumere pas les extensions qu'il fusionne en INI : il "
+        "les suppose, ce qui revient a fusionner en silence un format qu'il "
+        "n'a jamais examine"
+    )
+    assert "!yaml && !EstIni(cible)" in source, (
+        "EstIni existe mais rien ne s'en sert : une extension inconnue "
+        "resterait fusionnee en INI, sans un mot"
+    )
+
+
+def test_les_deux_cotes_connaissent_les_memes_dialectes():
+    """Le lanceur et le paquet doivent s'accorder : une extension acceptee a
+    l'ecriture du profil et refusee au lancement ferait echouer le
+    proprietaire devant sa television, pour un profil que l'hote avait
+    valide."""
+    source = _source_lanceur()
+    for ext in profiles._INI + profiles._YAML:
+        assert f'"{ext}"' in source, (
+            f"{ext} est un dialecte connu du paquet mais absent du lanceur : "
+            "un profil qui l'emploie se chargerait ici et echouerait la-bas"
+        )

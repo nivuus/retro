@@ -37,19 +37,24 @@ exe = 'RetroArch-Win64\retroarch.exe'
 # lancement qui le dira, pas ce fichier.
 bios_dir = 'RetroArch-Win64\system'
 
-# Amorçage : pas de bloc [[bootstrap]]. Ce que RetroArch doit recevoir pour
-# lancer un jeu au lieu de son assistant de première configuration reste À
-# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
-# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
-# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
-# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
-# « cet émulateur se débrouille » : voir
+# AMORÇAGE : DEUX BLOCS, et le cas particulier annoncé de longue date s'est
+# vérifié — la configuration de RetroArch vit SOUS son dossier
+# d'installation, que « retro install » supprime à chaque montée de version.
+# C'est précisément pourquoi ces réglages sont IMPOSÉS et non posés une fois :
+# reposés à chaque lancement, ils survivent à la mise à jour qui efface leur
+# cible. Une préférence posée une fois y disparaîtrait sans un mot.
+#
+# Ce qui reste À MESURER, et le bloc absent le dit toujours : ce que RetroArch
+# doit recevoir pour ne pas ouvrir son assistant de première configuration.
+# Personne ne l'a encore relevé — voir
 # docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
-# Cas particulier, à trancher par la mesure : sa configuration vit peut-être
-# SOUS le dossier d'installation, que « retro install » supprime à chaque
-# montée de version. Si aucun dossier de données hors installation n'est
-# exposé, le profil le dira, et l'amorçage se rejouera après chaque mise à
-# jour — la cible ayant disparu avec le dossier.
+#
+# CE QUI RESTE HORS DE CE PROFIL, et c'est délibéré : la neutralisation du
+# bouton PS. L'autoconfiguration qui le lie au menu est un fichier PAR
+# PÉRIPHÉRIQUE (autoconfig\dinput\DUALSHOCK_4.cfg, vendor 1356 / product
+# 1476), et ce dépôt s'interdit de figer un identifiant de périphérique dans
+# un profil livré : il ne vaudrait que pour UNE manette, et ce profil est
+# public. Le geste reste donc propre à la machine du propriétaire.
 # Le chemin des BIOS en fera partie : « retro status --bios » vérifie le
 # dossier que le propriétaire a choisi pendant que l'émulateur cherche dans
 # le sien, et sans ce réglage le rapport annonce « BIOS présent » alors que
@@ -87,6 +92,65 @@ bios_dir = 'RetroArch-Win64\system'
 # qui reste à relever, sur la machine : ce que RetroArch écrit de lui-même une
 # fois la vibration activée dans son interface — même méthode que pour
 # l'identifiant de manette (tâche 1 du sous-projet E), et pour la même raison.
+# --- LE PILOTE D'ENTRÉE, ET C'EST LUI QUI PORTE LE TACTILE. ---------------
+#
+# MESURÉ dans les sources de RetroArch 1.22.2, la révision épinglée :
+#   input/drivers/dinput.c    traite WM_POINTERDOWN, WM_POINTERUP et
+#                             WM_POINTERUPDATE — le TACTILE NATIF de
+#                             Windows — et en alimente RETRO_DEVICE_POINTER.
+#   input/drivers/sdl_input.c n'en connaît AUCUN : son pointeur vient de la
+#                             souris (mouse_abs_x/y, mouse_l). Zéro
+#                             occurrence de SDL_FINGER dans tout le fichier.
+#
+# Sur cette console, l'écran tactile du client Moonlight arrive en tactile
+# NATIF (Apollo, native_pen_touch). Sous « sdl », le doigt n'atteint donc
+# aucun cœur — mesuré le 2026-08-30 : l'écran tactile de la DS ne répondait
+# pas, et il a répondu dès le retour à « dinput ».
+#
+# IMPOSÉ, parce que RetroArch RÉÉCRIT son retroarch.cfg en quittant : une
+# valeur posée une fois y serait remplacée par la première partie jouée.
+[[bootstrap]]
+target = '{install_dir}\RetroArch-Win64\retroarch.cfg'
+content = """
+# Écrit par « retro ». Ce fichier porte TROIS sortes de réglages : ce que la
+# console IMPOSE et repose à chaque lancement, ce qu'elle a posé UNE FOIS
+# sans y revenir, et tout le reste, qui vous appartient — RetroArch le
+# réécrit lui-même en quittant.
+video_driver = "d3d11"
+"""
+enforced = """
+input_driver = "dinput"
+"""
+
+# --- L'ÉCRAN TACTILE DE LA NINTENDO DS. -----------------------------------
+#
+# MESURÉ dans la source du cœur (src/libretro/input.cpp), qui départage ses
+# trois modes sans ambiguïté :
+#   Mouse    lit RETRO_DEVICE_MOUSE, des coordonnées RELATIVES — il faut
+#            traîner une souris ;
+#   Touch    lit RETRO_DEVICE_POINTER, des coordonnées ABSOLUES — c'est ce
+#            que produit un écran tactile ;
+#   Joystick fait déplacer un curseur au stick droit.
+#
+# Le propriétaire joue au doigt sur son client Moonlight : c'est « Touch ».
+# Le défaut du cœur est « Mouse », et c'était la cause mesurée d'un écran
+# tactile qui ne répondait pas.
+#
+# IMPOSÉ pour la raison de l'en-tête : ce fichier vit sous le dossier
+# d'installation, que « retro install » efface à chaque montée de version.
+[[bootstrap]]
+target = '{install_dir}\RetroArch-Win64\config\melonDS\melonDS.opt'
+content = """
+# Écrit par « retro ». Ce fichier porte TROIS sortes de réglages : ce que la
+# console IMPOSE et repose à chaque lancement, ce qu'elle a posé UNE FOIS et
+# ne retouche plus, et tout le reste — les options du cœur, que RetroArch
+# écrit lui-même et qui vous appartiennent.
+melonds_screen_layout = "Top/Bottom"
+"""
+enforced = """
+melonds_touch_mode = "Touch"
+"""
+
 [input]
 steam_input = "required"
 mode        = "xinput"
