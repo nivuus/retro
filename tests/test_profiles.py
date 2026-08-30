@@ -2097,6 +2097,34 @@ def test_une_entree_sans_table_de_langues_n_en_porte_aucune(tmp_path):
     assert profil.bootstraps[0].langue_repli == ""
 
 
+def test_une_table_de_langues_vide_est_refusee(tmp_path):
+    """`{}` n'est pas « pas de table » : c'est une table écrite puis
+    laissée vide, qui se lirait comme « cet émulateur suit la langue » alors
+    qu'il n'en pose aucune. La confondre avec l'absence de table — traiter
+    `{}` comme `None` — laisserait passer exactement cette faute sans un
+    mot, alors que le refus prévu pour elle existe déjà."""
+    texte = PROFIL_LANGUE.replace(
+        "[bootstrap.langue]\n"
+        "repli = \"english\"\n"
+        "english = '''\n[Main]\nLanguage = en\n'''\n"
+        "french = '''\n[Main]\nLanguage = fr\n'''\n",
+        "[bootstrap.langue]\n")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    assert "ne déclare aucune langue" in str(exc.value)
+
+
+def test_une_langue_seule_sur_extension_inconnue_nomme_le_profil(tmp_path):
+    """Aucun `enforced` n'est déclaré ici : seules des langues le sont, et
+    c'est le SEUL appel à `dialecte` de cette entrée. Un constat sans
+    chemin serait une accusation, pas un diagnostic — la règle que
+    `_valider_regimes` respecte déjà partout ailleurs."""
+    texte = PROFIL_LANGUE.replace("settings.ini'", "settings.txt'")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    assert "langue.toml" in str(exc.value)
+
+
 def test_une_langue_qui_n_est_pas_un_nom_de_steam_est_refusee(tmp_path):
     """« frensh » ne serait jamais demandé par personne : le fragment serait
     déposé et jamais lu, sans un mot."""

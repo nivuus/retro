@@ -777,7 +777,11 @@ def _lire_langues(path: pathlib.Path, target: str,
     échouer quoi que ce soit au moment où elle est commise — elles se
     découvrent devant une télévision, sur un jeu qui n'est pas traduit.
     """
-    if not brut:
+    if brut is None:
+        # Pas de `[bootstrap.langue]` DU TOUT : cette entrée ne pose aucune
+        # langue, et ce n'est pas une faute. `{}` — la table écrite puis
+        # laissée vide — est un cas distinct, plus bas : `not fragments` le
+        # refuse au lieu de le confondre avec l'absence de table.
         return (), ""
     repli = brut.get("repli", "")
     fragments = {nom: texte for nom, texte in brut.items() if nom != "repli"}
@@ -891,15 +895,20 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
             "fragment de configuration que la console REPOSE à chaque "
             "lancement."
         )
+    langues, repli = _lire_langues(path, target, brut.get("langue"))
     # Le dialecte se vérifie ICI, à la lecture du profil, et non au lancement
     # sur la console : une extension inconnue doit faire échouer la personne
-    # qui écrit le profil, pas le propriétaire devant sa télévision.
-    if enforced.strip():
+    # qui écrit le profil, pas le propriétaire devant sa télévision. UN SEUL
+    # appel, qui couvre `enforced` ET `langues` : les appeler séparément
+    # interrogerait deux fois la même cible quand les deux sont déclarés, et
+    # une levée nue — sans le chemin du profil en préfixe — serait un
+    # constat qui ne nomme aucun fichier, une accusation sans diagnostic,
+    # dans le cas où SEULES des langues seraient présentes.
+    if enforced.strip() or langues:
         try:
             dialecte(target)
         except ProfileError as exc:
             raise ProfileError(f"{path} [[bootstrap]] : {exc}") from exc
-    langues, repli = _lire_langues(path, target, brut.get("langue"))
     # LES CLÉS DE LANGUE SONT DES CLÉS IMPOSÉES : elles passent par la même
     # fusion, à chaque lancement. Les soumettre aux mêmes gardes que
     # `enforced` — le chevauchement avec 'content', et l'en-tête qui doit
@@ -908,10 +917,6 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     # pas.
     impose_total = "\n".join(
         [enforced, *(texte for _, texte in langues)])
-    if langues:
-        # Même raison qu'au-dessus pour `enforced` : une extension inconnue
-        # doit faire échouer qui écrit le profil, pas le propriétaire.
-        dialecte(target)
     _valider_regimes(path, target, content, impose_total)
     return Bootstrap(target=target, content=content,
                      enforced=enforced.strip(),
