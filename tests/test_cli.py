@@ -934,23 +934,132 @@ def test_langue_sans_option_affiche_auto(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "auto"
 
 
+def _profil_avec_langues(tmp_path):
+    """Un dossier de profils dont UNE entrée déclare une table de langues.
+
+    Les profils LIVRÉS n'en déclarent aucune (dette D12) : les employer ici
+    ferait passer le chemin nominal par la branche d'avertissement, et le test
+    du succès ne prouverait plus rien du succès.
+    """
+    profils = tmp_path / "profiles"
+    profils.mkdir()
+    (profils / "d.toml").write_text("""
+schema = 1
+id = "duckstation"
+exe = 'duckstation-qt.exe'
+[[bootstrap]]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé une fois, et ce qui vous appartient.
+[Main]
+Theme = dark
+'''
+[bootstrap.langue]
+repli = "english"
+english = '''
+[Main]
+Language = en
+'''
+french = '''
+[Main]
+Language = fr
+'''
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+""", encoding="utf-8")
+    return profils
+
+
 def test_langue_pose_la_valeur_et_la_confirme(tmp_path, capsys):
     """Avec --langue, la commande pose la langue et confirme qu'elle est écrite."""
     (tmp_path / launcher.DIR).mkdir(parents=True)
     (tmp_path / launcher.DIR / launcher.EXE).write_bytes(b"MZ")
     assert cli.main(["langue", "--emulation-root-local", str(tmp_path),
+                     "--profiles", str(_profil_avec_langues(tmp_path)),
                      "--langue", "french"]) == 0
     assert launcher.lire_langue(tmp_path) == "french"
-    assert "french" in capsys.readouterr().out
+    sortie = capsys.readouterr()
+    assert "french" in sortie.out
+    assert sortie.err == "", (
+        "un chemin nominal ne doit rien écrire sur stderr")
 
 
 def test_langue_posee_sans_lanceur_avertit_et_rend_1(tmp_path, capsys):
     """La langue est bien posée, mais personne ne la lira. Le taire ferait
     croire au propriétaire que son choix s'applique."""
     code = cli.main(["langue", "--emulation-root-local", str(tmp_path),
+                     "--profiles", str(_profil_avec_langues(tmp_path)),
                      "--langue", "french"])
     assert code == 1
     assert "retro launcher" in capsys.readouterr().err
+
+
+def test_langue_sans_aucune_table_declaree_avertit_et_rend_1(tmp_path, capsys):
+    """LE MÊME RAISONNEMENT que le lanceur manquant, sur une cause qui est
+    aujourd'hui UNIVERSELLE : aucun des dix profils livrés ne déclare de
+    table. Le propriétaire tapait la commande, lisait « langue : french »,
+    obtenait 0, lançait son jeu — et il était en anglais."""
+    (tmp_path / launcher.DIR).mkdir(parents=True)
+    (tmp_path / launcher.DIR / launcher.EXE).write_bytes(b"MZ")
+    code = cli.main(["langue", "--emulation-root-local", str(tmp_path),
+                     "--profiles", str(_profil_minimal(tmp_path)),
+                     "--langue", "french"])
+    assert code == 1
+    erreur = capsys.readouterr().err
+    assert "aucun profil ne déclare de table de langues" in erreur
+    assert "retro status" in erreur
+    # La langue est POSÉE quand même : l'avertissement dit que rien ne
+    # l'appliquera, pas que la commande a échoué.
+    assert launcher.lire_langue(tmp_path) == "french"
+
+
+def test_les_profils_livres_ne_peuvent_pas_appliquer_une_langue(tmp_path,
+                                                                capsys):
+    """La cause universelle, mesurée sur LES PROFILS LIVRÉS et non sur un
+    montage de test : c'est l'état réel de la console aujourd'hui, et le jour
+    où une table sera relevée, ce test tombera — c'est voulu, il tient la
+    dette D12 en vue."""
+    (tmp_path / launcher.DIR).mkdir(parents=True)
+    (tmp_path / launcher.DIR / launcher.EXE).write_bytes(b"MZ")
+    code = cli.main(["langue", "--emulation-root-local", str(tmp_path),
+                     "--langue", "french"])
+    assert code == 1
+    assert "aucun profil ne déclare de table de langues" in \
+        capsys.readouterr().err
+
+
+def test_langue_avec_des_profils_illisibles_le_DIT(tmp_path, capsys):
+    """« Je n'ai pas pu regarder » n'est pas « personne ne l'applique » : les
+    confondre enverrait chercher des tables là où c'est le dossier de profils
+    qui est en cause."""
+    (tmp_path / launcher.DIR).mkdir(parents=True)
+    (tmp_path / launcher.DIR / launcher.EXE).write_bytes(b"MZ")
+    casse = tmp_path / "profiles-casses"
+    casse.mkdir()
+    (casse / "p.toml").write_text("ceci n'est pas du TOML = = =",
+                                  encoding="utf-8")
+    code = cli.main(["langue", "--emulation-root-local", str(tmp_path),
+                     "--profiles", str(casse), "--langue", "french"])
+    assert code == 1
+    erreur = capsys.readouterr().err
+    assert "les profils n'ont pas pu être lus" in erreur
+    assert "aucun profil ne déclare" not in erreur
+
+
+def test_les_deux_raisons_se_disent_ENSEMBLE(tmp_path, capsys):
+    """Lanceur absent ET aucune table : n'en dire qu'une ferait corriger la
+    première et retomber sur la seconde, sans l'avoir vue venir."""
+    code = cli.main(["langue", "--emulation-root-local", str(tmp_path),
+                     "--profiles", str(_profil_minimal(tmp_path)),
+                     "--langue", "french"])
+    assert code == 1
+    erreur = capsys.readouterr().err
+    assert "retro launcher" in erreur
+    assert "aucun profil ne déclare de table de langues" in erreur
 
 
 def test_une_langue_inconnue_est_refusee_par_la_commande(tmp_path):

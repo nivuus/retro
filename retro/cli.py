@@ -835,6 +835,18 @@ def _cmd_langue(args) -> int:
 
     Ce qui EXIGE un « retro scan », en revanche, c'est l'ajout d'une table de
     langues à un profil : les fragments sont déposés par le scan.
+
+    DEUX RAISONS DE NE PAS S'APPLIQUER, et elles se disent TOUTES LES DEUX.
+    Le fichier est écrit dans les deux cas — c'est ce que la commande promet —
+    mais un code 0 muet ferait croire au propriétaire que son choix agit : il
+    tape la commande, lit « langue : french », lance son jeu, et il est en
+    anglais. La seconde raison est aujourd'hui UNIVERSELLE — aucune des dix
+    entrées d'amorçage livrées ne déclare de table (dette D12) —, donc c'est
+    précisément celle que la commande taisait à chaque appel.
+
+    Les profils se chargent ici comme dans `status`, `scan`, `bios` et
+    `install` : c'est la lecture d'un dossier de TOML, et c'est le seul moyen
+    de savoir si QUELQU'UN peut appliquer ce choix.
     """
     racine = pathlib.Path(args.emulation_root_local)
     if args.langue is None:
@@ -846,14 +858,35 @@ def _cmd_langue(args) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     print(f"langue : {args.langue} ({fichier})")
+    alertes = []
     if not launcher_mod.est_installe(racine):
         # La langue est bien posée, mais rien ne la lira. Le taire ferait
         # croire au propriétaire que son choix s'applique.
-        print("le lanceur n'est pas installé : cette langue ne sera lue par "
-              "personne tant qu'il ne l'est pas (« retro launcher »).",
-              file=sys.stderr)
-        return 1
-    return 0
+        alertes.append("le lanceur n'est pas installé : cette langue ne sera "
+                       "lue par personne tant qu'il ne l'est pas "
+                       "(« retro launcher »).")
+    try:
+        profils = profiles.load_profiles(pathlib.Path(args.profiles),
+                                         _dossier(args.user_profiles))
+    except Exception as exc:  # noqa: BLE001 - toute panne devient un message
+        # NI SILENCE, NI ÉCHEC DE LA COMMANDE. La langue est écrite ; ce qui
+        # manque, c'est de pouvoir dire si un émulateur l'appliquera. « Je
+        # n'ai pas pu regarder » n'est pas « personne ne l'applique », et les
+        # confondre enverrait chercher des tables là où c'est le dossier de
+        # profils qui est en cause.
+        alertes.append(f"les profils n'ont pas pu être lus ({exc}) : "
+                       "impossible de dire ici si un émulateur appliquera "
+                       "cette langue.")
+    else:
+        if not any(a.langues for p in profils.values() for a in p.bootstraps):
+            alertes.append(
+                "aucun profil ne déclare de table de langues "
+                "([bootstrap.langue]) : aucun émulateur ne posera cette "
+                "langue, et vos jeux resteront dans la leur. « retro status » "
+                "le dit entrée par entrée.")
+    for alerte in alertes:
+        print(alerte, file=sys.stderr)
+    return 1 if alertes else 0
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -952,6 +985,13 @@ def _build_parser() -> argparse.ArgumentParser:
     lng.add_argument("--emulation-root-local", required=True)
     lng.add_argument("--langue", choices=langue_mod.VALEURS, default=None,
                      help="sans --langue, affiche la langue courante")
+    # Les mêmes profils que `status`, et pour la raison qui a fait avertir
+    # quand le lanceur manque : eux seuls disent si un émulateur PEUT
+    # appliquer ce choix. Sans eux, la commande rendait 0 sur une console où
+    # la langue n'a aucun effet.
+    lng.add_argument("--profiles", default=str(DEFAULT_PROFILES))
+    lng.add_argument("--user-profiles", default=None,
+                     help=_AIDE_USER_PROFILES)
     lng.set_defaults(func=_cmd_langue)
 
     # Sans aucune option, et c'est le contrat : sur une console d'où l'on ne

@@ -87,8 +87,12 @@ quand vous voulez :
 
   **Le mécanisme est en place et testé, mais aucun profil ne déclare encore de
   table** : la commande accepte les trente et une langues de Steam et n'en pose
-  aujourd'hui aucune. C'est l'état réel de la console, et `retro status` est le
-  seul endroit où il se lit — « aucune table de langues déclarée », pour les
+  aujourd'hui aucune. C'est l'état réel de la console, et il se dit à deux
+  endroits. `retro langue` **le dit en posant votre choix** : elle écrit le
+  fichier, avertit sur la sortie d'erreur qu'aucun profil ne peut appliquer ce
+  choix, et rend 1 — le taire ferait croire que la langue s'applique, et le jeu
+  démarrerait en anglais sans un mot. `retro status` le dit entrée par entrée —
+  « aucune table de langues déclarée », pour les
   dix entrées d'amorçage des six profils qui en portent une ; les quatre autres
   profils n'ont aucune entrée d'amorçage, donc pas même une ligne. Les valeurs
   se relèvent sur chaque émulateur, une par une : voir `docs/dettes.md`, D12.
