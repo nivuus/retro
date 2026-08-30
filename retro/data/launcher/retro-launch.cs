@@ -483,7 +483,7 @@ static class RetroLaunch
 
         if (impose.Length > 0
             && FusionnerFragment(cible, impose, profil, "des clés imposées",
-                                 "amorcage"))
+                                 "amorcage", "cle(s) imposee(s)"))
         {
             ecrit = true;
         }
@@ -501,9 +501,19 @@ static class RetroLaunch
         // Un fragment vide veut dire que cette entree ne declare aucune table
         // de langues : il n'y a rien a poser, et rien n'est suppose.
         string fragmentLangue = FragmentDeLangue(p, n, langueDuLancement);
+        // L'etiquette NOMME la langue, sur les trois lignes que la fusion peut
+        // ecrire — celle qui pose, celle qui cree, et celle qui constate que
+        // la cible est deja conforme. Un journal qui dirait seulement
+        // « langue » laisserait chercher LAQUELLE a ete posee.
+        //
+        // Vide veut dire que la ligne « defaut » du plan a repondu : Steam
+        // muet, ou une langue que ce plan ne connait pas. Le dire vaut mieux
+        // que taire la question.
+        string etiquetteLangue = "langue "
+            + (langueDuLancement.Length > 0 ? langueDuLancement : "(defaut)");
         if (fragmentLangue.Length > 0
             && FusionnerFragment(cible, fragmentLangue, profil, "de langue",
-                                 "langue"))
+                                 etiquetteLangue, "cle(s) de langue"))
         {
             ecrit = true;
         }
@@ -522,13 +532,21 @@ static class RetroLaunch
     // poserait ses cles sans — et personne ne verrait laquelle des deux a
     // touche le fichier du proprietaire.
     //
-    // « quoi » ne sert qu'a nommer le fragment absent dans l'erreur, et
-    // « etiquette » qu'a signer la ligne de journal : le traitement, lui, est
-    // identique pour les deux appels.
+    // TROIS CHAINES POUR LE RECIT, aucune pour le traitement, qui est
+    // identique aux deux appels :
+    //
+    //   · « quoi » nomme le fragment absent dans l'erreur, avec ses accents :
+    //     elle s'affiche sur la television ;
+    //   · « etiquette » signe la ligne de journal — et pour la langue, elle la
+    //     NOMME : devant la television, le journal est le seul recit du
+    //     lancement, et le temoin ne porte que la langue du lancement, pas ce
+    //     qui a atteint chaque cible ;
+    //   · « nature » dit ce que le compte denombre. Les cles de langue ne sont
+    //     pas des cles imposees : le dire serait nommer l'autre regime.
     //
     // Rend vrai si la cible a ete ecrite.
     static bool FusionnerFragment(string cible, string fragment, string profil,
-                                  string quoi, string etiquette)
+                                  string quoi, string etiquette, string nature)
     {
         if (!File.Exists(fragment))
             throw new Exception(
@@ -564,7 +582,7 @@ static class RetroLaunch
             // autorisee.
             EcrireAtomique(cible, fusionne, bomCible);
             Noter(etiquette + " : " + profil + " -> " + cible + " ("
-                  + FUSION + ", " + posees + " cle(s) imposee(s))");
+                  + FUSION + ", " + posees + " " + nature + ")");
             return true;
         }
         else
@@ -1616,15 +1634,34 @@ static class RetroLaunch
     // lanceur qui deciderait pourrait choisir autre chose que ce que « retro
     // status » annonce, et les deux ne se contrediraient jamais a voix haute.
     //
-    // Une langue vide — Steam muet — prend la ligne « defaut », que le plan
-    // ecrit pour ce seul cas.
+    // DEUX CAS PRENNENT LA LIGNE « defaut », et le second est le plus
+    // important :
+    //
+    //   · Steam muet — jamais lance, valeur absente, lecture impossible : la
+    //     langue est vide, et le plan ecrit « defaut » pour ce cas ;
+    //   · une langue que LE PLAN NE CONNAIT PAS. Steam peut en ajouter une, et
+    //     le registre en porterait alors le nom des le lendemain, sur un plan
+    //     ecrit la veille. Composer sa cle, ne pas la trouver et ne rien poser
+    //     serait une panne parfaitement muette — pendant que « retro status »,
+    //     lui, annoncerait le repli. C'est exactement la contradiction entre
+    //     deux juges que ce mecanisme existe pour fermer.
+    //
+    // C'est aussi ce que `langue.resoudre` fait cote Python, avec le meme
+    // motif : mieux vaut le repli, qui est DECLARE, que l'echec au lancement
+    // d'un jeu. Ce n'est pas une decision prise ici — c'est la ligne du plan
+    // qui repond, dans les deux cas.
+    //
+    // Rend "" quand meme « defaut » manque : cette entree ne declare aucune
+    // table de langues, et il n'y a rien a poser.
     static string FragmentDeLangue(Dictionary<string, string> p, int n,
                                    string langue)
     {
-        string cle = "bootstrap_langue." + n.ToString(CultureInfo.InvariantCulture)
-                   + "." + (langue.Length == 0 ? "defaut" : langue);
+        string prefixe = "bootstrap_langue."
+                       + n.ToString(CultureInfo.InvariantCulture) + ".";
         string chemin;
-        return p.TryGetValue(cle, out chemin) ? chemin : "";
+        if (langue.Length > 0 && p.TryGetValue(prefixe + langue, out chemin))
+            return chemin;
+        return p.TryGetValue(prefixe + "defaut", out chemin) ? chemin : "";
     }
 
     // Ce qu'on a vu chez Steam, pour que « retro status » puisse le dire
@@ -1641,7 +1678,20 @@ static class RetroLaunch
                 + "motif=" + motif + "\n",
                 new UTF8Encoding(false));
         }
-        catch (Exception) { }   // un temoin manquant ne doit jamais empecher un jeu
+        catch (Exception e)
+        {
+            // UN TEMOIN MANQUANT N'EMPECHE JAMAIS UN JEU DE DEMARRER — mais il
+            // ne disparait pas sans un mot. Un temoin qui ne peut jamais
+            // s'ecrire rendrait « retro status » aveugle a la langue POUR
+            // TOUJOURS, et rien nulle part n'en porterait la trace : la panne
+            // muette exacte que ce depot combat.
+            //
+            // Le Noter est lui-meme rattrape : le journal vit sur le meme
+            // disque, et ce qui a empeche d'ecrire le temoin peut tres bien
+            // l'empecher aussi. Rien ne doit remonter d'ici.
+            try { Noter("temoin de langue non ecrit : " + e.Message); }
+            catch (Exception) { }
+        }
     }
 
     static string ClasserMachine(Dictionary<string, string> p, int vram, int coeurs)

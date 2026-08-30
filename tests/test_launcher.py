@@ -1158,11 +1158,67 @@ def test_le_temoin_de_langue_est_ecrit_une_fois_par_lancement():
 
 def test_la_langue_est_fusionnee_APRES_les_cles_imposees():
     """L'ordre est fixé pour que deux exécutions rendent le même fichier à
-    l'octet près, et pour que le journal se lise."""
+    l'octet près, et pour que le journal se lise.
+
+    Il se juge sur les deux POINTS D'APPEL, et non sur les clés du plan :
+    « bootstrap_langue. » ne paraît que dans `FragmentDeLangue`, mille lignes
+    plus bas qu'`AmorcerUne`, et comparer ces index-là laissait passer les
+    deux fusions inversées — vérifié par mutation.
+    """
     src = _source_du_lanceur()
-    impose = src.index("bootstrap_enforced.")
-    langue = src.index("bootstrap_langue.")
-    assert impose < langue
+    impose = src.index("FusionnerFragment(cible, impose")
+    langue = src.index("FusionnerFragment(cible, fragmentLangue")
+    assert impose < langue, (
+        "la langue est fusionnée AVANT les clés imposées : deux exécutions "
+        "ne rendraient plus le même fichier, et le journal se lirait à "
+        "l'envers")
+
+
+def test_une_langue_absente_du_plan_prend_le_fragment_par_defaut():
+    """Steam peut ajouter une langue, et le registre en porterait le nom dès
+    le lendemain, sur un plan écrit la veille. Composer sa clé, ne pas la
+    trouver et ne RIEN poser serait muet — pendant que `retro status`, lui,
+    annoncerait le repli. C'est ce que `langue.resoudre` fait déjà côté
+    Python : mieux vaut le repli, qui est déclaré, que l'échec au lancement.
+    """
+    src = _source_du_lanceur()
+    debut = src.index("static string FragmentDeLangue")
+    corps = src[debut:src.index("\n    }", debut)]
+    assert corps.count("TryGetValue") == 2, (
+        "une seule recherche dans FragmentDeLangue : une langue que le plan "
+        "ne connaît pas ne trouverait aucun fragment, et rien ne serait posé")
+    assert '"defaut"' in corps
+
+
+def test_le_journal_de_la_langue_NOMME_la_langue_posee():
+    """Devant la télévision, le journal est le seul récit du lancement : le
+    témoin ne porte que la langue du lancement, pas ce qui a atteint chaque
+    cible. Et parler de « clés imposées » sur la ligne de langue nommerait
+    l'autre régime."""
+    src = _source_du_lanceur()
+    debut = src.index("string etiquetteLangue")
+    etiquette = src[debut:src.index(";", debut)]
+    assert "langueDuLancement" in etiquette, (
+        "l'étiquette du journal ne porte pas la langue employée : la ligne "
+        "ne dirait pas LAQUELLE a été posée")
+    appel = src[src.index("FusionnerFragment(cible, fragmentLangue"):]
+    appel = appel[:appel.index(";")]
+    assert "etiquetteLangue" in appel
+    assert "imposee" not in appel, (
+        "la ligne de langue dénombre des « clés imposées » : ce n'est pas ce "
+        "régime, et le journal en devient trompeur")
+
+
+def test_un_temoin_de_langue_qui_ne_s_ecrit_pas_LE_DIT():
+    """Un témoin qui ne peut jamais s'écrire rendrait `retro status` aveugle
+    à la langue pour toujours. Le taire serait la panne muette exacte que ce
+    dépôt combat — `InscrireTemoin` journalise déjà son propre échec."""
+    src = _source_du_lanceur()
+    debut = src.index("static void EcrireTemoinLangue")
+    corps = src[debut:src.index("\n    }", debut)]
+    assert "Noter(" in corps, (
+        "l'échec d'écriture du témoin ne laisse aucune trace : personne ne "
+        "saurait jamais pourquoi le rapport ne dit rien de la langue")
 
 
 def test_les_deux_fusions_passent_par_LE_MEME_chemin():
