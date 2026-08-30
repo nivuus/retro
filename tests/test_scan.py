@@ -75,7 +75,7 @@ def test_le_marqueur_de_disque_est_conserve():
 def test_scan_simple(tmp_path, profils):
     racine = faire_roms(tmp_path, ["snes/Chrono Trigger (USA).sfc"])
     inv = scanner(racine, profils)
-    assert [r.title for r in inv] == ["Chrono Trigger"]
+    assert [r.title for r in inv] == ["Chrono Trigger (Super Nintendo)"]
     assert inv[0].system_name == "Super Nintendo"
 
 
@@ -107,14 +107,14 @@ def test_le_raccourci_ne_porte_que_le_systeme_et_la_rom(tmp_path, profils):
 
 def test_extension_inconnue_ignoree(tmp_path, profils):
     racine = faire_roms(tmp_path, ["snes/lisez-moi.txt", "snes/Jeu.sfc"])
-    assert [r.title for r in scanner(racine, profils)] == ["Jeu"]
+    assert [r.title for r in scanner(racine, profils)] == ["Jeu (Super Nintendo)"]
 
 
 def test_le_bin_d_un_cue_ne_cree_pas_de_doublon(tmp_path, profils):
     """Un jeu PS1 est un .cue et un .bin. Seul le .cue est lançable, et il est
     seul déclaré par le profil — le .bin ne doit rien produire."""
     racine = faire_roms(tmp_path, ["psx/Jeu.cue", "psx/Jeu.bin"])
-    assert [r.title for r in scanner(racine, profils)] == ["Jeu"]
+    assert [r.title for r in scanner(racine, profils)] == ["Jeu (PlayStation)"]
 
 
 def test_le_m3u_evince_ses_disques(tmp_path, profils):
@@ -123,7 +123,7 @@ def test_le_m3u_evince_ses_disques(tmp_path, profils):
     racine = faire_roms(tmp_path, [
         "psx/Jeu.m3u", "psx/Jeu (Disc 1).cue", "psx/Jeu (Disc 2).cue",
     ])
-    assert [r.title for r in scanner(racine, profils)] == ["Jeu"]
+    assert [r.title for r in scanner(racine, profils)] == ["Jeu (PlayStation)"]
 
 
 def test_sans_m3u_les_disques_restent_distincts(tmp_path, profils):
@@ -131,12 +131,12 @@ def test_sans_m3u_les_disques_restent_distincts(tmp_path, profils):
         "psx/Jeu (Disc 1).cue", "psx/Jeu (Disc 2).cue",
     ])
     assert sorted(r.title for r in scanner(racine, profils)) == \
-        ["Jeu (Disc 1)", "Jeu (Disc 2)"]
+        ["Jeu (Disc 1) (PlayStation)", "Jeu (Disc 2) (PlayStation)"]
 
 
 def test_dossier_de_systeme_inconnu_ignore(tmp_path, profils):
     racine = faire_roms(tmp_path, ["neogeo/Jeu.zip", "snes/Jeu.sfc"])
-    assert [r.title for r in scanner(racine, profils)] == ["Jeu"]
+    assert [r.title for r in scanner(racine, profils)] == ["Jeu (Super Nintendo)"]
 
 
 def test_racine_absente_leve(tmp_path, profils):
@@ -156,19 +156,40 @@ def test_les_tags_portent_le_systeme(tmp_path, profils):
     assert scanner(racine, profils)[0].system_name == "Super Nintendo"
 
 
+def test_le_titre_porte_toujours_le_systeme(tmp_path, profils):
+    """Sur quelle console tourne ce jeu ? La bibliothèque doit le dire sans
+    qu'on ait à ouvrir un filtre : les tags deviennent des catégories Steam, et
+    une catégorie ne s'affiche NULLE PART sur la vignette d'un jeu. Le titre
+    est le seul endroit que l'œil trouve sans chercher."""
+    racine = faire_roms(tmp_path, ["snes/Chrono Trigger (USA).sfc"])
+    assert [r.title for r in scanner(racine, profils)] == \
+           ["Chrono Trigger (Super Nintendo)"]
+
+
+def test_le_titre_de_recherche_est_le_titre_nu(tmp_path, profils):
+    """Ce que SteamGridDB reçoit, et qui n'est PLUS le titre affiché.
+
+    « Jeu (USA) (Super Nintendo) » ne trouve aucune jaquette, et rien ne le
+    dirait : l'artwork est un ornement dont l'absence se lit exactement comme
+    une bibliothèque encore incomplète.
+    """
+    racine = faire_roms(tmp_path, ["snes/Jeu (USA).sfc", "snes/Jeu (Europe).sfc"])
+    assert {r.search_title for r in scanner(racine, profils)} == {"Jeu"}
+
+
 def test_deux_regions_du_meme_jeu_restent_distinctes(tmp_path, profils):
     """Sans désambiguïsation, les deux rendent « Jeu », donc le même
     identifiant Steam, et un seul des deux survit — un jeu qui disparaît de la
     bibliothèque sans que rien ne le signale."""
     racine = faire_roms(tmp_path, ["snes/Jeu (USA).sfc", "snes/Jeu (Europe).sfc"])
     titres = sorted(r.title for r in scanner(racine, profils))
-    assert titres == ["Jeu (Europe)", "Jeu (USA)"]
+    assert titres == ["Jeu (Europe) (Super Nintendo)", "Jeu (USA) (Super Nintendo)"]
 
 
 def test_un_titre_unique_n_est_pas_desambigue(tmp_path, profils):
     """La désambiguïsation ne doit pas enlaidir le cas courant."""
     racine = faire_roms(tmp_path, ["snes/Chrono Trigger (USA).sfc"])
-    assert [r.title for r in scanner(racine, profils)] == ["Chrono Trigger"]
+    assert [r.title for r in scanner(racine, profils)] == ["Chrono Trigger (Super Nintendo)"]
 
 
 def test_collision_sans_discriminant_retombe_sur_le_nom(tmp_path, profils):
@@ -225,7 +246,7 @@ def test_le_systeme_ne_qualifie_pas_ce_qu_il_ne_departage_pas(tmp_path, profils)
     """
     racine = faire_roms(tmp_path, ["snes/Jeu (USA).sfc", "snes/Jeu (Europe).sfc"])
     titres = sorted(r.title for r in scanner(racine, profils))
-    assert titres == ["Jeu (Europe)", "Jeu (USA)"]
+    assert titres == ["Jeu (Europe) (Super Nintendo)", "Jeu (USA) (Super Nintendo)"]
 
 
 def test_un_meme_systeme_range_sous_deux_dossiers(tmp_path, profils):
@@ -361,7 +382,7 @@ def test_un_systeme_dont_l_emulateur_existe_est_scanne(tmp_path, profils):
     installer(emulation, "RetroArch", EXE_RETROARCH)
     inv = scan.scan(racine, profils, "D:\\Emulation", INSTALL_DIRS,
                     emulation_root_local=emulation)
-    assert [r.title for r in inv] == ["Jeu"]
+    assert [r.title for r in inv] == ["Jeu (Super Nintendo)"]
     # Le raccourci appelle le lanceur ; c'est le DOSSIER de l'émulateur qui
     # reste dans le raccourci, et c'est bien celui-ci qui a été trouvé sur le
     # disque — sans quoi le système aurait été ignoré.
@@ -375,7 +396,7 @@ def test_seul_le_systeme_orphelin_disparait(tmp_path, deux_profils):
     installer(emulation, "RetroArch", EXE_RETROARCH)
     inv = scan.scan(racine, deux_profils, "D:\\Emulation", INSTALL_DIRS,
                     emulation_root_local=emulation)
-    assert [(r.title, r.system_name) for r in inv] == [("Jeu", "Super Nintendo")]
+    assert [(r.title, r.system_name) for r in inv] == [("Jeu (Super Nintendo)", "Super Nintendo")]
 
 
 def test_sans_racine_locale_le_scan_ne_verifie_rien(tmp_path, profils):
@@ -384,7 +405,7 @@ def test_sans_racine_locale_le_scan_ne_verifie_rien(tmp_path, profils):
     obtient l'inventaire complet, comme avant."""
     racine = faire_roms(tmp_path, ["snes/Jeu.sfc"])
     inv = scan.scan(racine, profils, "D:\\Emulation", INSTALL_DIRS)
-    assert [r.title for r in inv] == ["Jeu"]
+    assert [r.title for r in inv] == ["Jeu (Super Nintendo)"]
 
 
 def test_le_systeme_ignore_est_signale(tmp_path, profils):
@@ -509,7 +530,7 @@ def test_un_ensemble_fourni_vide_n_ignore_rien(tmp_path, profils):
     racine = faire_roms(tmp_path, ["snes/Jeu.sfc"])
     inv = scan.scan(racine, profils, "D:\\Emulation", INSTALL_DIRS,
                     emulation_root_local=faire_emulation(tmp_path), ignored=[])
-    assert [r.title for r in inv] == ["Jeu"]
+    assert [r.title for r in inv] == ["Jeu (Super Nintendo)"]
 
 
 # --- Une bibliothèque rangée par constructeur -----------------------------
@@ -557,7 +578,7 @@ def test_un_dossier_de_constructeur_est_traverse(tmp_path, profils_folders):
     se traverse. C'est l'organisation de toute collection réelle."""
     faire_roms(tmp_path, ["Nintendo/Snes/Zelda.sfc"])
     inv = _scan(tmp_path, profils_folders)
-    assert [e.title for e in inv] == ["Zelda"]
+    assert [e.title for e in inv] == ["Zelda (Super Nintendo)"]
 
 
 def test_le_chemin_de_la_rom_porte_toute_l_arborescence(tmp_path, profils_folders):
@@ -587,7 +608,7 @@ def test_un_dossier_reconnu_n_est_pas_ouvert_plus_loin(tmp_path, profils_folders
     système, sans quoi la même ROM ressortirait deux fois."""
     faire_roms(tmp_path, ["Snes/PS1/piege.cue", "Snes/Zelda.sfc"])
     inv = _scan(tmp_path, profils_folders)
-    assert [e.title for e in inv] == ["Zelda"]
+    assert [e.title for e in inv] == ["Zelda (Super Nintendo)"]
 
 
 def test_deux_systemes_homonymes_sous_deux_constructeurs(tmp_path, profils_folders):
@@ -635,7 +656,7 @@ def test_un_lien_qui_remonte_ne_duplique_pas_les_jeux(tmp_path, profils_folders)
     (racine / "ailleurs").mkdir()
     os.symlink(racine, racine / "ailleurs" / "boucle")
     inv = _scan(tmp_path, profils_folders)
-    assert [e.title for e in inv] == ["Zelda"]
+    assert [e.title for e in inv] == ["Zelda (Super Nintendo)"]
 
 
 def test_un_systeme_relie_depuis_un_autre_volume_reste_lu(tmp_path, profils_folders):
@@ -647,7 +668,7 @@ def test_un_systeme_relie_depuis_un_autre_volume_reste_lu(tmp_path, profils_fold
     (ailleurs / "Zelda.sfc").write_bytes(b"x")
     (tmp_path / "ROMs").mkdir(parents=True, exist_ok=True)
     os.symlink(ailleurs, tmp_path / "ROMs" / "Snes")
-    assert [e.title for e in _scan(tmp_path, profils_folders)] == ["Zelda"]
+    assert [e.title for e in _scan(tmp_path, profils_folders)] == ["Zelda (Super Nintendo)"]
 
 
 def test_un_scan_sans_lanceur_est_refuse(tmp_path, profils):
@@ -719,7 +740,7 @@ def faire_app(tmp_path, chemin, marqueur="eboot.bin"):
 def test_un_dossier_d_application_donne_une_entree(tmp_path, profils_apps):
     faire_app(tmp_path, "vita/PCSE00123")
     inv = _scan_apps(tmp_path, profils_apps)
-    assert [e.title for e in inv] == ["PCSE00123"]
+    assert [e.title for e in inv] == ["PCSE00123 (PS Vita)"]
     assert inv[0].rom_path == "G:\\ROMs\\vita\\PCSE00123"
     assert inv[0].system_name == "PS Vita"
 
@@ -736,7 +757,7 @@ def test_le_contenu_d_une_application_ne_fait_pas_d_entrees(tmp_path,
     (dossier / "patch.vpk").write_bytes(b"x")
     (dossier / "sce_sys" / "autre.vpk").write_bytes(b"x")
     inv = _scan_apps(tmp_path, profils_apps)
-    assert [e.title for e in inv] == ["PCSE00123"]
+    assert [e.title for e in inv] == ["PCSE00123 (PS Vita)"]
 
 
 def test_les_vpk_a_cote_restent_des_entrees(tmp_path, profils_apps):
@@ -744,7 +765,7 @@ def test_les_vpk_a_cote_restent_des_entrees(tmp_path, profils_apps):
     faire_app(tmp_path, "vita/PCSE00123")
     faire_roms(tmp_path, ["vita/Super Jeu (USA).vpk"])
     inv = _scan_apps(tmp_path, profils_apps)
-    assert sorted(e.title for e in inv) == ["PCSE00123", "Super Jeu"]
+    assert sorted(e.title for e in inv) == ["PCSE00123 (PS Vita)", "Super Jeu (PS Vita)"]
 
 
 def test_un_dossier_sans_marqueur_n_est_pas_un_jeu(tmp_path, profils_apps):
@@ -757,7 +778,7 @@ def test_un_dossier_sans_marqueur_n_est_pas_un_jeu(tmp_path, profils_apps):
     faire_app(tmp_path, "vita/PCSE00123")
     (tmp_path / "ROMs" / "vita" / "savedata" / "PCSE00123").mkdir(parents=True)
     inv = _scan_apps(tmp_path, profils_apps)
-    assert [e.title for e in inv] == ["PCSE00123"]
+    assert [e.title for e in inv] == ["PCSE00123 (PS Vita)"]
 
 
 def test_le_marqueur_se_compare_sans_la_casse(tmp_path, profils_apps):
@@ -765,7 +786,7 @@ def test_le_marqueur_se_compare_sans_la_casse(tmp_path, profils_apps):
     d'un nom de fichier ne distingue rien. « EBOOT.BIN » et « eboot.bin » sont
     le même fichier là où le jeu se lancera."""
     faire_app(tmp_path, "vita/PCSE00123", marqueur="EBOOT.BIN")
-    assert [e.title for e in _scan_apps(tmp_path, profils_apps)] == ["PCSE00123"]
+    assert [e.title for e in _scan_apps(tmp_path, profils_apps)] == ["PCSE00123 (PS Vita)"]
 
 
 def test_le_point_d_un_nom_de_dossier_n_est_pas_une_extension(tmp_path,
@@ -773,7 +794,7 @@ def test_le_point_d_un_nom_de_dossier_n_est_pas_une_extension(tmp_path,
     """« Jeu v1.02 » est un nom entier. Retirer « .02 » comme on retire une
     extension renommerait le jeu dans Steam, en silence."""
     faire_app(tmp_path, "vita/Jeu v1.02")
-    assert [e.title for e in _scan_apps(tmp_path, profils_apps)] == ["Jeu v1.02"]
+    assert [e.title for e in _scan_apps(tmp_path, profils_apps)] == ["Jeu v1.02 (PS Vita)"]
 
 
 def test_un_dossier_d_application_est_desambigue_comme_un_fichier(
@@ -794,7 +815,7 @@ def test_sans_marqueur_declare_aucun_dossier_n_est_compte(tmp_path, profils):
     pas un jeu — le compter donnerait une entrée Steam qui ne lance rien.
     """
     faire_roms(tmp_path, ["snes/Extras/notice.txt", "snes/Zelda.sfc"])
-    assert [e.title for e in scanner(tmp_path / "ROMs", profils)] == ["Zelda"]
+    assert [e.title for e in scanner(tmp_path / "ROMs", profils)] == ["Zelda (Super Nintendo)"]
 
 
 def test_une_application_compte_dans_les_systemes_ignores(tmp_path,
@@ -841,7 +862,7 @@ def test_le_dossier_de_mise_a_jour_reste_dans_l_inventaire(tmp_path,
     faire_app(tmp_path, "vita/God of War")
     faire_app(tmp_path, "vita/CUSA07410-UPDATE")
     titres = [e.title for e in _scan_apps(tmp_path, profils_apps)]
-    assert sorted(titres) == ["CUSA07410-UPDATE", "God of War"]
+    assert sorted(titres) == ["CUSA07410-UPDATE (PS Vita)", "God of War (PS Vita)"]
 
 
 def test_un_titre_qui_contient_le_mot_par_hasard_n_est_pas_signale(
@@ -889,7 +910,7 @@ def test_un_titre_reconnu_remplace_le_nom_de_fichier(tmp_path, profils):
                     {"retroarch": "RetroArch"},
                     resolveur=_ResolveurFactice(
                         {"mslug2.sfc": "Metal Slug 2 (World)"}))
-    assert [e.title for e in inv] == ["Metal Slug 2"]
+    assert [e.title for e in inv] == ["Metal Slug 2 (Super Nintendo)"]
 
 
 def test_un_jeu_non_reconnu_garde_son_nom_et_est_nomme(tmp_path, profils):
@@ -900,10 +921,10 @@ def test_un_jeu_non_reconnu_garde_son_nom_et_est_nomme(tmp_path, profils):
     r = _ResolveurFactice({})
     inv = scan.scan(racine, profils, "D:\\Emulation",
                     {"retroarch": "RetroArch"}, resolveur=r)
-    assert [e.title for e in inv] == ["inconnu"]
+    assert [e.title for e in inv] == ["inconnu (Super Nintendo)"]
     assert r.non_reconnus == ["Super Nintendo : inconnu.sfc"]
 
 
 def test_sans_resolveur_le_comportement_ne_change_pas(tmp_path, profils):
     racine = faire_roms(tmp_path, ["snes/mslug2.sfc"])
-    assert [e.title for e in scanner(racine, profils)] == ["mslug2"]
+    assert [e.title for e in scanner(racine, profils)] == ["mslug2 (Super Nintendo)"]

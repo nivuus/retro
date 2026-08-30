@@ -37,11 +37,25 @@ quand vous voulez :
   ainsi que le plan de lancement que lit le lanceur.
   Ce sont les profils (`retro/data/profiles/*.toml`) qui disent quel dossier
   appartient à quel système, quelles extensions compter, et quelle ligne de
-  commande lance un jeu.
+  commande lance un jeu. **Chaque titre se termine par sa console** — « Chrono
+  Trigger (Super Nintendo) » — et l'inventaire porte à côté le titre **nu**,
+  qui est celui envoyé à SteamGridDB : la base connaît des jeux, pas des
+  rangements, et « Chrono Trigger (Super Nintendo) » n'y trouverait aucune
+  jaquette.
 - **`retro sync`** lit cet inventaire, écrit les entrées correspondantes dans
   le `shortcuts.vdf` de Steam, et récupère les cinq assets d'artwork depuis
   SteamGridDB. Chaque jeu reçoit deux tags — `Rétro` et le nom de son système —
-  qui deviennent des catégories natives, filtrables à la manette.
+  qui deviennent des catégories natives, filtrables à la manette. Une catégorie
+  ne s'affichant nulle part sur une vignette, la console se lit dans le titre
+  lui-même ; les tags servent au filtre, le titre à l'œil.
+
+  **Le passage où les titres ont pris leur console retélécharge tout
+  l'artwork**, une seule fois : l'identifiant Steam d'un raccourci dérive de son
+  nom, un titre qui change est donc une entrée neuve, et les vignettes de
+  l'ancienne sont nommées d'après l'ancien identifiant. Comptez cinq requêtes
+  SteamGridDB par jeu pour ce passage-là. Rien n'est perdu : les entrées sont
+  recréées dans le même passage, avec leurs catégories et leur réglage de
+  manette.
 - **`retro render`** lit ou pose le mode de rendu. Trois modes, pour toute la
   console : `native` rend ce que la console d'origine sortait — résolution
   interne 1x, ratio d'époque, et le shader CRT là où l'émulateur en a un ;

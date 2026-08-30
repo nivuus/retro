@@ -1,4 +1,5 @@
 """Synchronisation d'un compte, de bout en bout, sans Steam ni réseau."""
+import dataclasses
 import pathlib
 
 from retro.steam import accounts, appid, artwork, entry, steam_input, sync, vdf_io
@@ -89,6 +90,31 @@ def test_l_artwork_n_est_demande_que_pour_nos_entrees(tmp_path):
     """Chercher de l'artwork pour les jeux du propriétaire écraserait le sien."""
     compte = faire_compte(tmp_path)
     compte.shortcuts_path.write_bytes(vdf_io.dumps_shortcuts([etranger("Mon jeu à moi")]))
+    client = ArtworkTemoin(compte.shortcuts_path)
+    sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", client)
+    assert [t for t, _ in client.appels] == ["Chrono Trigger"]
+
+
+
+def test_l_artwork_est_cherche_sous_le_titre_nu(tmp_path):
+    """Le titre affiché porte la console ; SteamGridDB ne connaît que le jeu.
+
+    Chercher « Tetris (Super Nintendo) » ne rend aucune jaquette. L'échec est
+    silencieux par construction — fetch_for avale tout, l'artwork étant un
+    ornement — donc seul ce test peut constater que le titre CHERCHÉ n'est pas
+    le titre AFFICHÉ.
+    """
+    compte = faire_compte(tmp_path)
+    client = ArtworkTemoin(compte.shortcuts_path)
+    jeu = dataclasses.replace(rom("Tetris (Super Nintendo)"), search_title="Tetris")
+    sync.sync_account(compte, [jeu], "D:\\Emulation", client)
+    assert [t for t, _ in client.appels] == ["Tetris"]
+
+
+def test_sans_titre_de_recherche_l_artwork_retombe_sur_le_titre(tmp_path):
+    """Un inventaire écrit par une version antérieure ne porte pas la clé.
+    Le repli garde ces bibliothèques-là exactement comme elles étaient."""
+    compte = faire_compte(tmp_path)
     client = ArtworkTemoin(compte.shortcuts_path)
     sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", client)
     assert [t for t, _ in client.appels] == ["Chrono Trigger"]

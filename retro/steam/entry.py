@@ -24,12 +24,21 @@ class RomEntry:
     Path("D:\\Emulation") est un chemin RELATIF nommé « D:\\Emulation », et
     toute comparaison qu'on en tirerait serait fausse.
     """
+    # LE TITRE AFFICHÉ, qui porte son système : « Tetris (Super Nintendo) ».
+    # C'est lui, et lui seul, dont dérive l'identifiant Steam — donc le nom
+    # des fichiers d'artwork.
     title: str
     rom_path: str
     system_name: str
     emulator_exe: str
     launch_template: str
     start_dir: str
+    # CE QUE STEAMGRIDDB DOIT RECEVOIR, qui n'est pas le titre affiché : la
+    # base connaît des jeux, pas des rangements. Vide veut dire « aucun n'a
+    # été fourni » — un inventaire écrit par une version antérieure à ce
+    # champ — et le titre affiché sert alors de repli, ce qui redonne
+    # exactement le comportement de la version qui l'a écrit.
+    search_title: str = ""
     extra_tags: tuple[str, ...] = ()
 
 

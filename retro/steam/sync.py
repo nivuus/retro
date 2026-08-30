@@ -47,6 +47,15 @@ def sync_account(
     existant = vdf_io.load_shortcuts(account.shortcuts_path)
     resultat = reconcile.reconcile(existant, wanted, emulation_root)
 
+    # LE TITRE CHERCHÉ N'EST PAS LE TITRE AFFICHÉ. Celui-ci porte le système —
+    # « Tetris (Super Nintendo) » — et SteamGridDB ne connaît que des jeux :
+    # la recherche ne rendrait rien, sans que rien ne le dise, fetch_for
+    # avalant tout par principe. Les raccourcis réconciliés sont des
+    # dictionnaires qui ne portent plus que l'appname : on rétablit ici le
+    # lien avec l'entrée d'origine, par le seul identifiant qui les relie.
+    recherche = {entry.build_shortcut(rom)["appid"]: (rom.search_title or rom.title)
+                 for rom in wanted}
+
     # L'artwork AVANT l'écriture : un jeu sans vignette vaut mieux qu'une
     # vignette sans jeu, et une panne réseau ne doit pas empêcher l'écriture.
     ecrits = 0
@@ -55,7 +64,8 @@ def sync_account(
         if not entry.is_owned(raccourci, emulation_root):
             continue
         legacy = appid_mod.to_unsigned(raccourci["appid"])
-        ecrits += len(artwork_client.fetch_for(raccourci["appname"], legacy, account.grid_dir))
+        titre = recherche.get(raccourci["appid"], raccourci["appname"])
+        ecrits += len(artwork_client.fetch_for(titre, legacy, account.grid_dir))
         # Compté APRÈS le passage : ce qui manque encore est ce qu'une panne a
         # laissé derrière elle. On le signale, on ne bloque pas.
         manquants += len(artwork.missing_assets(account.grid_dir, legacy))

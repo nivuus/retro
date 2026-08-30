@@ -48,7 +48,7 @@ bios = []
                      "--emulation-root", "D:\\Emulation"])
     assert code == 0
     d = json.loads(sortie.read_text(encoding="utf-8"))
-    assert d[0]["title"] == "Jeu"
+    assert d[0]["title"] == "Jeu (Super Nintendo)"
     assert d[0]["system_name"] == "Super Nintendo"
 
 
@@ -157,13 +157,18 @@ profile     = "r"
     # à la relecture, donc son absence ne se verrait pas ici autrement.
     brut = json.loads(sortie.read_text(encoding="utf-8"))
     assert len(brut) == 1
-    assert set(brut[0]) == {"title", "rom_path", "system_name", "emulator_exe",
-                            "launch_template", "start_dir", "extra_tags"}
+    assert set(brut[0]) == {"title", "search_title", "rom_path", "system_name",
+                            "emulator_exe", "launch_template", "start_dir",
+                            "extra_tags"}
 
     entries = _load_inventory(sortie)
     assert len(entries) == 1
     e = entries[0]
-    assert e.title == "Jeu"
+    assert e.title == "Jeu (SNES)"
+    # Le titre CHERCHÉ traverse le pont lui aussi, et il diverge du titre
+    # affiché : c'est tout l'intérêt du champ. Le perdre ferait chercher
+    # « Jeu (SNES) » chez SteamGridDB, qui ne rendrait rien — en silence.
+    assert e.search_title == "Jeu"
     assert e.rom_path == "G:\\ROMs\\snes\\Jeu.sfc"
     assert e.system_name == "SNES"
     # Le raccourci appelle le lanceur commun ; c'est le dossier d'installation
@@ -359,7 +364,7 @@ def test_scan_n_ignore_rien_quand_l_emulateur_est_installe(tmp_path, capsys):
     sortie_std = capsys.readouterr()
     assert code == 0, sortie_std.err
     d = json.loads(sortie.read_text(encoding="utf-8"))
-    assert [r["title"] for r in d] == ["Jeu"]
+    assert [r["title"] for r in d] == ["Jeu (Super Nintendo)"]
     assert "ignoré" not in sortie_std.err
 
 

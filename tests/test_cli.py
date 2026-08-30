@@ -593,6 +593,47 @@ def _scan_sur(tmp_path, arborescence):
     ])
 
 
+
+def test_l_inventaire_porte_le_titre_de_recherche(tmp_path):
+    """Le titre affiché et le titre cherché divergent : l'inventaire est ce qui
+    les transporte de `scan` jusqu'à `sync`."""
+    inv = tmp_path / "inv.json"
+    inv.write_text(json.dumps([{
+        "title": "Tetris (Super Nintendo)", "search_title": "Tetris",
+        "rom_path": "G:\\ROMs\\snes\\Tetris.sfc",
+        "system_name": "Super Nintendo",
+        "emulator_exe": "D:\\Emulation\\RetroArch\\retroarch.exe",
+        "launch_template": '-f "{rom}"',
+        "start_dir": "D:\\Emulation\\RetroArch",
+    }]), encoding="utf-8")
+    assert [r.search_title for r in cli._load_inventory(inv)] == ["Tetris"]
+
+
+def test_un_inventaire_anterieur_se_charge_sans_titre_de_recherche(tmp_path):
+    """Écrit par une version qui ignorait la clé. Le champ vide dit « replie-toi
+    sur le titre » ; exiger la clé rendrait `sync` inutilisable jusqu'au
+    prochain scan, sans le dire autrement qu'en KeyError."""
+    inv = tmp_path / "inv.json"
+    inv.write_text(json.dumps([{
+        "title": "Chrono Trigger",
+        "rom_path": "G:\\ROMs\\snes\\ct.sfc",
+        "system_name": "Super Nintendo",
+        "emulator_exe": "D:\\Emulation\\RetroArch\\retroarch.exe",
+        "launch_template": '-f "{rom}"',
+        "start_dir": "D:\\Emulation\\RetroArch",
+    }]), encoding="utf-8")
+    assert [r.search_title for r in cli._load_inventory(inv)] == [""]
+
+
+def test_le_scan_ecrit_le_titre_de_recherche_dans_l_inventaire(tmp_path, capsys):
+    """La clé doit exister dans le FICHIER, pas seulement dans le dataclass :
+    c'est le seul point où les deux commandes se parlent."""
+    assert _scan_sur(tmp_path, ["Snes/Zelda.sfc"]) == 0
+    donnees = json.loads((tmp_path / "inv.json").read_text(encoding="utf-8"))
+    assert [(d["title"], d["search_title"]) for d in donnees] == \
+           [("Zelda (Super Nintendo)", "Zelda")]
+
+
 def test_scan_annonce_le_paquet_en_premiere_ligne(tmp_path, capsys):
     """`scan` est la commande dont deux exécutions ont rendu deux résultats
     différents le 2026-08-29. Qui compare deux scans doit voir d'un coup

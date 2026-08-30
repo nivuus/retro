@@ -35,6 +35,11 @@ def _load_inventory(path: pathlib.Path) -> list[entry.RomEntry]:
     return [
         entry.RomEntry(
             title=d["title"],
+            # Absent d'un inventaire écrit avant ce champ : le repli sur le
+            # titre affiché est ce que faisait cette version-là. L'exiger
+            # rendrait `sync` inutilisable jusqu'au prochain scan, et ne le
+            # dirait que par un KeyError.
+            search_title=d.get("search_title", ""),
             rom_path=d["rom_path"],
             system_name=d["system_name"],
             emulator_exe=d["emulator_exe"],
@@ -358,6 +363,7 @@ def _cmd_scan(args) -> int:
     donnees = [
         {
             "title": rom.title,
+            "search_title": rom.search_title,
             "rom_path": rom.rom_path,
             "system_name": rom.system_name,
             "emulator_exe": rom.emulator_exe,

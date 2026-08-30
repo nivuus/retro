@@ -137,16 +137,17 @@ class _Candidat:
     titre_reconnu: str = ""
 
 
-# Ce qui départage deux jeux de même titre, du plus lisible au plus sûr. Un
-# qualificatif n'est posé que s'il départage RÉELLEMENT le groupe en
-# collision : « Jeu (Super Nintendo) (USA) » enlaidirait le cas courant — deux
-# régions d'un même jeu — au nom d'un cas rare que le système ne résout pas.
+# Ce qui départage deux jeux de même titre SUR UN MÊME SYSTÈME, du plus lisible
+# au plus sûr. Un qualificatif n'est posé que s'il départage RÉELLEMENT le
+# groupe en collision : le poser sans cela allongerait le titre sans lever
+# quoi que ce soit.
+#
+# LE SYSTÈME N'EN FAIT PLUS PARTIE, et ce n'est pas un oubli : il est
+# désormais posé sur TOUS les titres, en fin de course. Deux jeux ne peuvent
+# donc plus entrer en collision qu'au sein d'un même système — où le nom du
+# système rend la même valeur pour tout le groupe, et ne départagerait rien.
 _QUALIFICATIFS = (
-    # Le système d'abord : c'est ce qui distingue le Tetris de la Game Boy de
-    # celui de la NES, et c'est ce que le propriétaire lit dans sa
-    # bibliothèque.
-    lambda c: c.systeme.name,
-    # Puis la région, qui départage deux éditions d'un même jeu.
+    # La région, qui départage deux éditions d'un même jeu.
     lambda c: discriminant(c.fichier.name, c.dossier),
     # Puis le nom de fichier entier, extension comprise.
     lambda c: c.fichier.name,
@@ -158,13 +159,33 @@ _QUALIFICATIFS = (
 )
 
 
-def _desambiguiser(candidats: list[_Candidat]) -> list[str]:
-    """Rend les titres, en ne qualifiant que ceux qui entrent en collision.
+def _titre_base(c: _Candidat) -> str:
+    """Le titre du JEU SEUL, sans rien de ce qui l'entoure.
 
-    Deux jeux de même titre rendent le même couple (exe, appname), donc le
-    même identifiant Steam, donc UNE SEULE entrée : le second écrase le
-    premier à l'écriture, et le jeu disparaît de la bibliothèque sans que rien
-    ne le signale.
+    C'est lui qu'on envoie à SteamGridDB, et lui seul : la base connaît des
+    jeux, pas des rangements. « Tetris (Super Nintendo) » n'y trouve rien, et
+    l'échec est SILENCIEUX par construction — l'artwork est un ornement, dont
+    l'absence se lit exactement comme une bibliothèque encore incomplète.
+    """
+    return (titre_de_fiche(c.titre_reconnu) if c.titre_reconnu
+            else clean_title(c.fichier.name, c.dossier))
+
+
+def _desambiguiser(candidats: list[_Candidat]) -> list[tuple[str, str]]:
+    """Rend, pour chaque candidat, (titre AFFICHÉ, titre CHERCHÉ).
+
+    LE TITRE AFFICHÉ PORTE TOUJOURS SON SYSTÈME, en dernier. Les deux tags
+    posés sur chaque raccourci deviennent des catégories Steam, mais une
+    catégorie ne s'affiche nulle part sur une vignette : le titre est le seul
+    endroit où le propriétaire lit, sans rien ouvrir, sur quelle console
+    tourne le jeu qu'il regarde. En DERNIER, et jamais au milieu : la console
+    se trouve alors toujours au même endroit de la ligne, y compris sur les
+    titres qu'un qualificatif est venu allonger.
+
+    Le reste ne qualifie que ce qui entre en collision. Deux jeux de même
+    titre rendent le même couple (exe, appname), donc le même identifiant
+    Steam, donc UNE SEULE entrée : le second écrase le premier à l'écriture,
+    et le jeu disparaît de la bibliothèque sans que rien ne le signale.
 
     La comparaison porte sur TOUTE la bibliothèque, jamais sur un dossier à la
     fois. Mesuré le 2026-08-27 : « Tetris » sur PlayStation et sur Super
@@ -173,16 +194,17 @@ def _desambiguiser(candidats: list[_Candidat]) -> list[str]:
     commun, qui donne le MÊME exe à toute la bibliothèque, aurait étendu le
     défaut à n'importe quel homonyme.
 
-    Les titres uniques ne sont jamais touchés : la bibliothèque reste propre
-    dans le cas courant, qui est de loin le plus fréquent.
+    D'où la clé de regroupement (titre, système) plutôt que le titre seul :
+    c'est ce que le titre affiché portera, et deux homonymes de systèmes
+    différents n'ont donc plus rien à départager. Les titres uniques ne
+    reçoivent jamais d'autre qualificatif que leur système.
     """
-    titres = [titre_de_fiche(c.titre_reconnu) if c.titre_reconnu
-              else clean_title(c.fichier.name, c.dossier)
-              for c in candidats]
+    bases = [_titre_base(c) for c in candidats]
+    titres = list(bases)
     for extraire in _QUALIFICATIFS:
-        groupes: dict[str, list[int]] = {}
+        groupes: dict[tuple[str, str], list[int]] = {}
         for i, t in enumerate(titres):
-            groupes.setdefault(t, []).append(i)
+            groupes.setdefault((t, candidats[i].systeme.name), []).append(i)
         if all(len(ix) == 1 for ix in groupes.values()):
             break
         for indices in groupes.values():
@@ -197,7 +219,12 @@ def _desambiguiser(candidats: list[_Candidat]) -> list[str]:
             for i, v in zip(indices, valeurs):
                 if v:
                     titres[i] = f"{titres[i]} ({v})"
-    return titres
+    # Le système en dernier. Deux couples (titre, système) distincts rendent
+    # deux chaînes distinctes : aucun nom de système ne contient de
+    # parenthèse, donc la parenthèse finale isole toujours le système, et ce
+    # qui la précède est le titre — l'unicité obtenue plus haut est conservée.
+    return [(f"{titre} ({c.systeme.name})", base)
+            for titre, base, c in zip(titres, bases, candidats)]
 
 
 # Jusqu'où descendre sous la racine avant de renoncer. Une bibliothèque
@@ -559,6 +586,7 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
     return [
         entry.RomEntry(
             title=titre,
+            search_title=recherche,
             rom_path=f"{roms_root_windows}\\{c.chemin}\\{c.fichier.name}",
             system_name=c.systeme.name,
             emulator_exe=lanceur,
@@ -567,5 +595,5 @@ def scan(roms_root: pathlib.Path, profils: dict, emulation_root: str,
             start_dir=f"{emulation_root}\\{install_dirs[c.pid]}",
             extra_tags=(),
         )
-        for c, titre in zip(candidats, _desambiguiser(candidats))
+        for c, (titre, recherche) in zip(candidats, _desambiguiser(candidats))
     ]
