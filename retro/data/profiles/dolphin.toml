@@ -50,15 +50,6 @@ schema = 1
 id  = "dolphin"
 exe = 'Dolphin-x64\Dolphin.exe'
 
-# Amorçage : pas de bloc [[bootstrap]]. Ce que Dolphin doit recevoir pour
-# lancer un jeu au lieu de son assistant de première configuration reste À
-# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
-# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
-# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
-# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
-# « cet émulateur se débrouille » : voir
-# docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
-
 # `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
 # l'identifiant lui-même : un identifiant n'est pas une propriété du
 # périphérique, c'est une propriété de l'émulateur qui le nomme, et le seul
@@ -66,36 +57,307 @@ exe = 'Dolphin-x64\Dolphin.exe'
 # configuration (plan des manettes, tâche 1 — quatre identifiants relevés pour
 # une seule manette physique, un seul bon).
 #
-# « inconnu » : personne n'a vérifié, le pad en main, que la manette répond
-# dans cet émulateur. Ce n'est PAS « il se débrouille » — le plan des manettes
-# le supposait de DuckStation, et c'était faux (dette D3). Les deux seules
-# lignes mesurées de son tableau sont l'émulateur personnel et DuckStation ;
-# celle-ci n'en est pas. `retro status` le nomme sans l'accuser.
+# « pose » depuis le 2026-08-30 : les liaisons sont écrites et imposées — les
+# deux blocs [[bootstrap]] ci-dessous —, mais personne n'a tenu de manette
+# depuis que le type de périphérique virtuel a été épinglé. Ce n'est ni
+# « a-relever », qui voudrait dire que rien n'est relevé, ni « releve », la
+# seule affirmation de ce vocabulaire qui exige un témoin humain. Ce que le
+# rapport doit dire est exactement cela : les liaisons sont là, leur réponse
+# n'a pas été vue.
 #
-# Vibration : l'ÉTAT vit désormais dans le champ `rumble` du bloc [input]
-# ci-dessous — « inconnu » ici, et `retro status` le nomme. Ce commentaire ne
-# porte plus l'aveu, il porte la PROVENANCE : pourquoi rien n'est posé, où ça
-# irait, et ce qui reste à relever. Le jour où un relevé aboutit, c'est le
-# CHAMP qui bascule et la cible supposée ci-dessous qui devient mesurée.
+# Vibration : « pose » pour la même raison, et sur la même preuve.
+# `Rumble/Motor` est désormais imposé sur les quatre ports, avec les deux
+# sorties `Motor L` et `Motor R` que `named_motors` déclare dans
+# Source/Core/InputCommon/ControllerInterface/XInput/XInput.cpp de la révision
+# 2606a — le nom de la clé, lui, est relu dans le GCPadNew.ini que Dolphin
+# avait lui-même écrit. Personne n'a SENTI la manette vibrer : la dette D1
+# reste ouverte, et le maillon qui manque n'est pas ici mais dans le retour
+# Apollo -> client, qui ne se mesure que dans sunshine.log.
+
+# AMORÇAGE — LES QUATRE MANETTES, ET POURQUOI ELLES PEUVENT ENFIN ÊTRE
+# ÉCRITES SANS NOMMER UN PÉRIPHÉRIQUE.
 #
-# Aucun réglage de rumble n'est posé ici, et ce n'est pas un
-# oubli. La manette ne vibre NULLE PART — ni dans cet émulateur, ni dans les
-# jeux Steam, ni depuis le client Moonlight — et aucun des trois maillons n'a
-# été mesuré : dette D1 de docs/dettes.md. Le rumble est un réglage de la
-# configuration d'entrée, pas de la ligne de commande : il ira dans le gabarit
-# d'entrée du sous-projet E, famille « dédiée », dont la cible SUPPOSÉE pour
-# Dolphin est User\Config\GCPadNew.ini — hypothèse du plan des manettes,
-# jamais mesurée. Le nom de la clé, lui, n'a été relevé dans AUCUN fichier que
-# Dolphin a lui-même écrit ; recopié d'une documentation, il serait ignoré en
-# silence et la manette resterait muette exactement comme aujourd'hui. Ce qui
-# reste à relever, sur la machine : ce que Dolphin écrit de lui-même une fois
-# la vibration activée dans son interface — même méthode que pour
-# l'identifiant de manette (tâche 1 du sous-projet E), et pour la même raison.
+# Dolphin identifie une manette par un TRIPLET (source, index, nom) —
+# `DeviceQualifier`, comparé champ à champ. Le nom en fait partie : une
+# configuration qui dit « SDL/0/PS4 Controller » ne vaut que tant que le
+# périphérique s'appelle ainsi, et une liaison qui ne correspond à rien est
+# ignorée EN SILENCE. C'est ce qui rendait ces deux fichiers impossibles à
+# livrer : le nom dépendait de la manette du joueur.
+#
+# Il n'en dépend plus, et c'est un réglage d'Apollo qui l'a tranché, pas une
+# astuce d'écriture. La console ne voit JAMAIS la manette du joueur : Moonlight
+# envoie des états abstraits et Apollo recrée un périphérique par ViGEmBus.
+# Le gabarit sunshine.conf du dépôt « installer » épingle désormais
+# « gamepad = x360 », qui fige la première branche de `alloc_gamepad`
+# (src/platform/windows/input.cpp, Apollo v0.4.6) : quatre manettes Xbox 360
+# filaires IDENTIQUES, quelles que soient les quatre manettes physiques que
+# les joueurs tiennent, et quel que soit leur mélange. Sans cet
+# épinglage, le type était choisi à chaque connexion par cinq branches, et
+# deux types mélangés donnaient DEUX périphériques d'index 0 : l'index de
+# Dolphin se compte par NOM (`AddDevice`, ControllerInterface.cpp), donc
+# aucun ordre de ports n'était exprimable.
+#
+# D'où viennent les valeurs ci-dessous, et aucune n'est recopiée d'une
+# documentation :
+#   · « XInput », « Gamepad », « Button A », « Pad N », « Trigger L »,
+#     « Left Y+ », « Motor L » — lus dans
+#     Source/Core/InputCommon/ControllerInterface/XInput/XInput.cpp de la
+#     révision 2606a, celle du manifeste : `named_buttons`, `named_triggers`,
+#     `named_axes` (suffixés « + » ou « - » par `Axis::GetName`),
+#     `named_motors`, `Device::GetName()` qui rend « Gamepad » pour un
+#     XINPUT_DEVSUBTYPE_GAMEPAD, et `Device::GetSource()` qui rend « XInput ».
+#   · l'index 0 à 3 — `Device::GetPreferredId()` du même fichier rend
+#     `m_index`, l'index utilisateur XInput. Ce n'est donc PAS un ordre
+#     d'énumération : le port 1 est la manette XInput 0, toujours.
+#   · la STRUCTURE (quelles clés existent, sous quels noms) — relue le
+#     2026-08-30 dans le GCPadNew.ini et le WiimoteNew.ini que la console
+#     portait, dont le propriétaire a confirmé le 2026-08-29 qu'ils faisaient
+#     répondre la GameCube et la Wii. Seule la ligne `Device` change.
+#
+# CE QUI N'A PAS ÉTÉ MESURÉ, et que `[input] mapping = "pose"` dit : personne
+# n'a encore tenu une manette après l'épinglage. Les noms de contrôles sont
+# prouvés par la source, le périphérique ne l'est pas.
+#
+# `%APPDATA%` et non `Documents` : `SetUserDirectory` (UICommon.cpp, révision
+# 2606a) essaie six cas dans l'ordre, et sur une console neuve — pas de
+# portable.txt, pas de clé de registre, pas de `Documents\Dolphin Emulator` —
+# c'est le cas 5 qui gagne. Vérifié sur la machine : la clé
+# HKCU\Software\Dolphin Emulator\UserConfigPath y pointe.
+#
+# `enforced` et non `content` : Dolphin RÉÉCRIT ces deux fichiers dès qu'on
+# ferme sa fenêtre de configuration (`InputConfig::SaveConfig`). Le régime
+# « si-absent » ne les reposerait donc jamais sur une console déjà jouée, qui
+# est très exactement celle-ci.
+
+[[bootstrap]]
+target = '%APPDATA%\Dolphin Emulator\Config\GCPadNew.ini'
+content = """#
+# Écrit par « retro ». Ce fichier porte TROIS sortes de réglages : ce que la
+# console IMPOSE et repose à chaque lancement — les quatre manettes, leurs
+# liaisons et leur vibration —, ce qu'elle a posé UNE FOIS et ne retouche
+# plus, et tout le reste, qui vous appartient : Dolphin le réécrit lui-même
+# dès que vous fermez sa fenêtre de configuration.
+#
+# « # » est le seul caractère de commentaire que Dolphin reconnaisse
+# (Common/IniFile.cpp, révision 2606a : `line.front() == '#'`).
+"""
+enforced = """
+[GCPad1]
+Device = XInput/0/Gamepad
+Buttons/A = `Button A`
+Buttons/B = `Button B`
+Buttons/X = `Button X`
+Buttons/Y = `Button Y`
+Buttons/Z = `Shoulder R`
+Buttons/Start = `Start`
+Main Stick/Up = `Left Y+`
+Main Stick/Down = `Left Y-`
+Main Stick/Left = `Left X-`
+Main Stick/Right = `Left X+`
+Main Stick/Calibration = 100.00
+C-Stick/Up = `Right Y+`
+C-Stick/Down = `Right Y-`
+C-Stick/Left = `Right X-`
+C-Stick/Right = `Right X+`
+C-Stick/Calibration = 100.00
+Triggers/L = `Trigger L`
+Triggers/R = `Trigger R`
+Triggers/L-Analog = `Trigger L`
+Triggers/R-Analog = `Trigger R`
+D-Pad/Up = `Pad N`
+D-Pad/Down = `Pad S`
+D-Pad/Left = `Pad W`
+D-Pad/Right = `Pad E`
+Rumble/Motor = `Motor L` | `Motor R`
+[GCPad2]
+Device = XInput/1/Gamepad
+Buttons/A = `Button A`
+Buttons/B = `Button B`
+Buttons/X = `Button X`
+Buttons/Y = `Button Y`
+Buttons/Z = `Shoulder R`
+Buttons/Start = `Start`
+Main Stick/Up = `Left Y+`
+Main Stick/Down = `Left Y-`
+Main Stick/Left = `Left X-`
+Main Stick/Right = `Left X+`
+Main Stick/Calibration = 100.00
+C-Stick/Up = `Right Y+`
+C-Stick/Down = `Right Y-`
+C-Stick/Left = `Right X-`
+C-Stick/Right = `Right X+`
+C-Stick/Calibration = 100.00
+Triggers/L = `Trigger L`
+Triggers/R = `Trigger R`
+Triggers/L-Analog = `Trigger L`
+Triggers/R-Analog = `Trigger R`
+D-Pad/Up = `Pad N`
+D-Pad/Down = `Pad S`
+D-Pad/Left = `Pad W`
+D-Pad/Right = `Pad E`
+Rumble/Motor = `Motor L` | `Motor R`
+[GCPad3]
+Device = XInput/2/Gamepad
+Buttons/A = `Button A`
+Buttons/B = `Button B`
+Buttons/X = `Button X`
+Buttons/Y = `Button Y`
+Buttons/Z = `Shoulder R`
+Buttons/Start = `Start`
+Main Stick/Up = `Left Y+`
+Main Stick/Down = `Left Y-`
+Main Stick/Left = `Left X-`
+Main Stick/Right = `Left X+`
+Main Stick/Calibration = 100.00
+C-Stick/Up = `Right Y+`
+C-Stick/Down = `Right Y-`
+C-Stick/Left = `Right X-`
+C-Stick/Right = `Right X+`
+C-Stick/Calibration = 100.00
+Triggers/L = `Trigger L`
+Triggers/R = `Trigger R`
+Triggers/L-Analog = `Trigger L`
+Triggers/R-Analog = `Trigger R`
+D-Pad/Up = `Pad N`
+D-Pad/Down = `Pad S`
+D-Pad/Left = `Pad W`
+D-Pad/Right = `Pad E`
+Rumble/Motor = `Motor L` | `Motor R`
+[GCPad4]
+Device = XInput/3/Gamepad
+Buttons/A = `Button A`
+Buttons/B = `Button B`
+Buttons/X = `Button X`
+Buttons/Y = `Button Y`
+Buttons/Z = `Shoulder R`
+Buttons/Start = `Start`
+Main Stick/Up = `Left Y+`
+Main Stick/Down = `Left Y-`
+Main Stick/Left = `Left X-`
+Main Stick/Right = `Left X+`
+Main Stick/Calibration = 100.00
+C-Stick/Up = `Right Y+`
+C-Stick/Down = `Right Y-`
+C-Stick/Left = `Right X-`
+C-Stick/Right = `Right X+`
+C-Stick/Calibration = 100.00
+Triggers/L = `Trigger L`
+Triggers/R = `Trigger R`
+Triggers/L-Analog = `Trigger L`
+Triggers/R-Analog = `Trigger R`
+D-Pad/Up = `Pad N`
+D-Pad/Down = `Pad S`
+D-Pad/Left = `Pad W`
+D-Pad/Right = `Pad E`
+Rumble/Motor = `Motor L` | `Motor R`
+"""
+
+[[bootstrap]]
+target = '%APPDATA%\Dolphin Emulator\Config\WiimoteNew.ini'
+content = """#
+# Écrit par « retro ». Ce fichier porte TROIS sortes de réglages : ce que la
+# console IMPOSE et repose à chaque lancement — les quatre manettes, leurs
+# liaisons et leur vibration —, ce qu'elle a posé UNE FOIS et ne retouche
+# plus, et tout le reste, qui vous appartient : Dolphin le réécrit lui-même
+# dès que vous fermez sa fenêtre de configuration.
+#
+# « # » est le seul caractère de commentaire que Dolphin reconnaisse
+# (Common/IniFile.cpp, révision 2606a : `line.front() == '#'`).
+"""
+enforced = """
+[Wiimote1]
+Device = XInput/0/Gamepad
+Source = 1
+Buttons/A = `Button X`
+Buttons/B = `Shoulder L`
+Buttons/1 = `Button B`
+Buttons/2 = `Button A`
+Buttons/- = `Back`
+Buttons/+ = `Start`
+D-Pad/Up = `Pad N` | `Left Y+`
+D-Pad/Down = `Pad S` | `Left Y-`
+D-Pad/Left = `Pad W` | `Left X-`
+D-Pad/Right = `Pad E` | `Left X+`
+Shake/X = `Shoulder R`
+Shake/Y = `Shoulder R`
+Shake/Z = `Shoulder R`
+IR/Up = `Right Y+`
+IR/Down = `Right Y-`
+IR/Left = `Right X-`
+IR/Right = `Right X+`
+Rumble/Motor = `Motor L` | `Motor R`
+[Wiimote2]
+Device = XInput/1/Gamepad
+Source = 1
+Buttons/A = `Button X`
+Buttons/B = `Shoulder L`
+Buttons/1 = `Button B`
+Buttons/2 = `Button A`
+Buttons/- = `Back`
+Buttons/+ = `Start`
+D-Pad/Up = `Pad N` | `Left Y+`
+D-Pad/Down = `Pad S` | `Left Y-`
+D-Pad/Left = `Pad W` | `Left X-`
+D-Pad/Right = `Pad E` | `Left X+`
+Shake/X = `Shoulder R`
+Shake/Y = `Shoulder R`
+Shake/Z = `Shoulder R`
+IR/Up = `Right Y+`
+IR/Down = `Right Y-`
+IR/Left = `Right X-`
+IR/Right = `Right X+`
+Rumble/Motor = `Motor L` | `Motor R`
+[Wiimote3]
+Device = XInput/2/Gamepad
+Source = 1
+Buttons/A = `Button X`
+Buttons/B = `Shoulder L`
+Buttons/1 = `Button B`
+Buttons/2 = `Button A`
+Buttons/- = `Back`
+Buttons/+ = `Start`
+D-Pad/Up = `Pad N` | `Left Y+`
+D-Pad/Down = `Pad S` | `Left Y-`
+D-Pad/Left = `Pad W` | `Left X-`
+D-Pad/Right = `Pad E` | `Left X+`
+Shake/X = `Shoulder R`
+Shake/Y = `Shoulder R`
+Shake/Z = `Shoulder R`
+IR/Up = `Right Y+`
+IR/Down = `Right Y-`
+IR/Left = `Right X-`
+IR/Right = `Right X+`
+Rumble/Motor = `Motor L` | `Motor R`
+[Wiimote4]
+Device = XInput/3/Gamepad
+Source = 1
+Buttons/A = `Button X`
+Buttons/B = `Shoulder L`
+Buttons/1 = `Button B`
+Buttons/2 = `Button A`
+Buttons/- = `Back`
+Buttons/+ = `Start`
+D-Pad/Up = `Pad N` | `Left Y+`
+D-Pad/Down = `Pad S` | `Left Y-`
+D-Pad/Left = `Pad W` | `Left X-`
+D-Pad/Right = `Pad E` | `Left X+`
+Shake/X = `Shoulder R`
+Shake/Y = `Shoulder R`
+Shake/Z = `Shoulder R`
+IR/Up = `Right Y+`
+IR/Down = `Right Y-`
+IR/Left = `Right X-`
+IR/Right = `Right X+`
+Rumble/Motor = `Motor L` | `Motor R`
+"""
+
 [input]
-steam_input = "required"
-mode        = "xinput"
-mapping     = "inconnu"
-rumble      = "inconnu"
+steam_input   = "required"
+mode          = "xinput"
+mapping       = "pose"
+mapping_where = 'GCPadNew.ini et WiimoteNew.ini, sous %APPDATA%\Dolphin Emulator\Config'
+rumble        = "pose"
+rumble_where  = 'Rumble/Motor, dans les mêmes deux fichiers'
 
 [exit]
 # Dolphin ne livre aucune combinaison manette de sortie par défaut : il n'y a
@@ -108,7 +370,7 @@ id         = "gamecube"
 name       = "GameCube"
 folders    = ["GC", "NGC", "Nintendo GameCube"]
 extensions = [".iso", ".gcm", ".gcz", ".rvz", ".ciso", ".wia", ".tgc", ".dol", ".elf"]
-launch     = '-b --config Dolphin.Display.Fullscreen=True {render} -e "{rom}"'
+launch     = '-b --config Dolphin.Display.Fullscreen=True --config Dolphin.Core.SIDevice1=6 --config Dolphin.Core.SIDevice2=6 --config Dolphin.Core.SIDevice3=6 {render} -e "{rom}"'
 # Le BIOS GameCube (IPL) n'est utilisé que pour afficher l'animation de
 # démarrage ; Dolphin joue sans lui. Rien à exiger.
 bios       = []
@@ -132,7 +394,7 @@ id         = "wii"
 name       = "Wii"
 folders    = ["Nintendo Wii"]
 extensions = [".iso", ".wbfs", ".rvz", ".gcz", ".ciso", ".wia", ".wad"]
-launch     = '-b --config Dolphin.Display.Fullscreen=True {render} -e "{rom}"'
+launch     = '-b --config Dolphin.Display.Fullscreen=True --config Dolphin.Core.SIDevice1=6 --config Dolphin.Core.SIDevice2=6 --config Dolphin.Core.SIDevice3=6 {render} -e "{rom}"'
 bios       = []
 cost       = "medium"
 # La GameCube et la Wii sortent toutes deux en 480 lignes au maximum : c'est

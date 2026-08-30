@@ -122,16 +122,32 @@ _JETON_CIBLE = re.compile(r"\{[^}]*\}")
 # « manette muette » sur le seul émulateur dont on ait vu un bouton agir.
 # `inconnu` aurait effacé la mesure. Plutôt que de tordre l'un des trois, le
 # vocabulaire s'allonge d'un état qui dit exactement ce qui a été constaté.
+#
+# LE CINQUIÈME ÉTAT, ajouté le 2026-08-30, et pour la même raison que le
+# quatrième : aucun des quatre n'était vrai de Dolphin. Ses liaisons sont
+# écrites et imposées — donc ni `a-relever`, ni `inconnu` — mais elles n'ont
+# pas été VUES répondre sous le périphérique qu'elles nomment : le type de
+# manette virtuelle vient d'être épinglé côté Apollo, et le relevé qui existe
+# a été fait sous l'AUTRE. `releve` est la seule affirmation de ce vocabulaire
+# qui exige un témoin humain ; l'écrire ici serait affirmer une mesure que
+# personne n'a faite.
+#
+# C'est exactement la distinction que `rumble` porte déjà entre `pose` et
+# `vu`, et elle manquait ici. Sans elle, un profil qui vient de recevoir ses
+# liaisons doit mentir dans un sens ou dans l'autre, et `retro status` relaie
+# le mensonge.
 MAPPING_AUTO = "auto"           # mesuré : cet émulateur trouve la manette seul
 MAPPING_A_RELEVER = "a-relever"  # mesuré : il ne la trouve pas, rien n'est relevé
+MAPPING_POSE = "pose"           # liaisons imposées, jamais vues répondre
 MAPPING_RELEVE = "releve"       # mesuré : relevé fait, imposé, et VU répondre
 MAPPING_INCONNU = "inconnu"     # personne n'a mesuré
-MAPPINGS = (MAPPING_AUTO, MAPPING_A_RELEVER, MAPPING_RELEVE, MAPPING_INCONNU)
+MAPPINGS = (MAPPING_AUTO, MAPPING_A_RELEVER, MAPPING_POSE, MAPPING_RELEVE,
+            MAPPING_INCONNU)
 
-# Les deux états qui NOMMENT un fichier : dans les deux cas le propriétaire a
+# Les trois états qui NOMMENT un fichier : dans les trois cas le propriétaire a
 # un endroit précis à ouvrir — celui où le relevé se fait, celui où les
-# liaisons relevées sont reposées. `mapping_where` y est donc exigé.
-MAPPINGS_AVEC_OU = (MAPPING_A_RELEVER, MAPPING_RELEVE)
+# liaisons posées ou relevées sont reposées. `mapping_where` y est donc exigé.
+MAPPINGS_AVEC_OU = (MAPPING_A_RELEVER, MAPPING_POSE, MAPPING_RELEVE)
 
 # LE TYPE DE MANETTE SOUS LEQUEL UN RELEVÉ A ÉTÉ FAIT. Vocabulaire GELÉ, et
 # c'est le point : un relevé n'est vrai QUE du pad sous lequel il a été fait.

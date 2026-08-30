@@ -1983,3 +1983,39 @@ def test_le_refus_des_deux_regimes_nomme_une_cle_yaml_lisiblement(tmp_path):
             impose="warn-missing-firmware: false")))
     assert "[]" not in str(e.value)
     assert "warn-missing-firmware" in str(e.value)
+
+
+def test_des_liaisons_posees_jamais_vues_ne_se_disent_pas_relevees(tmp_path):
+    """Le cinquième état, et la faute qu'il empêche.
+
+    Dolphin a reçu ses liaisons le 2026-08-30, et aucun des quatre états
+    précédents n'était vrai de lui : « a-relever » aurait dit que rien n'est
+    relevé, « inconnu » aurait effacé le travail, « releve » aurait affirmé
+    qu'un bouton a été VU répondre — la seule affirmation de ce vocabulaire
+    qui exige un témoin humain. « pose » dit ce qui a été constaté, et rien
+    de plus.
+    """
+    p = profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+        '[input]\nmapping = "pose"\n'
+        "mapping_where = 'GCPadNew.ini'\n")))
+    assert p.input_mapping == profiles.MAPPING_POSE
+    assert p.input_mapping != profiles.MAPPING_RELEVE
+
+
+def test_des_liaisons_posees_sans_ou_sont_refusees(tmp_path):
+    """Même exigence que les deux autres états qui nomment un fichier : des
+    liaisons imposées dont on ne dit pas OÙ ne s'inspectent nulle part."""
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nmapping = "pose"\n')))
+
+
+def test_des_liaisons_posees_ne_declarent_pas_de_pad(tmp_path):
+    """`pad_releve` dit sous quel pad un relevé a été VU répondre. Sur des
+    liaisons jamais vues répondre, il n'y a rien à déclarer : l'écrire serait
+    la même affirmation non mesurée que le champ existe pour empêcher."""
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(ecrire(tmp_path, "d.toml", _avec_input(
+            '[input]\nmapping = "pose"\n'
+            "mapping_where = 'GCPadNew.ini'\n"
+            'pad_releve = "x360"\n')))

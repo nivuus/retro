@@ -2132,3 +2132,114 @@ def test_aucun_profil_ne_nie_l_amorcage_qu_il_porte():
         "ces profils portent un [[bootstrap]] et affirment pourtant le "
         f"contraire dans leur en-tete : {menteurs}"
     )
+
+
+def _valeurs_ini(fragment: str) -> list[tuple[str, str, str]]:
+    """Les triplets (section, clé, valeur) d'un fragment INI, dans l'ordre."""
+    section, sortie = "", []
+    for ligne in fragment.splitlines():
+        nu = ligne.strip()
+        if not nu or nu[0] in ";#":
+            continue
+        if nu.startswith("[") and nu.endswith("]"):
+            section = nu[1:-1].strip()
+        elif "=" in nu:
+            cle, valeur = nu.split("=", 1)
+            sortie.append((section, cle.strip(), valeur.strip()))
+    return sortie
+
+
+def test_dolphin_impose_quatre_ports_par_index_xinput():
+    """Les quatre manettes, et le SEUL identifiant qui survive à un mélange.
+
+    Dolphin compare un périphérique par le triplet (source, index, NOM) —
+    `DeviceQualifier`. Le nom en fait partie, et l'index se compte PAR NOM
+    (`ControllerInterface::AddDevice`) : deux types de manettes mélangés
+    donnent DEUX périphériques d'index 0, et aucun ordre de ports n'est
+    exprimable. C'est pour ça que ces deux fichiers étaient réputés
+    impossibles à livrer.
+
+    « XInput/N/Gamepad » ne tient que parce qu'Apollo épingle désormais
+    « gamepad = x360 » : quatre manettes Xbox 360 identiques, et
+    `Device::GetPreferredId()` (XInput.cpp, révision 2606a) rend l'index
+    utilisateur XInput — le port 1 EST la manette XInput 0, pas la première
+    énumérée. Le jour où quelqu'un remet Apollo en « auto », ces quatre
+    lignes cessent d'être vraies en silence : c'est ce couplage-là que ce
+    test rend visible.
+    """
+    profil = profiles.load_profile(PROFILS / "dolphin.toml")
+    attendu = {
+        "GCPadNew.ini": [f"GCPad{n + 1}" for n in range(4)],
+        "WiimoteNew.ini": [f"Wiimote{n + 1}" for n in range(4)],
+    }
+    vus = {}
+    for b in profil.bootstraps:
+        nom = b.target.rsplit("\\", 1)[-1]
+        assert nom in attendu, f"cible d'amorçage inattendue : {b.target}"
+        triplets = _valeurs_ini(b.enforced)
+        sections = [s for s, _, _ in triplets]
+        # dict.fromkeys : les sections DANS L'ORDRE, sans doublon.
+        assert list(dict.fromkeys(sections)) == attendu[nom], (
+            f"dolphin.toml : {nom} n'impose plus les quatre ports "
+            f"{attendu[nom]} — reçu {list(dict.fromkeys(sections))}. Un port "
+            "retiré n'est pas une manette qui répond mal : c'est un joueur "
+            "qui ne peut pas se brancher, et rien ne le dit.")
+        appareils = [(s, v) for s, c, v in triplets if c == "Device"]
+        assert appareils == [(sec, f"XInput/{n}/Gamepad")
+                             for n, sec in enumerate(attendu[nom])], (
+            f"dolphin.toml : les périphériques de {nom} ne sont plus les "
+            f"quatre index XInput — reçu {appareils}. Tout autre identifiant "
+            "nomme un TYPE de manette, et une liaison qui ne correspond à "
+            "aucun périphérique est ignorée en silence.")
+        vus[nom] = True
+    assert sorted(vus) == sorted(attendu), (
+        f"dolphin.toml ne vise plus les deux fichiers de manette : {sorted(vus)}")
+
+
+def test_dolphin_ouvre_les_quatre_prises_gamecube():
+    """Les quatre [GCPad] ne servent à RIEN sans ces trois options.
+
+    Une prise GameCube que Dolphin ne déclare pas occupée ne lit aucune
+    manette, quelle que soit la configuration d'entrée : le défaut de
+    SIDevice1 à SIDevice3 est SIDEVICE_NONE (MainSettings.cpp, révision
+    2606a), et 6 est SIDEVICE_GC_CONTROLLER (SI_Device.h, même révision). Les
+    trois joueurs supplémentaires seraient parfaitement configurés et
+    parfaitement muets — la panne exacte que ce dépôt refuse partout.
+    """
+    profil = profiles.load_profile(PROFILS / "dolphin.toml")
+    for s in profil.systems:
+        for n in (1, 2, 3):
+            assert f"Dolphin.Core.SIDevice{n}=6" in s.launch, (
+                f"dolphin.toml [{s.id}] : la prise {n + 1} n'est plus "
+                f"ouverte — {s.launch}")
+
+
+def test_pcsx2_impose_les_deux_prises_de_la_playstation_2():
+    """Deux ports, et deux seulement : c'est le matériel, pas un travail
+    inachevé. Au-delà il faut un multitap, que [Pad] MultitapPort1 activerait
+    pour TOUS les jeux en renumérotant les emplacements — un jeu qui ne le
+    gère pas verrait alors un périphérique inconnu là où il attend une
+    manette.
+
+    Le second port se distingue du premier par le SEUL index de joueur SDL
+    (`SDL-1`), jamais par un nom de périphérique : `ConvertKeyToString`
+    (pcsx2/Input/SDLInputSource.cpp v2.6.3) formate « SDL-{} » à partir de
+    `player_id`.
+    """
+    b, = profiles.load_profile(PROFILS / "pcsx2.toml").bootstraps
+    triplets = _valeurs_ini(b.enforced)
+    for port, index in (("Pad1", "SDL-0/"), ("Pad2", "SDL-1/")):
+        liaisons = [(c, v) for s, c, v in triplets
+                    if s == port and c != "Type"]
+        assert len(liaisons) == 26, (
+            f"pcsx2.toml : [{port}] porte {len(liaisons)} liaisons et non 26. "
+            "En retirer une rend un bouton muet sans qu'aucun message ne le "
+            "dise.")
+        hors = [f"{c} = {v}" for c, v in liaisons if not v.startswith(index)]
+        assert hors == [], (
+            f"pcsx2.toml : [{port}] ne s'adresse plus au joueur SDL "
+            f"« {index[:-1]} » : " + " | ".join(hors))
+    types = [(s, v) for s, c, v in triplets if c == "Type"]
+    assert types == [("Pad1", "DualShock2"), ("Pad2", "DualShock2")], (
+        f"pcsx2.toml : les types de manette ont changé — {types}. Un port "
+        "sans Type reste « None » : il est configuré et débranché.")

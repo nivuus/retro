@@ -1237,7 +1237,7 @@ def _lignes_amorcage(report: Report) -> list[str]:
 def _lignes_manettes(report: Report) -> list[str]:
     """Où en est la manette de chaque émulateur.
 
-    Quatre formulations, une par état, sur le modèle de la section Amorçage.
+    Cinq formulations, une par état, sur le modèle de la section Amorçage.
     Celle de `a-relever` NOMME le fichier : c'est là que le propriétaire ira,
     et un rapport qui dit « à relever » sans dire où ne fait que déplacer la
     question. Celle de `releve` le nomme aussi, pour la raison inverse : les
@@ -1252,6 +1252,9 @@ def _lignes_manettes(report: Report) -> list[str]:
         elif m.etat == profiles_mod.MAPPING_A_RELEVER:
             lignes.append(f"  · {m.profile_id} : manette muette, liaison à "
                           f"relever — {m.where}")
+        elif m.etat == profiles_mod.MAPPING_POSE:
+            lignes.append(f"  · {m.profile_id} : liaisons imposées, réponse "
+                          f"JAMAIS vue en jeu — {m.where}")
         elif m.etat == profiles_mod.MAPPING_RELEVE:
             lignes.append(f"  · {m.profile_id} : liaisons relevées et "
                           f"imposées, réponse vue en jeu — {m.where}")
