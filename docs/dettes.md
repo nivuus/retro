@@ -1008,9 +1008,25 @@ d'un correctif qui « ne marche pas ».
 > réelle, la levée de la garde, le témoin par cible et la sortie `--explain`
 > indicée restent à mesurer sur la console.
 >
-> **Conséquence à porter sur la machine :** un lanceur d'avant échoue
-> bruyamment sur un plan d'après. L'ordre `retro launcher`, `compiler.cmd`,
-> **puis** `retro scan` est obligatoire.
+> **Conséquence à porter sur la machine :** l'ordre `retro launcher`,
+> `compiler.cmd`, **puis** `retro scan` est obligatoire.
+>
+> **Et ce que cet ordre protège, dit exactement — parce que la formule courte
+> « un lanceur d'avant échoue bruyamment sur un plan d'après » a été héritée
+> ailleurs où elle est FAUSSE (voir D12).** Ici elle est vraie, et elle l'est
+> pour une raison qui ne se généralise pas : **D7 a RENOMMÉ des clés.** Le
+> lanceur pré-D7 appelle `Valeur(p, "bootstrap_target")` (relu dans
+> `a0910c4:retro/data/launcher/retro-launch.cs`, ligne 173) ; le plan d'après
+> n'écrit plus cette clé — il écrit `bootstrap_count` et
+> `bootstrap_target.<n>` —, et `Valeur()` LÈVE sur une clé absente, avec un
+> message qui nomme le champ manquant. Dans l'autre sens — lanceur d'après,
+> plan d'avant — c'est la même levée, sur les clés indicées cette fois.
+>
+> **Ce garde-fou tient à la DISPARITION d'une clé, pas à l'ancienneté du
+> binaire.** Une évolution qui se contente d'AJOUTER des lignes au plan n'en
+> reçoit rien : le lanceur ancien ne cherche pas ce qu'il ne connaît pas, et
+> `TryGetValue` ne lève sur rien. C'est le cas de la langue (D12), et c'est
+> pourquoi la phrase y a été refaite plutôt que recopiée.
 
 > **Plan écrit le 2026-08-29** — `docs/superpowers/plans/2026-08-29-d7-jeton-de-chemin-et-fusion.md` :
 > **EN COURS D'EXÉCUTION** — tâches 1 à 4 engagées le 2026-08-29 au soir ; le jeton retenu est `{install_dir}`, pas `{emulation_root}`.
@@ -1309,7 +1325,7 @@ un mécanisme qui ne pose rien se lit comme un mécanisme qui marche.
 | Pièce | Où |
 |---|---|
 | La résolution — ce que la CONSOLE veut, ce qu'UN ÉMULATEUR pose, séparément | `retro/langue.py` ; les **31 noms de langue de Steam**, relevés le 2026-08-30 et non devinés (le relevé est en fin de ce fichier) |
-| La déclaration : une table `[bootstrap.langue]` par entrée d'amorçage, gardée par **quatre refus** au chargement | `retro/profiles.py`, `_lire_langues` |
+| La déclaration : une table `[bootstrap.langue]` par entrée d'amorçage, gardée par **sept refus** au chargement, plus celui qui interdit à `enforced` et à la table de poser la même clé | `retro/profiles.py`, `_lire_langues` et `_valider_impose_contre_langues` |
 | Un fragment de configuration **par langue**, déposé par `retro scan` | `retro/launcher.py`, `langue_name` et `fragments_attendus` |
 | Une **ligne de plan par langue**, replis déjà résolus par Python — le lanceur lit, il ne décide pas | `retro/launcher.py`, `ecrire_plan` (`bootstrap_langue.<rang>.<langue>`) |
 | `langue.txt`, relu à chaque jeu, et la commande qui l'écrit | `retro/launcher.py` (`lire_langue`, `ecrire_langue`), `retro/cli.py` (`_cmd_langue`) |
@@ -1372,6 +1388,42 @@ C'est nommé ici et **pas implémenté** : la forme juste — un champ jumeau, o
 de la `note` qu'un `args` vide exige — se décide avec la première table qu'on
 relèvera pour de bon, pas avant d'en avoir vu une.
 
+### Le témoin PAR CIBLE ne dit rien de la langue non plus
+
+La conception promet deux choses dans la même phrase — « **le témoin par cible**
+et la sortie `--explain` gagnent la langue appliquée et le fragment employé »
+(`docs/superpowers/specs/2026-08-30-langue-design.md`) — et **aucune des deux
+n'est livrée**. La seconde est nommée ci-dessous ; la première ne l'était nulle
+part, et c'était le seul endroit où cette dette flattait l'état livré.
+
+`InscrireTemoin` écrit toujours ses trois champs — `profil \t date \t cible` —
+et rien d'autre. Ce qui existe de la langue est le témoin **global**,
+`langue-vue.txt`, une ligne pour toute la console : `steam=`, `langue=`,
+`motif=`. Il porte la langue **demandée**, jamais la posée, et il ne sait rien
+des cibles. C'est écrit noir sur blanc dans `retro/status.py`
+(`_lignes_langue`) et dans la source du lanceur, et ce n'est pas un oubli
+d'écriture : c'est l'état réel.
+
+**Ce que ce trou coûte, et il est plus grand que celui de `--explain` :** sur
+un profil à deux cibles dont l'une déclare une table et l'autre non, ou dont
+les replis diffèrent, **rien de ce que la console a réellement posé n'est
+observable depuis l'hôte**. `retro status` peut dire ce qui SERA posé — il le
+recalcule depuis les profils —, jamais ce qui l'a ÉTÉ. Le seul récit de ce qui
+a atteint chaque fichier est le **journal** du lanceur, ligne par ligne, lisible
+uniquement sur la console (« langue english : … -> … (fusion, 1 cle(s) de
+langue) », dont l'étiquette a été corrigée le 2026-08-30 pour nommer la langue
+POSÉE et non la demandée). Vu du canapé : le jeu n'est pas dans la bonne
+langue, et le rapport ne peut que répéter sa prévision.
+
+**Ce n'est pas corrigé ici, et le coût est mesuré** : `lire_amorcages`
+(`retro/launcher.py:435`) ne retient une ligne que si `len(parts) == 3`. Un
+quatrième champ ferait donc **ignorer la ligne entière, en silence**, et le
+rapport dirait « pas encore amorcé » de toutes les cibles à la fois — un
+lanceur neuf écrivant un témoin qu'un `retro` ancien ne lit plus. C'est une
+migration à part entière, avec les deux sens à tenir, pas un détour de cette
+entrée. Aujourd'hui il ne se produit rien, faute de table ; le trou naîtra avec
+la première.
+
 ### Et `--explain` ne rend rien de la langue
 
 `--explain` est le seul contrôle lisible à distance, sans lancer de jeu. Il ne
@@ -1400,23 +1452,65 @@ au même lancement —, l'écriture du témoin `langue-vue.txt`, et le fait qu'u
 langue changée à chaud soit bien reprise au jeu suivant.
 
 **L'ordre sur la machine est obligatoire** : `retro launcher`, `compiler.cmd`,
-**puis** `retro scan`. Un lanceur d'avant échoue bruyamment sur un plan
-d'après ; c'est la conséquence que D7 porte déjà, et le plan a gagné depuis des
-lignes `bootstrap_langue.*` qu'un binaire ancien ne sait pas lire.
+**puis** `retro scan`. Mais **pas pour la raison que D7 donne**, et cette
+entrée portait la phrase de D7 telle quelle : « un lanceur d'avant échoue
+bruyamment sur un plan d'après ». **Elle est fausse de cette fonctionnalité,
+dans les deux sens** — parce que la langue n'a RENOMMÉ aucune clé, elle en a
+seulement ajouté, et c'est le renommage qui faisait crier D7 (voir l'encadré
+de D7, corrigé le 2026-08-30).
+
+- **Lanceur d'avant, plan d'après** — un binaire ancien ne connaît pas
+  `bootstrap_langue.*` et ne les cherche donc jamais. Il pose les clés
+  imposées, ne pose **aucune langue**, et rien n'échoue. Pendant ce temps
+  `retro status` annonce la langue que le plan résout : deux juges qui ne se
+  contredisent jamais à voix haute. Et le témoin ne rattrape pas : un lanceur
+  d'avant n'écrit pas non plus `langue-vue.txt`, donc le rapport dit « aucun
+  jeu lancé depuis », le seul état sous lequel une absence n'accuse personne.
+  `retro/status.py` le dit d'ailleurs noir sur blanc là où il en parle —
+  `_probleme_lanceur_perime` : « un lanceur compilé avant une évolution du plan
+  ignore EN SILENCE les lignes qu'il ne connaît pas ». C'est ce problème-là,
+  et lui seul, qui couvre ce sens.
+- **Lanceur d'après, plan d'avant** — muet aussi, pour la langue :
+  `FragmentDeLangue` lit ses lignes par `TryGetValue`, pas par `Valeur()`, donc
+  leur absence rend `""` et il n'y a « rien à poser ». `Valeur()` ne lève que
+  sur les clés qu'un lanceur EXIGE — celles de D7 —, et un plan écrit avant la
+  langue les porte toutes.
+
+**Donc la langue ne porte aucun garde-fou de version, dans aucun des deux
+sens.** Seules la discipline d'ordre et l'alerte « lanceur périmé » de
+`retro status` l'évitent — et cette alerte compare le binaire à la SOURCE
+déposée à côté, pas au plan.
 
 **Ce que ça coûte aujourd'hui :** rien qui casse — et c'est ce qui rend la
 dette facile à oublier. Une commande existe, elle répond, elle écrit son
-fichier, `retro status` la rapporte honnêtement, et **aucun jeu ne change de
-langue**. Vu du canapé : le propriétaire pose `french`, lance Crash Team
-Racing, et le jeu démarre en anglais — sans le moindre message, parce qu'il n'y
-a rien à signaler. La seule chose qui le lui dise est la ligne « aucune table
-de langues déclarée » de `retro status`, qu'il faut penser à aller lire.
+fichier, et **aucun jeu ne change de langue**.
+
+Ce n'est plus muet, depuis le 2026-08-30. Cette entrée décrivait un
+propriétaire qui pose `french`, lance Crash Team Racing et voit le jeu démarrer
+en anglais « sans le moindre message, parce qu'il n'y a rien à signaler » —
+c'était le raisonnement qu'il ne fallait pas tenir : **il y avait quelque chose
+à signaler, et c'était même la seule chose utile à dire.** `retro langue`
+charge désormais les profils, écrit la langue comme avant, puis avertit sur la
+sortie d'erreur qu'aucun profil ne déclare de table — donc que ce choix ne sera
+appliqué par personne — et rend **1**. C'est le raisonnement déjà écrit sur
+place pour le lanceur absent : « le taire ferait croire au propriétaire que son
+choix s'applique. » `retro status` le dit toujours, lui, entrée par entrée
+(« aucune table de langues déclarée »), mais il n'est plus le seul, ni celui
+qu'il faut penser à aller lire.
+
+**Cet avertissement disparaîtra de lui-même** le jour où la première table sera
+relevée : il ne parle que si AUCUNE entrée n'en déclare. Le test
+`test_les_profils_livres_ne_peuvent_pas_appliquer_une_langue`
+(`tests/test_cli.py`) tombera ce jour-là, et c'est voulu — il tient cette dette
+en vue depuis la suite.
 
 **Où ça se joue :** les tables `[bootstrap.langue]` dans
 `retro/data/profiles/*.toml` — c'est là qu'est tout le travail restant —, la
 distinction manquante dans `retro/profiles.py` (`_lire_langues`) et son rendu
-dans `retro/status.py` (`_lignes_langue`), et la sortie `--explain` de
-`retro/data/launcher/retro-launch.cs`.
+dans `retro/status.py` (`_lignes_langue`), la sortie `--explain` et
+`InscrireTemoin` de `retro/data/launcher/retro-launch.cs`, et le format à trois
+colonnes de `retro/launcher.py` (`lire_amorcages`) que le témoin par cible
+devrait franchir.
 ---
 
 ## D13 — Deux juges de la langue, et une seule indulgence sur deux

@@ -359,9 +359,13 @@ en anglais » — exactement le symptôme d'avant la fonctionnalité.
 
 Deux conséquences concrètes :
 
-- **Les 6 profils qui ont déjà un `[[bootstrap]]`** — DuckStation, PCSX2,
-  Dolphin (×2), RetroArch (×2), RPCS3, Vita3K — recevront leur table quand la
-  clé aura été relevée, profil par profil, chacun étant sa propre tâche.
+- **Les 6 profils qui ont déjà un `[[bootstrap]]`**, soit **dix entrées** —
+  DuckStation (1), PCSX2 (1), Dolphin (×2), RetroArch (×2), RPCS3 (×2),
+  Vita3K (×2) — recevront leur table quand la clé aura été relevée, profil par
+  profil, chacun étant sa propre tâche. La table se déclare **par entrée**, et
+  non par profil : les quatre profils à deux cibles en ont donc deux à relever
+  chacun, et l'omission de leurs `×2` faisait compter six tables là où il en
+  faut dix.
 - **`cemu`, `flycast`, `ppsspp` et `xemu` n'ont aucun `[[bootstrap]]`.** Chez
   eux, il faut d'abord établir **où vit le fichier de réglages** avant de parler
   de langue. C'est un travail par émulateur, hors du mécanisme, et il n'est pas

@@ -2243,3 +2243,34 @@ def test_pcsx2_impose_les_deux_prises_de_la_playstation_2():
     assert types == [("Pad1", "DualShock2"), ("Pad2", "DualShock2")], (
         f"pcsx2.toml : les types de manette ont changé — {types}. Un port "
         "sans Type reste « None » : il est configuré et débranché.")
+
+
+def test_les_deux_documents_qui_INVOQUENT_la_garde_des_deux_fragments():
+    """DEUX DOCUMENTS AFFIRMENT QU'UNE GARDE EXISTE, et elle n'existait pas.
+
+    `retro-launch.cs` écrit « les deux fragments ne partagent aucune cle, une
+    garde du profil le refuse » et s'autorise, sur cette foi, à fixer l'ordre
+    de fusion par pure lisibilité ; la conception écrit « L'ordre est sans
+    effet sur le résultat — ils ne partagent aucune clé ». Un profil dont
+    `enforced` et la table de langues posaient la MÊME clé se chargeait
+    pourtant sans un mot, et l'ordre de fusion tranchait en silence.
+
+    La garde a été ajoutée plutôt que les phrases retirées : deux documents
+    qui mentent sur un garde-fou sont pires que son absence. Ce test tient les
+    trois ensemble — si la garde disparaît, ce sont les deux affirmations qui
+    doivent partir avec elle, et non l'inverse.
+    """
+    from retro import profiles as profiles_mod
+    source = _source_lanceur()
+    assert ("les deux fragments ne partagent aucune cle, une\n        // garde "
+            "du profil le refuse") in source, (
+        "la source du lanceur n'invoque plus cette garde : ce test et la "
+        "garde elle-même sont à réexaminer ensemble")
+    spec = (pathlib.Path(__file__).resolve().parents[1] / "docs"
+            / "superpowers" / "specs" / "2026-08-30-langue-design.md"
+            ).read_text(encoding="utf-8")
+    assert "ne partagent aucune clé" in spec
+    assert hasattr(profiles_mod, "_valider_impose_contre_langues"), (
+        "la garde que ces deux documents invoquent n'existe pas : ils "
+        "mentent tous les deux sur un garde-fou, et l'ordre de fusion "
+        "décide seul du réglage")
