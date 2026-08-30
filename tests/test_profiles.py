@@ -2183,3 +2183,109 @@ def test_une_cle_de_langue_aussi_dans_content_est_refusee(tmp_path):
     with pytest.raises(profiles.ProfileError) as exc:
         _ecrire(tmp_path, texte)
     assert "DEUX régimes" in str(exc.value)
+
+
+# Le même profil, plus un `enforced` qui ne touche à AUCUNE clé de langue :
+# c'est le témoin du refus qui suit — sans lui, un test qui ne mordrait plus
+# passerait pour un test qui passe.
+# `enforced` se déclare AVANT « [bootstrap.langue] » : après, TOML le rangerait
+# dans la table de langues, où il passerait pour une langue nommée « enforced ».
+PROFIL_LANGUE_ET_IMPOSE = PROFIL_LANGUE.replace(
+    "[bootstrap.langue]",
+    "enforced = '''\n[Main]\nConfirmPowerOff = false\n'''\n\n"
+    "[bootstrap.langue]")
+
+
+def test_un_enforced_qui_ne_touche_a_aucune_langue_est_accepte(tmp_path):
+    """Le témoin du refus suivant : les deux régimes imposés COHABITENT tant
+    qu'ils ne se disputent aucune clé, et c'est le cas normal."""
+    profil = _ecrire(tmp_path, PROFIL_LANGUE_ET_IMPOSE)
+    amorcage = profil.bootstraps[0]
+    assert "ConfirmPowerOff" in amorcage.enforced
+    assert [nom for nom, _ in amorcage.langues] == ["english", "french"]
+
+
+def test_une_cle_posee_par_enforced_ET_par_une_langue_est_refusee(tmp_path):
+    """LA PORTE D'À CÔTÉ du refus « deux langues qui ne posent pas les mêmes
+    clés », et elle était restée ouverte. Les deux fragments sont fondus dans
+    la MÊME cible, l'un après l'autre : c'est l'ORDRE de fusion — un détail
+    du lanceur, écrit dans aucun profil — qui trancherait, et changer de
+    langue pourrait ne rien changer du tout.
+
+    Vérifié par exécution avant correctif : ce profil se chargeait sans un
+    mot."""
+    texte = PROFIL_LANGUE_ET_IMPOSE.replace("ConfirmPowerOff = false",
+                                            "Language = zz")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    message = str(exc.value)
+    assert "[Main] Language" in message
+    assert "'enforced'" in message and "[bootstrap.langue]" in message
+
+
+def test_un_chevauchement_avec_content_ne_nomme_pas_un_champ_absent(tmp_path):
+    """PROFIL_LANGUE ne porte AUCUN champ `enforced` : le refus qui parlait
+    de « 'content' et 'enforced' » envoyait son auteur chercher un champ que
+    son fichier ne contient pas."""
+    texte = PROFIL_LANGUE.replace("Theme = dark", "Language = en")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    message = str(exc.value)
+    assert "[bootstrap.langue]" in message
+    assert "'enforced'" not in message, (
+        "le refus nomme un champ que ce profil ne porte pas")
+
+
+def test_un_chevauchement_nomme_les_DEUX_regimes_quand_les_deux_existent(
+        tmp_path):
+    """Et quand les deux régimes imposés sont là, le refus les nomme tous les
+    deux : chercher la clé dans le seul `enforced` la manquerait."""
+    texte = PROFIL_LANGUE_ET_IMPOSE.replace("Theme = dark",
+                                            "ConfirmPowerOff = true")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    message = str(exc.value)
+    assert "'enforced' et la table [bootstrap.langue]" in message
+
+
+def test_une_sous_table_de_langue_nomme_le_profil_et_la_faute(tmp_path):
+    """Le point de trop — « [bootstrap.langue.french] » — ouvre un BLOC au
+    lieu de nommer une langue. Il rendait un « 'dict' object has no attribute
+    'splitlines' » nu, sans le chemin du profil, alors que `enforced` a son
+    `isinstance` explicite juste à côté."""
+    texte = PROFIL_LANGUE.replace(
+        "french = '''\n[Main]\nLanguage = fr\n'''",
+        "[bootstrap.langue.french]\nvaleur = \"fr\"")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    message = str(exc.value)
+    assert "langue.toml" in message
+    assert "french" in message
+    assert "[bootstrap.langue.french]" in message
+
+
+def test_une_table_de_langues_qui_n_est_pas_une_table_est_refusee(tmp_path):
+    """`langue = "french"` sous [[bootstrap]] : `.get` sur une chaîne rendait
+    un AttributeError nu, sans dire quel fichier le porte."""
+    texte = PROFIL_LANGUE[:PROFIL_LANGUE.index("[bootstrap.langue]")] \
+        + 'langue = "french"\n'
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    assert "langue.toml" in str(exc.value)
+    assert "[bootstrap.langue]" in str(exc.value)
+
+
+def test_un_repli_qui_n_est_pas_un_nom_est_refuse(tmp_path):
+    """`[bootstrap.langue.repli]` — encore le point de trop, sur l'autre
+    champ : `repli not in fragments` levait un TypeError nu sur un type non
+    hachable."""
+    # La sous-table se met À LA FIN : posée à la place de la ligne `repli`,
+    # elle avalerait les fragments qui la suivent, et la table de langues
+    # rendrait « aucune langue déclarée » — un autre refus, qui ferait passer
+    # ce test pour la mauvaise raison.
+    texte = (PROFIL_LANGUE.replace('repli = "english"\n', "")
+             + '\n[bootstrap.langue.repli]\nx = "english"\n')
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    assert "langue.toml" in str(exc.value)
+    assert "repli" in str(exc.value)

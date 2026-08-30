@@ -773,9 +773,9 @@ def _lire_langues(path: pathlib.Path, target: str,
                   brut) -> tuple[tuple[tuple[str, str], ...], str]:
     """La table de langues d'UNE entrée : les couples triés, et le repli.
 
-    Les quatre refus portent chacun sur une faute muette. Aucune ne fait
-    échouer quoi que ce soit au moment où elle est commise — elles se
-    découvrent devant une télévision, sur un jeu qui n'est pas traduit.
+    Les refus portent chacun sur une faute muette. Aucune ne fait échouer quoi
+    que ce soit au moment où elle est commise — elles se découvrent devant une
+    télévision, sur un jeu qui n'est pas traduit.
     """
     if brut is None:
         # Pas de `[bootstrap.langue]` DU TOUT : cette entrée ne pose aucune
@@ -783,8 +783,39 @@ def _lire_langues(path: pathlib.Path, target: str,
         # laissée vide — est un cas distinct, plus bas : `not fragments` le
         # refuse au lieu de le confondre avec l'absence de table.
         return (), ""
+    # LE TYPE AVANT TOUT LE RESTE, ET AVEC LE CHEMIN DU PROFIL. `enforced` a
+    # son `isinstance` explicite juste à côté ; sans le pendant ici, la faute
+    # de frappe la plus facile de tout le fichier — le point de trop, qui
+    # écrit « [bootstrap.langue.french] » et ouvre un BLOC au lieu de nommer
+    # une langue — remontait un « 'dict' object has no attribute
+    # 'splitlines' » nu, sans dire de quel profil il parle. Une levée qui ne
+    # nomme aucun fichier est une accusation, pas un diagnostic.
+    if not isinstance(brut, dict):
+        raise ProfileError(
+            f"{path} [[bootstrap]] : 'langue' doit être la TABLE "
+            "« [bootstrap.langue] », un fragment de configuration par nom de "
+            f"langue de Steam — reçu un {type(brut).__name__}."
+        )
     repli = brut.get("repli", "")
     fragments = {nom: texte for nom, texte in brut.items() if nom != "repli"}
+
+    mauvais = sorted(n for n, t in fragments.items() if not isinstance(t, str))
+    if mauvais:
+        raise ProfileError(
+            f"{path} [bootstrap.langue] : {', '.join(mauvais)} — chaque "
+            "langue doit porter DU TEXTE, le fragment de configuration à "
+            f"fusionner ; « {mauvais[0]} » porte un "
+            f"{type(fragments[mauvais[0]]).__name__}. La faute la plus "
+            "probable est un point de trop : « [bootstrap.langue.french] » "
+            "ouvre une sous-table, alors que la langue se déclare "
+            "« french = '''…''' » DANS « [bootstrap.langue] »."
+        )
+    if not isinstance(repli, str):
+        raise ProfileError(
+            f"{path} [bootstrap.langue] : 'repli' doit être le NOM d'une "
+            "langue déclarée ici — reçu un "
+            f"{type(repli).__name__}."
+        )
 
     inconnues = sorted(n for n in fragments if n not in langue_mod.LANGUES)
     if inconnues:
@@ -917,7 +948,22 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     # pas.
     impose_total = "\n".join(
         [enforced, *(texte for _, texte in langues)])
-    _valider_regimes(path, target, content, impose_total)
+    # Le second régime se NOMME par ce que cette entrée déclare réellement.
+    # Dire « 'enforced' » à un profil qui n'a que des langues enverrait son
+    # auteur chercher un champ que son fichier ne porte pas.
+    if enforced.strip() and langues:
+        impose_nomme = "'enforced' et la table [bootstrap.langue]"
+    elif langues:
+        impose_nomme = "la table [bootstrap.langue]"
+    else:
+        impose_nomme = "'enforced'"
+    _valider_regimes(path, target, content, impose_total, impose_nomme)
+    # ET LES DEUX FRAGMENTS IMPOSÉS NE SE RECOUVRENT PAS L'UN L'AUTRE. C'est
+    # la porte d'à côté du refus « deux langues qui ne posent pas les mêmes
+    # clés », et elle était restée ouverte : `_valider_regimes` ne compare que
+    # 'content' au total imposé, donc `enforced` et la table pouvaient poser
+    # LA MÊME clé sans un mot.
+    _valider_impose_contre_langues(path, target, enforced, langues)
     return Bootstrap(target=target, content=content,
                      enforced=enforced.strip(),
                      langues=langues, langue_repli=repli)
@@ -1031,8 +1077,53 @@ def cles_de(target: str, fragment: str) -> list[tuple[str, str]]:
     return cles_yaml(fragment) if suffixe in _YAML else cles_ini(fragment)
 
 
+def _valider_impose_contre_langues(path: pathlib.Path, target: str,
+                                   enforced: str, langues) -> None:
+    """`enforced` et la table de langues ne posent AUCUNE clé en commun.
+
+    Les deux sont reposés à chaque lancement, par deux fusions successives sur
+    LA MÊME cible. Une clé déclarée des deux côtés serait donc tranchée par
+    l'ORDRE de ces deux fusions — un détail du lanceur, que le profil n'écrit
+    nulle part : `[Main] Language = zz` imposé et `[Main] Language = fr`
+    apporté par la langue se chargeaient sans un mot, et personne, en lisant
+    le profil, ne pouvait dire lequel gagne.
+
+    C'est pire que le chevauchement avec 'content', que `_valider_regimes`
+    refuse déjà : là-bas la valeur perdante est fixe, ici elle CHANGE avec la
+    langue demandée. Le symptôme serait « j'ai changé de langue et rien n'a
+    bougé », sans qu'aucune erreur ne le dise — la faute exacte que le refus
+    « deux langues qui ne posent pas les mêmes clés » ferme par l'autre porte.
+
+    UNE SEULE langue est comparée : `_lire_langues` vient d'exiger qu'elles
+    posent EXACTEMENT les mêmes clés, donc les parcourir toutes rendrait le
+    même verdict autant de fois qu'il y a de langues.
+    """
+    if not (enforced.strip() and langues):
+        return
+    _, premiere = langues[0]
+    deux = sorted(set(cles_de(target, enforced))
+                  & set(cles_de(target, premiere)))
+    if not deux:
+        return
+    # Un YAML plat n'a pas de section, comme dans `_valider_regimes` : rendre
+    # « [] clé » enverrait chercher une section dans un fichier qui n'en porte
+    # aucune.
+    noms = ", ".join(f"[{s}] {c}" if s else c for s, c in deux)
+    raise ProfileError(
+        f"{path} [[bootstrap]] : {noms} — déclaré à la fois dans 'enforced' "
+        "et dans la table [bootstrap.langue]. Les deux sont REPOSÉS à chaque "
+        "lancement, par deux fusions successives sur la même cible : c'est "
+        "l'ORDRE de ces fusions qui trancherait, un détail du lanceur que ce "
+        "profil n'écrit nulle part, et rien ici ne dirait laquelle des deux "
+        "valeurs gagne. Changer de langue pourrait alors ne rien changer du "
+        "tout, sans qu'aucune erreur ne le dise. Choisir : imposé une fois "
+        "pour toutes les langues, ou porté par la table."
+    )
+
+
 def _valider_regimes(path: pathlib.Path, target: str,
-                     content: str, enforced: str) -> None:
+                     content: str, enforced: str,
+                     impose_nomme: str = "'enforced'") -> None:
     """Les deux régimes ne se recouvrent pas, et l'en-tête dit lequel est quoi.
 
     Une clé déclarée DES DEUX CÔTÉS serait décidée à deux endroits. Le
@@ -1043,6 +1134,12 @@ def _valider_regimes(path: pathlib.Path, target: str,
 
     La comparaison porte sur le couple SECTION/CLÉ : « Enabled » sous [Pad1]
     et sous [Display] ne sont pas le même réglage.
+
+    `impose_nomme` désigne, dans le refus, le régime imposé TEL QUE L'ENTRÉE
+    LE DÉCLARE. Les clés de langue arrivent ici fondues avec `enforced` — même
+    régime, même fusion —, mais un profil peut n'avoir que des langues et
+    aucun champ `enforced` : lui dire « déclaré dans 'content' et 'enforced' »
+    l'enverrait chercher un champ qui n'existe pas dans son fichier.
 
     Et l'en-tête. Il PROMET quelque chose au propriétaire, qui règle son
     comportement dessus. « Vos réglages ne sont jamais retouchés » était vrai
@@ -1062,7 +1159,7 @@ def _valider_regimes(path: pathlib.Path, target: str,
         noms = ", ".join(f"[{s}] {c}" if s else c for s, c in deux)
         raise ProfileError(
             f"{path} [[bootstrap]] : {noms} — déclaré dans les DEUX régimes, "
-            "'content' et 'enforced'. Le réglage serait décidé à deux "
+            f"'content' et {impose_nomme}. Le réglage serait décidé à deux "
             "endroits : l'imposé l'emporterait toujours, la préférence "
             "posée ne tiendrait jamais, et rien dans le profil ne dirait "
             "lequel gagne. Choisir : imposé par la console, ou posé une fois "
