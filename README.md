@@ -9,7 +9,7 @@ Vous la lancez à la manette.
 
 ## Ce que ça fait
 
-Huit commandes. Les quatre premières dans cet ordre, les quatre dernières
+Neuf commandes. Les quatre premières dans cet ordre, les cinq dernières
 quand vous voulez :
 
 - **`retro install`** installe les émulateurs du manifeste sous la racine
@@ -64,6 +64,11 @@ quand vous voulez :
   d'émulation déclaré dans le profil avec ce que votre machine offre. Le mode
   vit dans un fichier que le lanceur relit à chaque jeu : en changer ne touche
   aucune entrée Steam, donc aucune vignette n'est à retélécharger.
+- **`retro langue`** lit ou pose la langue de la console. La langue vit dans un
+  fichier que le lanceur relit à chaque jeu : en changer ne touche aucune entrée
+  Steam, donc aucune vignette n'est à retélécharger. Sans `--langue`, affiche la
+  langue courante ; avec `--langue`, pose une nouvelle langue et confirme
+  l'écriture. C'est `auto` par défaut — la langue suit celle de Steam.
 - **`retro bios`** obtient les BIOS manquants depuis une source **que vous
   déclarez** dans votre propre manifeste, et n'écrit que ce qu'elle a vérifié :
   chaque fichier reçu est comparé au **md5 que le profil déclare**, jamais à un

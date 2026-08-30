@@ -340,7 +340,7 @@ def test_les_identifiants_de_systeme_sont_uniques_entre_profils():
 
 README = RACINE / "README.md"
 NOMBRES = {1: "une", 2: "deux", 3: "trois", 4: "quatre", 5: "cinq",
-           6: "six", 7: "sept", 8: "huit"}
+           6: "six", 7: "sept", 8: "huit", 9: "neuf"}
 
 
 def _commandes() -> set[str]:

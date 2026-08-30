@@ -7,6 +7,7 @@ import json
 import pathlib
 import sys
 
+from retro import langue as langue_mod
 from retro import launcher as launcher_mod
 from retro import render as render_mod
 from retro import bios, identite, install as install_mod, licence
@@ -814,6 +815,36 @@ def _cmd_render(args) -> int:
     return 0
 
 
+def _cmd_langue(args) -> int:
+    """Lit ou pose la langue de la console.
+
+    La langue vit dans un fichier que le lanceur relit à CHAQUE jeu : la
+    changer ne touche aucune option de raccourci, donc aucun identifiant
+    Steam, donc aucune vignette. Rien à resynchroniser.
+
+    Ce qui EXIGE un « retro scan », en revanche, c'est l'ajout d'une table de
+    langues à un profil : les fragments sont déposés par le scan.
+    """
+    racine = pathlib.Path(args.emulation_root_local)
+    if args.langue is None:
+        print(launcher_mod.lire_langue(racine))
+        return 0
+    try:
+        fichier = launcher_mod.ecrire_langue(racine, args.langue)
+    except (langue_mod.LangueError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(f"langue : {args.langue} ({fichier})")
+    if not launcher_mod.est_installe(racine):
+        # La langue est bien posée, mais rien ne la lira. Le taire ferait
+        # croire au propriétaire que son choix s'applique.
+        print("le lanceur n'est pas installé : cette langue ne sera lue par "
+              "personne tant qu'il ne l'est pas (« retro launcher »).",
+              file=sys.stderr)
+        return 1
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """L'analyseur, à part de `main` : le README doit pouvoir se vérifier
     contre les commandes réellement offertes, plutôt que contre une liste
@@ -903,6 +934,14 @@ def _build_parser() -> argparse.ArgumentParser:
     ren.add_argument("--mode", choices=render_mod.MODES, default=None,
                      help="sans --mode, affiche le mode courant")
     ren.set_defaults(func=_cmd_render)
+
+    lng = sous.add_parser(
+        "langue",
+        help="lire ou poser la langue de la console (auto suit celle de Steam)")
+    lng.add_argument("--emulation-root-local", required=True)
+    lng.add_argument("--langue", choices=langue_mod.VALEURS, default=None,
+                     help="sans --langue, affiche la langue courante")
+    lng.set_defaults(func=_cmd_langue)
 
     # Sans aucune option, et c'est le contrat : sur une console d'où l'on ne
     # sait plus quel code tourne, exiger --roms ou --emulation-root ferait

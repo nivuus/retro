@@ -4,6 +4,8 @@ import pathlib
 import subprocess
 import sys
 
+import pytest
+
 from retro import cli, launcher
 from retro.steam import appid, entry, vdf_io
 
@@ -922,3 +924,37 @@ def test_status_lit_le_temoin_des_manettes_ecrit_par_le_lanceur(tmp_path, capsys
     assert "2026-09-01 21:14:33" in texte
     assert "045e:028e" in texte
     assert "Controller (Xbox 360 Controller for Windows)" in texte
+
+
+# --- retro langue -------------------------------------------------------
+
+def test_langue_sans_option_affiche_auto(tmp_path, capsys):
+    """Sans --langue, la commande lit et affiche la langue courante."""
+    assert cli.main(["langue", "--emulation-root-local", str(tmp_path)]) == 0
+    assert capsys.readouterr().out.strip() == "auto"
+
+
+def test_langue_pose_la_valeur_et_la_confirme(tmp_path, capsys):
+    """Avec --langue, la commande pose la langue et confirme qu'elle est écrite."""
+    (tmp_path / launcher.DIR).mkdir(parents=True)
+    (tmp_path / launcher.DIR / launcher.EXE).write_bytes(b"MZ")
+    assert cli.main(["langue", "--emulation-root-local", str(tmp_path),
+                     "--langue", "french"]) == 0
+    assert launcher.lire_langue(tmp_path) == "french"
+    assert "french" in capsys.readouterr().out
+
+
+def test_langue_posee_sans_lanceur_avertit_et_rend_1(tmp_path, capsys):
+    """La langue est bien posée, mais personne ne la lira. Le taire ferait
+    croire au propriétaire que son choix s'applique."""
+    code = cli.main(["langue", "--emulation-root-local", str(tmp_path),
+                     "--langue", "french"])
+    assert code == 1
+    assert "retro launcher" in capsys.readouterr().err
+
+
+def test_une_langue_inconnue_est_refusee_par_la_commande(tmp_path):
+    """argparse refuse une langue inconnue sur sa liste des valeurs."""
+    with pytest.raises(SystemExit):
+        cli.main(["langue", "--emulation-root-local", str(tmp_path),
+                  "--langue", "frensh"])
