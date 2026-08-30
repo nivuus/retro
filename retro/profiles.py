@@ -15,6 +15,7 @@ import pathlib
 import re
 import tomllib
 
+from retro import langue as langue_mod
 from retro import render as render_mod
 from retro.render import Render, RenderMode
 
@@ -280,6 +281,24 @@ class Bootstrap:
     target: str
     content: str
     enforced: str = ""
+    # LA LANGUE, par entrée et non par profil. RetroArch le démontre : sa
+    # langue d'interface vit dans retroarch.cfg, la langue système que les
+    # JEUX lisent est une option de cœur, dans melonDS.opt. Deux fichiers,
+    # deux entrées, deux tables. Une table au niveau du profil aurait forcé à
+    # choisir un des deux fichiers, et l'autre axe serait resté muet.
+    #
+    # Les couples (nom de langue Steam, fragment), triés par nom. Un tuple et
+    # non un dict : ce dataclass est gelé, et l'ordre doit être stable — le
+    # plan écrit une ligne par langue, et un ordre qui bouge ferait différer
+    # deux plans identiques.
+    #
+    # CES CLÉS SONT DES CLÉS IMPOSÉES : elles passent par la fusion, reposées
+    # à chaque lancement, et sont donc soumises aux mêmes gardes que
+    # `enforced` — c'est ce que `_valider_regimes` reçoit désormais.
+    langues: tuple[tuple[str, str], ...] = ()
+    # La langue posée quand celle de la console n'est pas déclarée ci-dessus.
+    # Vide si et seulement si `langues` est vide.
+    langue_repli: str = ""
 
 
 def folder_key(nom: str) -> str:
@@ -750,6 +769,68 @@ def _lire_bootstraps(path: pathlib.Path, brut) -> tuple[Bootstrap, ...]:
     return tuple(entrees)
 
 
+def _lire_langues(path: pathlib.Path, target: str,
+                  brut) -> tuple[tuple[tuple[str, str], ...], str]:
+    """La table de langues d'UNE entrée : les couples triés, et le repli.
+
+    Les quatre refus portent chacun sur une faute muette. Aucune ne fait
+    échouer quoi que ce soit au moment où elle est commise — elles se
+    découvrent devant une télévision, sur un jeu qui n'est pas traduit.
+    """
+    if not brut:
+        return (), ""
+    repli = brut.get("repli", "")
+    fragments = {nom: texte for nom, texte in brut.items() if nom != "repli"}
+
+    inconnues = sorted(n for n in fragments if n not in langue_mod.LANGUES)
+    if inconnues:
+        raise ProfileError(
+            f"{path} [bootstrap.langue] : {', '.join(inconnues)} — ce ne sont "
+            "pas des noms de langue de Steam. La langue canonique est le NOM "
+            "que Steam emploie (« french », « koreana », « brazilian »), pas "
+            "un code ISO : un nom que Steam n'écrit jamais ne serait demandé "
+            "par personne, et son fragment serait déposé sans jamais être lu."
+        )
+    if not fragments:
+        raise ProfileError(
+            f"{path} [bootstrap.langue] : la table ne déclare aucune langue. "
+            "Un bloc vide se lit comme « cet émulateur suit la langue », "
+            "alors qu'il n'en pose aucune."
+        )
+    if repli not in fragments:
+        raise ProfileError(
+            f"{path} [bootstrap.langue] : 'repli' vaut {repli!r}, qui n'est "
+            f"pas déclaré ici. Les langues déclarées sont "
+            f"{', '.join(sorted(fragments))}. La ligne de repli du plan "
+            "pointerait vers un fragment inexistant, et le lanceur "
+            "échouerait au lancement d'un jeu — devant la télévision, loin "
+            "d'ici."
+        )
+    # LES MÊMES CLÉS DANS TOUTES LES LANGUES. La fusion n'écrit que les clés
+    # qu'un fragment apporte : une langue qui en poserait une autre laisserait
+    # celle de la précédente en place. L'émulateur lirait deux réglages,
+    # l'ancien gagnerait, et la langue refuserait de changer sans que rien
+    # n'ait échoué.
+    attendues = None
+    for nom in sorted(fragments):
+        cles = frozenset(cles_de(target, fragments[nom]))
+        if attendues is None:
+            attendues, temoin = cles, nom
+            continue
+        if cles != attendues:
+            ecart = sorted(c for _, c in cles.symmetric_difference(attendues))
+            raise ProfileError(
+                f"{path} [bootstrap.langue] : « {nom} » et « {temoin} » ne "
+                f"posent pas les mêmes clés — {', '.join(ecart)}. Toutes les "
+                "langues d'une entrée doivent poser EXACTEMENT les mêmes "
+                "clés : la fusion n'écrit que ce qu'un fragment apporte, donc "
+                "passer d'une langue à l'autre laisserait la clé de la "
+                "précédente en place, et la langue refuserait de changer sans "
+                "qu'aucune erreur ne le dise."
+            )
+    return tuple(sorted(fragments.items())), repli
+
+
 def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     """UNE entrée [[bootstrap]], validée, ou None si elle est vide.
 
@@ -818,9 +899,23 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
             dialecte(target)
         except ProfileError as exc:
             raise ProfileError(f"{path} [[bootstrap]] : {exc}") from exc
-    _valider_regimes(path, target, content, enforced)
+    langues, repli = _lire_langues(path, target, brut.get("langue"))
+    # LES CLÉS DE LANGUE SONT DES CLÉS IMPOSÉES : elles passent par la même
+    # fusion, à chaque lancement. Les soumettre aux mêmes gardes que
+    # `enforced` — le chevauchement avec 'content', et l'en-tête qui doit
+    # distinguer les trois catégories — sinon un profil qui n'imposerait QUE
+    # des langues promettrait à son propriétaire un régime qu'il n'applique
+    # pas.
+    impose_total = "\n".join(
+        [enforced, *(texte for _, texte in langues)])
+    if langues:
+        # Même raison qu'au-dessus pour `enforced` : une extension inconnue
+        # doit faire échouer qui écrit le profil, pas le propriétaire.
+        dialecte(target)
+    _valider_regimes(path, target, content, impose_total)
     return Bootstrap(target=target, content=content,
-                     enforced=enforced.strip())
+                     enforced=enforced.strip(),
+                     langues=langues, langue_repli=repli)
 
 
 def cles_ini(fragment: str) -> list[tuple[str, str]]:

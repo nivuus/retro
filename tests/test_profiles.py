@@ -2019,3 +2019,139 @@ def test_des_liaisons_posees_ne_declarent_pas_de_pad(tmp_path):
             '[input]\nmapping = "pose"\n'
             "mapping_where = 'GCPadNew.ini'\n"
             'pad_releve = "x360"\n')))
+
+
+# --- la langue : une table par entrée d'amorçage --------------------------
+#
+# `_ecrire` charge directement le profil, contrairement à `ecrire` qui ne
+# fait qu'écrire le fichier sur disque : chaque test ci-dessous a besoin du
+# `Profile` chargé, jamais du seul chemin.
+
+
+def _ecrire(tmp_path, contenu):
+    return profiles.load_profile(ecrire(tmp_path, "langue.toml", contenu))
+
+
+PROFIL = """
+schema = 1
+id = "duckstation"
+exe = "duckstation.exe"
+
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
+
+# Un profil qui impose déjà une clé, mais aucune langue : sert de témoin pour
+# « une entrée sans table de langues n'en porte aucune ».
+PROFIL_IMPOSE = PROFIL + """
+[[bootstrap]]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé une fois, et ce qui vous appartient.
+[Main]
+Theme = dark
+'''
+enforced = '''
+[Main]
+ConfirmPowerOff = false
+'''
+"""
+
+PROFIL_LANGUE = PROFIL + """
+[[bootstrap]]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé une fois, et ce qui vous appartient.
+[Main]
+Theme = dark
+'''
+[bootstrap.langue]
+repli = "english"
+english = '''
+[Main]
+Language = en
+'''
+french = '''
+[Main]
+Language = fr
+'''
+"""
+
+
+def test_une_table_de_langues_est_lue_triee(tmp_path):
+    profil = _ecrire(tmp_path, PROFIL_LANGUE)
+    amorcage = profil.bootstraps[0]
+    assert [nom for nom, _ in amorcage.langues] == ["english", "french"]
+    assert "Language = fr" in dict(amorcage.langues)["french"]
+    assert amorcage.langue_repli == "english"
+
+
+def test_une_entree_sans_table_de_langues_n_en_porte_aucune(tmp_path):
+    profil = _ecrire(tmp_path, PROFIL_IMPOSE)
+    assert profil.bootstraps[0].langues == ()
+    assert profil.bootstraps[0].langue_repli == ""
+
+
+def test_une_langue_qui_n_est_pas_un_nom_de_steam_est_refusee(tmp_path):
+    """« frensh » ne serait jamais demandé par personne : le fragment serait
+    déposé et jamais lu, sans un mot."""
+    texte = PROFIL_LANGUE.replace("french = '''", "frensh = '''")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    assert "frensh" in str(exc.value)
+
+
+def test_un_repli_non_declare_est_refuse(tmp_path):
+    """La ligne de repli du plan pointerait vers un fragment inexistant, et
+    le lanceur crierait devant la télévision, pas ici."""
+    texte = PROFIL_LANGUE.replace('repli = "english"', 'repli = "japanese"')
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    assert "japanese" in str(exc.value)
+
+
+def test_un_repli_manquant_est_refuse(tmp_path):
+    texte = PROFIL_LANGUE.replace('repli = "english"\n', "")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    assert "repli" in str(exc.value)
+
+
+def test_deux_langues_qui_ne_posent_pas_les_memes_cles_sont_refusees(tmp_path):
+    """LE PLUS VICIEUX DES QUATRE. La fusion n'écrit que les clés qu'un
+    fragment apporte : passer de « french » à « japanese » laisserait
+    « Language » en place, l'émulateur lirait deux réglages, et la langue
+    refuserait de changer sans que rien n'ait échoué."""
+    texte = PROFIL_LANGUE.replace(
+        "french = '''\n[Main]\nLanguage = fr\n'''",
+        "french = '''\n[Main]\nLangue = fr\n'''")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    message = str(exc.value)
+    assert "Langue" in message and "Language" in message
+
+
+def test_un_en_tete_muet_est_refuse_meme_sans_cles_imposees(tmp_path):
+    """Les clés de langue SONT des clés imposées. Un profil qui n'a que
+    celles-là doit prévenir son propriétaire comme les autres."""
+    texte = PROFIL_LANGUE.replace(
+        "; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose\n"
+        "; à chaque lancement, ce qu'il a posé une fois, et ce qui vous appartient.",
+        "; Écrit par « retro ».")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    assert "TROIS catégories" in str(exc.value)
+
+
+def test_une_cle_de_langue_aussi_dans_content_est_refusee(tmp_path):
+    """Le réglage serait décidé à deux endroits, et l'imposé gagnerait
+    toujours : la préférence posée ne tiendrait jamais."""
+    texte = PROFIL_LANGUE.replace("Theme = dark", "Language = en")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    assert "DEUX régimes" in str(exc.value)
