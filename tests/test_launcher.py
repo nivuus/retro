@@ -1059,3 +1059,118 @@ def test_une_entree_sans_table_n_ecrit_aucune_ligne_de_langue():
         "duckstation", systeme, "E:\\D\\duck.exe", "E:\\D",
         plan_dir="E:\\_launcher\\systems", bootstraps=(amorcage,))
     assert "bootstrap_langue." not in texte
+
+
+# --- la langue, côté lanceur : la source, faute de compilateur -------------
+
+def _source_du_lanceur() -> str:
+    """La SOURCE, faute de compilateur C# sur cette machine — c'est le motif
+    qu'emploient déjà les tests voisins de ce fichier."""
+    return (launcher.SOURCES / launcher.SOURCE).read_text(encoding="utf-8-sig")
+
+
+def test_le_lanceur_lit_le_fichier_de_langue():
+    src = _source_du_lanceur()
+    assert launcher.LANGUE_FICHIER in src, (
+        "le lanceur ne lit pas langue.txt : la commande « retro langue » "
+        "poserait un fichier que personne ne lit")
+
+
+def test_le_lanceur_lit_la_langue_de_steam_dans_le_registre():
+    """Le relevé du 2026-08-30 sur l'invité dit où : `HKCU\\Software\\Valve\\
+    Steam`, valeur `Language`, un REG_SZ en minuscules. Si ce test doit
+    changer, c'est que le relevé a dit autre chose — et alors le SPEC change
+    aussi."""
+    src = _source_du_lanceur()
+    assert "Software\\\\Valve\\\\Steam" in src or "Software\\Valve\\Steam" in src
+    assert "\"Language\"" in src
+
+
+def test_le_lanceur_cherche_la_ligne_de_langue_du_plan():
+    src = _source_du_lanceur()
+    assert "bootstrap_langue." in src, (
+        "sans cette clé, le lanceur ne trouverait aucun fragment de langue "
+        "et n'en poserait aucun, en silence")
+
+
+def test_le_lanceur_retombe_sur_defaut_quand_steam_est_muet():
+    src = _source_du_lanceur()
+    assert "\"defaut\"" in src, (
+        "un Steam muet ferait chercher « bootstrap_langue.1. » sans langue, "
+        "et Valeur() lèverait devant la télévision")
+
+
+def test_le_lanceur_ne_porte_AUCUN_nom_de_langue_en_dur():
+    """Le repli est résolu par Python et écrit dans le plan. Un nom de langue
+    codé dans le lanceur serait forcément une décision qu'il prend seul — un
+    « si la langue est inconnue, mettre english » —, et il pourrait alors
+    poser autre chose que ce que `retro status` annonce. Deux juges qui se
+    contredisent ne se contredisent jamais à voix haute."""
+    src = _source_du_lanceur().lower()
+    en_dur = [nom for nom in langue_mod.LANGUES if '"' + nom + '"' in src]
+    assert not en_dur, (
+        f"le lanceur porte {en_dur} en dur : la résolution doit rester côté "
+        "Python, qui écrit une ligne de plan par langue")
+
+
+def test_le_lanceur_ecrit_le_temoin_de_langue():
+    """`retro status` tourne AUSSI sur l'hôte, qui n'atteint pas le registre
+    de l'invité. Sans témoin, le rapport ne pourrait rien dire de la langue
+    de Steam — ou dirait autre chose selon la machine qui l'exécute."""
+    src = _source_du_lanceur()
+    assert launcher.TEMOIN_LANGUE in src
+
+
+def test_le_temoin_de_langue_porte_ses_trois_lignes():
+    """Les trois, et sous ces noms : la tâche suivante les relit tels quels.
+    Une ligne manquante ferait dire au rapport « Steam n'a rien dit » d'un
+    Steam qui a parfaitement répondu."""
+    src = _source_du_lanceur()
+    for ligne in ('"steam="', '"langue="', '"motif="'):
+        assert ligne in src, f"le témoin ne porte pas {ligne}"
+
+
+def test_le_temoin_de_langue_n_empeche_jamais_un_jeu_de_se_lancer():
+    """Un témoin est une trace, pas une condition. Ce qui l'écrit est
+    enveloppé : un disque plein ou un fichier verrouillé ne doit pas rendre
+    la main à Steam, ce qui ressemblerait à un jeu qu'on vient de quitter."""
+    src = _source_du_lanceur()
+    debut = src.index("static void EcrireTemoinLangue")
+    corps = src[debut:src.index("\n    }", debut)]
+    assert "try" in corps and "catch (Exception)" in corps, (
+        "l'écriture du témoin n'est pas rattrapée : une console dont le "
+        "disque est plein ne lancerait plus aucun jeu")
+
+
+def test_le_temoin_de_langue_est_ecrit_une_fois_par_lancement():
+    """Une fois, PAS par entrée d'amorçage : un profil à deux cibles
+    l'écrirait deux fois, et un profil sans amorçage jamais — le rapport ne
+    dirait alors rien de la langue de Steam sur une console qui joue."""
+    src = _source_du_lanceur()
+    appels = src.count("EcrireTemoinLangue(")
+    assert appels == 2, (
+        f"{appels} occurrences de EcrireTemoinLangue : la définition et UN "
+        "seul appel sont attendus")
+    assert src.index("EcrireTemoinLangue(", src.index("static int Lancer()")) \
+        < src.index("static string ApresExecutable"), (
+        "l'appel doit vivre dans Lancer(), là où le lancement est décidé")
+
+
+def test_la_langue_est_fusionnee_APRES_les_cles_imposees():
+    """L'ordre est fixé pour que deux exécutions rendent le même fichier à
+    l'octet près, et pour que le journal se lise."""
+    src = _source_du_lanceur()
+    impose = src.index("bootstrap_enforced.")
+    langue = src.index("bootstrap_langue.")
+    assert impose < langue
+
+
+def test_les_deux_fusions_passent_par_LE_MEME_chemin():
+    """Deux copies du bloc de fusion divergeraient : le jour où la première
+    gagnerait une sauvegarde, la seconde poserait la langue sans."""
+    src = _source_du_lanceur()
+    assert src.count("EcrireAtomique(cible, fusionne, bomCible)") == 1, (
+        "le fichier fusionné est écrit à deux endroits : les clés imposées "
+        "et la langue doivent passer par la même méthode")
+    assert src.count("FusionnerFragment(") == 3, (
+        "attendu : la définition et DEUX appels — l'imposé, puis la langue")

@@ -45,6 +45,11 @@ SOURCE = "retro-launch.cs"
 PLAN = "systems"
 MODE = "mode.txt"
 LANGUE_FICHIER = "langue.txt"
+# Ce que le lanceur a VU chez Steam, écrit à chaque jeu. `retro status`
+# tourne aussi sur l'hôte, qui n'atteint pas le registre de l'invité : sans ce
+# témoin, le rapport rendrait la langue de Steam sur Windows et autre chose
+# ailleurs — deux rapports contradictoires sur la même console.
+TEMOIN_LANGUE = "langue-vue.txt"
 
 
 def launcher_dir(emulation_root: str) -> str:

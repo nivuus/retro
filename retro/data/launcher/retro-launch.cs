@@ -24,6 +24,9 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+// Le registre, pour y lire la langue de Steam. Microsoft.Win32.Registry vit
+// dans mscorlib : aucune reference supplementaire a passer a csc.exe.
+using Microsoft.Win32;
 
 static class RetroLaunch
 {
@@ -185,6 +188,11 @@ static class RetroLaunch
 
     static string dossier;
     static string journal;
+    // La langue de CE lancement, decidee UNE FOIS dans Lancer() et lue par
+    // l'amorcage. Vide veut dire « on n'a rien pu lire chez Steam » : le plan
+    // porte une ligne « defaut » pour ce cas precis, et rien n'est suppose
+    // ici — une langue inventee serait indiscernable d'une langue relevee.
+    static string langueDuLancement = "";
     const string SI_ABSENT = "si-absent";
     // La seconde strategie d'ecriture. « si-absent » pose un fichier absent
     // et n'y revient jamais ; « fusion » rouvre un fichier QUI EXISTE pour y
@@ -473,63 +481,102 @@ static class RetroLaunch
             }
         }
 
-        if (impose.Length > 0)
+        if (impose.Length > 0
+            && FusionnerFragment(cible, impose, profil, "des clés imposées",
+                                 "amorcage"))
         {
-            if (!File.Exists(impose))
-                throw new Exception(
-                    "Le fichier des clés imposées est introuvable :\n\n"
-                    + impose + "\n\nRelancer « retro scan » depuis l'hôte.");
-            bool bomImpose;
-            string apporte = LireTexte(impose, out bomImpose);
-            if (File.Exists(cible))
-            {
-                bool bomCible;
-                string existant = LireTexte(cible, out bomCible);
-                int posees;
-                string fusionne = Fusionner(cible, existant, apporte,
-                                            out posees);
-                // Un fichier deja conforme n'est NI sauvegarde NI reecrit.
-                // Sans ce test, chaque lancement deposerait une sauvegarde de
-                // plus et retoucherait un fichier qui n'avait rien a changer
-                // — le contraire exact de ce que le proprietaire a autorise.
-                //
-                // La conformite se juge SUR LES CLES, marques retirees des
-                // deux cotes. Voir SansMarques : la marque est un
-                // commentaire, et l'interface de l'emulateur les efface.
-                if (SansMarques(fusionne) == SansMarques(existant))
-                {
-                    Noter("amorcage : " + cible + " deja conforme — aucune "
-                          + "sauvegarde, aucune reecriture (" + FUSION + ")");
-                }
-                else
-                {
-                    Sauvegarder(cible);
-                    // Le BOM rendu est celui de la CIBLE : le fichier
-                    // appartient au proprietaire, et le lui changer au
-                    // passage serait une modification qu'il n'a pas
-                    // autorisee.
-                    EcrireAtomique(cible, fusionne, bomCible);
-                    Noter("amorcage : " + profil + " -> " + cible + " ("
-                          + FUSION + ", " + posees + " cle(s) imposee(s))");
-                    ecrit = true;
-                }
-            }
-            else
-            {
-                // Aucune cible : le profil n'a pas de fichier « posé une
-                // fois », ou il est vide. Les cles imposees suffisent a le
-                // creer — sans elles l'emulateur rouvrirait son assistant.
-                EcrireAtomique(cible, apporte, bomImpose);
-                Noter("amorcage : " + profil + " -> " + cible + " (" + FUSION
-                      + ", fichier cree)");
-                ecrit = true;
-            }
+            ecrit = true;
+        }
+
+        // LA LANGUE, fusionnee APRES les cles imposees. L'ordre est sans effet
+        // sur le resultat — les deux fragments ne partagent aucune cle, une
+        // garde du profil le refuse — mais il est fixe pour que le journal se
+        // lise et que deux executions rendent le meme fichier a l'octet pres.
+        //
+        // La langue est celle de CE lancement, decidee une seule fois dans
+        // Lancer(). La relire par entree ferait, sur un profil a deux cibles,
+        // deux lectures du registre qui pourraient ne pas dire la meme chose —
+        // et la console poserait deux langues differentes dans le meme jeu.
+        //
+        // Un fragment vide veut dire que cette entree ne declare aucune table
+        // de langues : il n'y a rien a poser, et rien n'est suppose.
+        string fragmentLangue = FragmentDeLangue(p, n, langueDuLancement);
+        if (fragmentLangue.Length > 0
+            && FusionnerFragment(cible, fragmentLangue, profil, "de langue",
+                                 "langue"))
+        {
+            ecrit = true;
         }
 
         // Le temoin porte la CIBLE, pas seulement le profil : un profil a deux
         // cibles en ecrit deux lignes, et l'hote les relit toutes.
         if (ecrit) InscrireTemoin(profil, cible);
         return ecrit;
+    }
+
+    // LA FUSION D'UN FRAGMENT DANS UNE CIBLE — le chemin d'ecriture, ecrit UNE
+    // FOIS. Les cles imposees et la langue passent toutes deux par ici.
+    //
+    // Deux copies de ce bloc divergeraient : le jour ou la premiere gagnerait
+    // une sauvegarde, un test de conformite ou un BOM mieux choisi, la seconde
+    // poserait ses cles sans — et personne ne verrait laquelle des deux a
+    // touche le fichier du proprietaire.
+    //
+    // « quoi » ne sert qu'a nommer le fragment absent dans l'erreur, et
+    // « etiquette » qu'a signer la ligne de journal : le traitement, lui, est
+    // identique pour les deux appels.
+    //
+    // Rend vrai si la cible a ete ecrite.
+    static bool FusionnerFragment(string cible, string fragment, string profil,
+                                  string quoi, string etiquette)
+    {
+        if (!File.Exists(fragment))
+            throw new Exception(
+                "Le fichier " + quoi + " est introuvable :\n\n"
+                + fragment + "\n\nRelancer « retro scan » depuis l'hôte.");
+        bool bomFragment;
+        string apporte = LireTexte(fragment, out bomFragment);
+        if (File.Exists(cible))
+        {
+            bool bomCible;
+            string existant = LireTexte(cible, out bomCible);
+            int posees;
+            string fusionne = Fusionner(cible, existant, apporte,
+                                        out posees);
+            // Un fichier deja conforme n'est NI sauvegarde NI reecrit.
+            // Sans ce test, chaque lancement deposerait une sauvegarde de
+            // plus et retoucherait un fichier qui n'avait rien a changer
+            // — le contraire exact de ce que le proprietaire a autorise.
+            //
+            // La conformite se juge SUR LES CLES, marques retirees des
+            // deux cotes. Voir SansMarques : la marque est un
+            // commentaire, et l'interface de l'emulateur les efface.
+            if (SansMarques(fusionne) == SansMarques(existant))
+            {
+                Noter(etiquette + " : " + cible + " deja conforme — aucune "
+                      + "sauvegarde, aucune reecriture (" + FUSION + ")");
+                return false;
+            }
+            Sauvegarder(cible);
+            // Le BOM rendu est celui de la CIBLE : le fichier
+            // appartient au proprietaire, et le lui changer au
+            // passage serait une modification qu'il n'a pas
+            // autorisee.
+            EcrireAtomique(cible, fusionne, bomCible);
+            Noter(etiquette + " : " + profil + " -> " + cible + " ("
+                  + FUSION + ", " + posees + " cle(s) imposee(s))");
+            return true;
+        }
+        else
+        {
+            // Aucune cible : le profil n'a pas de fichier « posé une
+            // fois », ou il est vide. Les cles apportees suffisent a le
+            // creer — sans elles l'emulateur rouvrirait son assistant.
+            EcrireAtomique(cible, apporte, bomFragment);
+            Noter(etiquette + " : " + profil + " -> " + cible + " (" + FUSION
+                  + ", fichier cree)");
+            return true;
+        }
     }
 
     // Une copie horodatee de la cible, avant toute ecriture. Rien n'ecrase
@@ -1349,6 +1396,39 @@ static class RetroLaunch
             return 0;
         }
 
+        // LA LANGUE DE CE LANCEMENT, decidee UNE SEULE FOIS, ici, ou le
+        // lancement est deja decide. L'amorcage la relit dans
+        // langueDuLancement : le temoin dit alors exactement ce qui a ete
+        // pose, alors qu'une decision par entree d'amorcage ferait deux
+        // lectures du registre dans le meme jeu — et pourrait poser deux
+        // langues differentes sur les deux cibles d'un meme profil.
+        //
+        // La valeur de Steam est lue MEME quand la langue est posee a la
+        // main : le rapport doit porter les DEUX, sans quoi rien ne permet de
+        // verifier depuis le canape que ce lanceur lit vraiment le registre.
+        string langueDemandee = LangueChoisie();
+        string langueSteam = LangueDeSteam();
+        string motifLangue;
+        if (langueDemandee == "auto")
+        {
+            langueDuLancement = langueSteam;
+            motifLangue = langueSteam.Length > 0
+                ? "auto : Steam dit " + langueSteam
+                : "auto : Steam n'a rien dit, le plan pose son defaut";
+        }
+        else
+        {
+            langueDuLancement = langueDemandee;
+            motifLangue = "posee a la main";
+        }
+        // UNE FOIS PAR LANCEMENT, et non par entree d'amorcage : un profil a
+        // deux cibles l'ecrirait deux fois, un profil sans amorcage jamais, et
+        // le rapport ne dirait rien de la langue sur une console qui joue.
+        // Ecrit AVANT l'amorcage, pour que le temoin existe meme si celui-ci
+        // echoue — et son ecriture est rattrapee : un temoin manquant n'a
+        // jamais empeche un jeu de demarrer.
+        EcrireTemoinLangue(langueSteam, langueDuLancement, motifLangue);
+
         // AVANT de demarrer l'emulateur : une fois le processus lance, ce
         // lanceur peut etre en train de rendre la main, et le temoin
         // decrirait alors une session deja finie.
@@ -1479,6 +1559,89 @@ static class RetroLaunch
         }
         catch (Exception) { }
         return "auto";
+    }
+
+    // La langue que la console veut. Meme forme que ModeChoisi() : un fichier
+    // relu a chaque jeu, et un defaut qui ne pretend rien.
+    //
+    // AUCUNE LISTE DE LANGUES ICI, contrairement aux trois modes de rendu :
+    // valider demanderait de porter les noms de Steam dans ce fichier, donc
+    // d'y decider quelque chose. C'est « retro langue » qui refuse une langue
+    // inconnue, a l'ecriture, devant le proprietaire qui lit le refus. Une
+    // valeur que le plan ne connait pas ne trouve simplement aucun fragment,
+    // et rien n'est pose.
+    static string LangueChoisie()
+    {
+        try
+        {
+            string m = File.ReadAllText(Path.Combine(dossier, "langue.txt"),
+                                        Encoding.UTF8).Trim();
+            if (m.Length > 0) return m.ToLowerInvariant();
+        }
+        catch (Exception) { }
+        return "auto";
+    }
+
+    // Ce que STEAM dit, brut. Chaine vide si on n'a rien pu lire — jamais une
+    // langue supposee : une langue inventee ici serait indiscernable d'une
+    // langue relevee, et le proprietaire chercherait au mauvais endroit.
+    //
+    // LE REGISTRE ET NON localconfig.vdf : ce dernier est PAR COMPTE, et la
+    // console synchronise tous les comptes locaux. Deux comptes peuvent donc
+    // porter deux langues, et il n'existe aucune regle honnete pour les
+    // departager. Le registre porte la valeur du client qui tourne : une
+    // seule, celle que le proprietaire voit a l'ecran. Releve le 2026-08-30
+    // sur l'invite : un REG_SZ, en minuscules.
+    static string LangueDeSteam()
+    {
+        try
+        {
+            using (RegistryKey k = Registry.CurrentUser.OpenSubKey(
+                       @"Software\Valve\Steam"))
+            {
+                if (k == null) return "";
+                object v = k.GetValue("Language");
+                return v == null ? "" : v.ToString().Trim().ToLowerInvariant();
+            }
+        }
+        catch (Exception) { return ""; }
+    }
+
+    // Le fragment qui porte la langue pour CETTE entree. Rend "" s'il n'y a
+    // pas de ligne de langue dans le plan : cette entree ne declare aucune
+    // table, et il n'y a rien a poser.
+    //
+    // AUCUN REPLI N'EST CALCULE ICI. Le plan porte une ligne par langue,
+    // replis deja resolus par Python : on lit une ligne, on ne decide pas. Un
+    // lanceur qui deciderait pourrait choisir autre chose que ce que « retro
+    // status » annonce, et les deux ne se contrediraient jamais a voix haute.
+    //
+    // Une langue vide — Steam muet — prend la ligne « defaut », que le plan
+    // ecrit pour ce seul cas.
+    static string FragmentDeLangue(Dictionary<string, string> p, int n,
+                                   string langue)
+    {
+        string cle = "bootstrap_langue." + n.ToString(CultureInfo.InvariantCulture)
+                   + "." + (langue.Length == 0 ? "defaut" : langue);
+        string chemin;
+        return p.TryGetValue(cle, out chemin) ? chemin : "";
+    }
+
+    // Ce qu'on a vu chez Steam, pour que « retro status » puisse le dire
+    // depuis l'hote — qui n'atteint pas ce registre. Trois lignes, ecrasees a
+    // chaque jeu : c'est un temoin, pas un journal.
+    static void EcrireTemoinLangue(string steam, string effective, string motif)
+    {
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(dossier, "langue-vue.txt"),
+                "steam=" + steam + "\n"
+                + "langue=" + effective + "\n"
+                + "motif=" + motif + "\n",
+                new UTF8Encoding(false));
+        }
+        catch (Exception) { }   // un temoin manquant ne doit jamais empecher un jeu
     }
 
     static string ClasserMachine(Dictionary<string, string> p, int vram, int coeurs)
