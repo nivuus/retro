@@ -2109,3 +2109,26 @@ def test_les_deux_cotes_connaissent_les_memes_dialectes():
             f"{ext} est un dialecte connu du paquet mais absent du lanceur : "
             "un profil qui l'emploie se chargerait ici et echouerait la-bas"
         )
+
+
+def test_aucun_profil_ne_nie_l_amorcage_qu_il_porte():
+    """L'EN-TETE EST CRU. Un profil qui declare « pas de bloc [[bootstrap]] »
+    en portant un bloc ment a son lecteur — et cette phrase-la, ecrite pour
+    dire « personne n'a encore regarde », devient une invitation a ne pas
+    regarder un fichier qui, lui, impose des cles.
+
+    Mesure le 2026-08-30 : l'en-tete de pcsx2.toml disait exactement cela
+    apres qu'un bloc y eut ete ajoute, et la garde de l'amorcage ne l'a pas
+    vu — elle exigeait qu'un profil DISE ou il en est, pas que ce qu'il dise
+    soit vrai.
+    """
+    menteurs = []
+    for f in sorted(PROFILS.glob("*.toml")):
+        texte = f.read_text(encoding="utf-8")
+        profil = profiles.load_profile(f)
+        if profil.bootstraps and "pas de bloc [[bootstrap]]" in texte:
+            menteurs.append(f.name)
+    assert menteurs == [], (
+        "ces profils portent un [[bootstrap]] et affirment pourtant le "
+        f"contraire dans leur en-tete : {menteurs}"
+    )
