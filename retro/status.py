@@ -548,7 +548,10 @@ class Report:
     #                 `None` veut dire « aucun jeu lancé depuis que ce
     #                 mécanisme existe », et c'est le seul état sous lequel une
     #                 absence n'accuse personne — le confondre avec « Steam n'a
-    #                 rien dit » enverrait chercher une panne.
+    #                 rien dit » enverrait chercher une panne. `{}` est un
+    #                 TROISIÈME état : le témoin est là et illisible, la
+    #                 console a joué, et le dire « absent » innocenterait un
+    #                 fichier corrompu.
     # `langues`       est ce que chaque entrée d'amorçage en fait. Vide veut
     #                 dire « aucun profil chargé », pas « aucun émulateur ne
     #                 suit la langue ».
@@ -1088,7 +1091,7 @@ def build_report(
     Facultatifs tous les deux, et leur vide se lit : `langue` vide veut dire
     « l'appelant ne l'a pas lue » et non « auto », `langue_temoin` à `None`
     veut dire « aucun jeu lancé depuis que ce mécanisme existe » et non
-    « Steam n'a rien dit ». La valeur BRUTE du témoin est rendue même quand
+    « Steam n'a rien dit », et `{}` veut dire « il est là et illisible ». La valeur BRUTE du témoin est rendue même quand
     elle ne sert pas — langue posée à la main, Steam disant autre chose : sans
     elle, rien ne permet de vérifier depuis un canapé que le lanceur lit
     vraiment le registre.
@@ -1378,33 +1381,71 @@ def _lignes_temoin_langue(report: Report, decision) -> list[str]:
     if temoin is None:
         return ["  · aucun jeu lancé depuis que ce mécanisme existe : la "
                 "console n'a encore rien lu chez Steam"]
+    if not temoin:
+        # LE TÉMOIN EST LÀ, et on n'a rien pu en tirer. Ce n'est PAS « aucun
+        # jeu lancé depuis » : dire l'absence d'un fichier corrompu
+        # innocenterait la seule panne que ce témoin puisse avoir.
+        return ["  · le témoin du dernier lancement est illisible : la console "
+                "a joué, mais ce qu'elle a lu chez Steam ne peut pas être dit "
+                "ici — ce n'est pas « aucun jeu lancé depuis »"]
     lignes = []
     steam = temoin.get("steam", "")
-    if steam:
+    if not steam:
+        lignes.append("  · au dernier lancement, Steam n'a rien dit — jamais "
+                      "lancé par Steam, ou sa langue n'a pas pu être lue")
+    else:
         ligne = f"  · au dernier lancement, Steam disait « {steam} »"
         # Le « même quand elle ne sert pas » : la langue est posée à la main,
         # Steam en dit une autre, et le rapport porte les DEUX. La condition
         # nomme `AUTO` plutôt que de se fier à l'écart des deux valeurs —
         # sous « auto », la langue de Steam EST la langue demandée, et une
-        # égalité fortuite ne doit pas décider de ce qu'on écrit.
-        if (report.langue != langue_mod.AUTO and decision is not None
-                and decision.langue and steam != decision.langue):
+        # égalité fortuite ne doit pas décider de ce qu'on écrit. Le nom hors
+        # liste, lui, est dit plus haut : le répéter ici ferait deux fois la
+        # même explication.
+        if (report.langue != langue_mod.AUTO and decision.langue
+                and steam in langue_mod.LANGUES and steam != decision.langue):
             ligne += (" — la langue étant posée à la main, cette valeur ne "
                       "sert pas ; elle est dite pour que ce relevé reste "
                       "vérifiable")
         lignes.append(ligne)
-    else:
-        lignes.append("  · au dernier lancement, Steam n'a rien dit — jamais "
-                      "lancé par Steam, ou sa langue n'a pas pu être lue")
-    # Ce que le lanceur a RETENU la dernière fois. Dit seulement s'il diffère
-    # de ce qui vaut aujourd'hui : c'est alors un réglage changé depuis le
-    # dernier jeu, et sans cette ligne le propriétaire lirait la langue de son
-    # prochain jeu en croyant lire celle du précédent.
+    # Ce que le lanceur a RETENU la dernière fois, AVEC le motif qu'il a lui-
+    # même écrit — la seule chose qui dise pourquoi CE jeu-là est parti dans
+    # cette langue. Dit seulement quand la console a une langue à demander
+    # aujourd'hui ET qu'elle diffère : sans la première garde, un nom que
+    # « retro » ne connaît pas faisait annoncer un changement de réglage que
+    # personne n'avait fait ; sans la seconde, le propriétaire lirait la
+    # langue de son prochain jeu en croyant lire celle du précédent.
     vue = temoin.get("langue", "")
-    if vue and decision is not None and vue != decision.langue:
-        lignes.append(f"      le dernier jeu a demandé « {vue} » : le réglage "
-                      "a changé depuis, le prochain suivra la ligne ci-dessus")
+    if vue and decision.langue and vue != decision.langue:
+        motif = temoin.get("motif", "")
+        # Cité tel quel, sans accents : c'est le lanceur qui parle, et
+        # reformuler ses mots ferait passer pour une lecture ce qui est un
+        # relevé.
+        note = f" (le lanceur a noté : « {motif} »)" if motif else ""
+        lignes.append(f"      le dernier jeu a demandé « {vue} »{note} : le "
+                      "réglage a changé depuis, le prochain suivra la ligne "
+                      "ci-dessus")
     return lignes
+
+
+def _motif_sans_langue(report: Report, decision) -> str:
+    """Pourquoi la console n'a AUCUNE langue à demander, sans se tromper de
+    cause.
+
+    `langue.resoudre` n'en connaît qu'une, et son motif dit « Steam n'a rien
+    dit ». C'est faux du cas que le lanceur, lui, anticipe explicitement :
+    Steam a dit quelque chose, et c'est un nom que « retro » ne connaît pas.
+    Steam peut en ajouter une, et le registre en porterait le nom dès le
+    lendemain, sur un plan écrit la veille. Écrire « Steam n'a rien dit » y
+    enverrait chercher une console muette, alors qu'elle a parlé et qu'elle
+    n'a pas été comprise — deux pannes qui n'appellent pas le même geste.
+    """
+    steam = (report.langue_temoin or {}).get("steam", "")
+    if report.langue == langue_mod.AUTO and steam:
+        return (f"« {langue_mod.AUTO} » : Steam dit « {steam} », un nom que "
+                "« retro » ne connaît pas — aucun profil ne peut le déclarer, "
+                "et Steam a pu l'ajouter depuis")
+    return decision.motif
 
 
 def _lignes_langue(report: Report) -> list[str]:
@@ -1427,10 +1468,21 @@ def _lignes_langue(report: Report) -> list[str]:
             lignes.append(f"  · langue demandée : « {decision.langue} » — "
                           f"{decision.motif}")
         else:
-            lignes.append(f"  · aucune langue demandée — {decision.motif}")
+            lignes.append("  · aucune langue demandée — "
+                          + _motif_sans_langue(report, decision))
             lignes.append("      chaque émulateur pose alors le repli de son "
                           "profil, quand il en déclare un")
         lignes += _lignes_temoin_langue(report, decision)
+    # AU FUTUR, et c'est un cadre, pas une tournure. Ces lignes disent ce qui
+    # SERA posé — la langue demandée n'a été posée nulle part tant qu'aucun jeu
+    # n'a démarré, et « duckstation : pose « french » » deux lignes sous
+    # « aucun jeu lancé depuis » se lit comme un fait accompli. C'est
+    # l'exigence du témoin — il porte la langue DEMANDÉE, jamais la POSÉE —
+    # qui fuirait des lignes de synthèse vers les lignes de détail. La section
+    # Amorçage a réglé le même problème avec « pas encore amorcé ».
+    if report.langues:
+        lignes.append("  ce que chaque entrée d'amorçage posera au prochain "
+                      "jeu :")
     for e in report.langues:
         ou = f" ({e.cible})" if e.cible else ""
         if not e.declared:
@@ -1446,7 +1498,7 @@ def _lignes_langue(report: Report) -> list[str]:
         elif e.motif:
             lignes.append(f"  · {e.profile_id}{ou} : {e.motif}")
         else:
-            lignes.append(f"  · {e.profile_id}{ou} : pose « {e.langue} »")
+            lignes.append(f"  · {e.profile_id}{ou} : « {e.langue} »")
     if not lignes:
         return []
     # La conséquence des entrées muettes, dite UNE fois — et dite, parce que
@@ -1635,7 +1687,12 @@ def format_report(report: Report) -> str:
     # ne déclare aucune table, ou il pose son repli). Le repli de section dit
     # exactement ce que le vide veut dire.
     sections += _section(
-        f"Langue — demandée « {report.langue} »" if report.langue
+        # « réglage » et non « demandée » : le titre porte la valeur BRUTE du
+        # réglage (« auto »), la première ligne la valeur RÉSOLUE (« dutch »).
+        # Le même mot pour les deux faisait surmonter « · aucune langue
+        # demandée » d'un « Langue — demandée « auto » », qui se lit comme une
+        # contradiction là où il n'y a que deux référents.
+        f"Langue — réglage « {report.langue} »" if report.langue
         else "Langue",
         _lignes_langue(report),
         "aucune langue lue : ce rapport ne peut pas dire laquelle la console "

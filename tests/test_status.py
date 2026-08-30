@@ -1865,3 +1865,139 @@ def test_sans_langue_lue_la_section_ne_disparait_pas():
         install_dirs={}, emulation_root=pathlib.Path("."),
         systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS")))
     assert "Langue" in texte
+
+
+# --- la section Langue : le TEXTE produit, branche par branche --------------
+#
+# Les six cas du rapport de tâche étaient écrits à la main, et trois branches
+# du rendu n'avaient aucune assertion de texte — dont celle qui, mesurée par le
+# relecteur, disait trois choses dont deux étaient fausses. Chacune repart
+# d'ici avec le texte qu'elle produit, asservi.
+
+def _section_langue(texte: str) -> str:
+    """La section Langue d'un rapport rendu, sans son titre ni le vide final."""
+    lignes = texte.splitlines()
+    debut = next(n for n, l in enumerate(lignes) if l.startswith("Langue"))
+    return "\n".join(lignes[debut:lignes.index("", debut)])
+
+
+def _rapport_langue(profils=None, **kwargs) -> str:
+    return status.format_report(status.build_report(
+        install_dirs={"ppsspp": "PPSSPP"},
+        emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("D:\\BIOS"),
+        profils=profils, **kwargs))
+
+
+def test_une_langue_de_steam_hors_liste_est_nommee_et_non_prise_pour_un_silence(
+        profils_avec_langues):
+    """Steam peut ajouter une langue : le registre en porterait le nom dès le
+    lendemain, sur un plan écrit la veille — le lanceur l'anticipe
+    explicitement. Le rapport disait alors « Steam n'a rien dit » (faux),
+    « Steam disait klingon » (vrai) et « le réglage a changé depuis » (faux),
+    sans jamais nommer la cause : « retro » ne connaît pas ce nom. Une console
+    muette et une console qu'on ne comprend pas n'appellent pas le même geste.
+    """
+    texte = _rapport_langue(
+        profils_avec_langues, langue="auto",
+        langue_temoin={"steam": "klingon", "langue": "klingon",
+                       "motif": "auto : Steam dit klingon"})
+    assert _section_langue(texte) == "\n".join([
+        "Langue — réglage « auto »",
+        "  · aucune langue demandée — « auto » : Steam dit « klingon », un nom "
+        "que « retro » ne connaît pas — aucun profil ne peut le déclarer, et "
+        "Steam a pu l'ajouter depuis",
+        "      chaque émulateur pose alors le repli de son profil, quand il en "
+        "déclare un",
+        "  · au dernier lancement, Steam disait « klingon »",
+        "  ce que chaque entrée d'amorçage posera au prochain jeu :",
+        "  · duckstation (%USERPROFILE%\\Documents\\DuckStation\\settings.ini) "
+        ": repli sur « english »",
+        "  · ppsspp (D:\\Emulation\\PPSSPP\\memstick\\PSP\\SYSTEM\\ppsspp.ini) "
+        ": aucune table de langues déclarée",
+        "  un émulateur sans table pose ses propres défauts : ses jeux "
+        "resteront dans SA langue, quoi que la console demande. Ce n'est pas "
+        "« il la suit mal », c'est « il ne la suit pas ».",
+        "  toute table de langues déclarée est reposée à chaque lancement, par "
+        "la même fusion que les clés imposées : la langue échappe au "
+        "propriétaire — changée dans l'émulateur, elle reviendra au prochain "
+        "jeu. « retro langue » est l'endroit où elle se change.",
+    ])
+    assert "Steam n'a rien dit" not in texte
+    assert "le réglage a changé" not in texte
+
+
+def test_un_temoin_illisible_ne_se_lit_pas_comme_un_temoin_absent(tmp_path):
+    """`None` et `{}` ne disent pas la même chose, comme pour les fragments :
+    le fichier manque, ou il est là et on n'en tire rien. Les confondre ferait
+    dire « aucun jeu lancé depuis » d'une console qui a joué — innocenter un
+    témoin corrompu."""
+    dossier = launcher.local_dir(tmp_path)
+    dossier.mkdir(parents=True, exist_ok=True)
+    # Des octets qui ne sont pas de l'UTF-8 : ce que ce fichier ne devrait
+    # jamais être, et ce qu'un disque qui a lâché en plein milieu produit.
+    (dossier / launcher.TEMOIN_LANGUE).write_bytes(b"steam=fr\xff\xfench\n")
+    assert launcher.lire_temoin_langue(tmp_path) == {}, (
+        "un témoin illisible se lit encore comme un témoin absent")
+
+
+def test_un_temoin_illisible_est_dit_comme_tel_dans_le_rapport():
+    texte = _rapport_langue(langue="auto", langue_temoin={})
+    assert ("  · le témoin du dernier lancement est illisible : la console a "
+            "joué, mais ce qu'elle a lu chez Steam ne peut pas être dit ici — "
+            "ce n'est pas « aucun jeu lancé depuis »") in texte
+    assert "aucun jeu lancé depuis que ce mécanisme existe" not in texte
+
+
+def test_les_lignes_par_entree_sont_au_futur(profils_avec_langues):
+    """« duckstation : pose « french » » deux lignes sous « aucun jeu lancé
+    depuis » se lit comme un fait accompli. Rien n'a été posé : le témoin porte
+    la langue DEMANDÉE, et cette exigence-là fuyait des lignes de synthèse vers
+    les lignes de détail. La section Amorçage a réglé le même problème avec
+    « pas encore amorcé »."""
+    texte = _rapport_langue(profils_avec_langues, langue="french",
+                            langue_temoin=None)
+    assert _section_langue(texte) == "\n".join([
+        "Langue — réglage « french »",
+        "  · langue demandée : « french » — posée à la main",
+        "  · aucun jeu lancé depuis que ce mécanisme existe : la console n'a "
+        "encore rien lu chez Steam",
+        "  ce que chaque entrée d'amorçage posera au prochain jeu :",
+        "  · duckstation (%USERPROFILE%\\Documents\\DuckStation\\settings.ini) "
+        ": « french »",
+        "  · ppsspp (D:\\Emulation\\PPSSPP\\memstick\\PSP\\SYSTEM\\ppsspp.ini) "
+        ": aucune table de langues déclarée",
+        "  un émulateur sans table pose ses propres défauts : ses jeux "
+        "resteront dans SA langue, quoi que la console demande. Ce n'est pas "
+        "« il la suit mal », c'est « il ne la suit pas ».",
+        "  toute table de langues déclarée est reposée à chaque lancement, par "
+        "la même fusion que les clés imposées : la langue échappe au "
+        "propriétaire — changée dans l'émulateur, elle reviendra au prochain "
+        "jeu. « retro langue » est l'endroit où elle se change.",
+    ])
+    assert "pose « french »" not in texte, (
+        "une langue jamais posée est annoncée à l'indicatif présent")
+
+
+def test_le_titre_et_la_premiere_ligne_n_emploient_pas_le_meme_mot():
+    """Le titre porte le RÉGLAGE brut (« auto »), la première ligne la valeur
+    RÉSOLUE. Le même mot pour les deux faisait surmonter « aucune langue
+    demandée » d'un « Langue — demandée « auto » » : deux référents, lus comme
+    une contradiction."""
+    texte = _rapport_langue(langue="auto", langue_temoin=None)
+    assert "Langue — réglage « auto »" in texte
+    assert "Langue — demandée" not in texte
+    assert "  · aucune langue demandée — " in texte
+
+
+def test_le_motif_ecrit_par_le_lanceur_est_lu_et_rendu():
+    """Le témoin porte un `motif=` que rien ne lisait côté Python. C'est la
+    seule chose qui dise pourquoi LE DERNIER jeu est parti dans cette
+    langue-là — cité tel quel, sans accents : c'est le lanceur qui parle."""
+    texte = _rapport_langue(
+        langue="japanese",
+        langue_temoin={"steam": "french", "langue": "french",
+                       "motif": "auto : Steam dit french"})
+    assert ("      le dernier jeu a demandé « french » (le lanceur a noté : "
+            "« auto : Steam dit french ») : le réglage a changé depuis, le "
+            "prochain suivra la ligne ci-dessus") in texte

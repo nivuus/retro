@@ -636,12 +636,21 @@ def ecrire_langue(emulation_root_local, langue: str) -> pathlib.Path:
 
 
 def lire_temoin_langue(emulation_root_local) -> dict[str, str] | None:
-    """Ce que le lanceur a vu chez Steam au dernier jeu, ou None.
+    """Ce que le lanceur a vu chez Steam au dernier jeu.
 
-    `None` veut dire « aucun jeu n'a été lancé depuis que ce mécanisme
-    existe », et c'est le seul état sous lequel une absence n'accuse personne.
-    Le confondre avec « Steam n'a rien dit » ferait chercher une panne là où
-    il n'y a qu'une console qui n'a pas encore joué.
+    `None` ET `{}` NE DISENT PAS LA MÊME CHOSE, exactement comme pour
+    `lire_fragments`, et les confondre serait la faute :
+
+    `None` veut dire que le témoin N'EXISTE PAS — aucun jeu n'a été lancé
+    depuis que ce mécanisme existe. C'est le seul état sous lequel une absence
+    n'accuse personne, et le confondre avec « Steam n'a rien dit » ferait
+    chercher une panne là où il n'y a qu'une console qui n'a pas encore joué.
+
+    `{}` veut dire qu'il EST LÀ et qu'on n'a rien pu en tirer : illisible,
+    tronqué, ou écrit dans un encodage que ce fichier ne devrait pas avoir.
+    Le rendre `None` ferait dire « aucun jeu lancé depuis » d'une console qui
+    a joué — c'est-à-dire innocenter un témoin corrompu, la confusion même que
+    la distinction ci-dessus existe pour fermer, décalée d'un cran.
 
     Le témoin porte la langue DEMANDÉE, pas celle qui a été posée : le
     lanceur l'écrit AVANT d'amorcer, et une seule ligne ne pourrait de toute
@@ -652,13 +661,17 @@ def lire_temoin_langue(emulation_root_local) -> dict[str, str] | None:
     Une ligne sans « = » est IGNORÉE plutôt que fatale, comme pour le témoin
     des manettes : ce fichier est écrit par un autre langage, sur une autre
     machine, et un rapport partiel en dit plus qu'un rapport qui refuse de se
-    rendre.
+    rendre. Les clés et les valeurs sont détourées de leurs blancs — le C#
+    écrit des fins de ligne que cette machine-ci ne choisit pas —, et une clé
+    vide est jetée : « =french » ne nomme aucun champ.
     """
     fichier = local_dir(emulation_root_local) / TEMOIN_LANGUE
     try:
         texte = fichier.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+    except FileNotFoundError:
         return None
+    except (OSError, UnicodeDecodeError):
+        return {}
     lu: dict[str, str] = {}
     for ligne in texte.splitlines():
         cle, separateur, valeur = ligne.partition("=")
