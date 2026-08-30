@@ -2001,3 +2001,24 @@ def test_le_motif_ecrit_par_le_lanceur_est_lu_et_rendu():
     assert ("      le dernier jeu a demandé « french » (le lanceur a noté : "
             "« auto : Steam dit french ») : le réglage a changé depuis, le "
             "prochain suivra la ligne ci-dessus") in texte
+
+
+def test_une_langue_manuelle_explique_la_valeur_de_steam_meme_hors_liste():
+    """La combinaison qu'aucun autre test ne couvrait, et qu'une garde de trop
+    avait rendue muette : langue posée à la main, témoin portant un nom que
+    « retro » ne connaît pas.
+
+    La valeur brute reste affichée — c'est l'exigence — mais l'annotation qui
+    dit pourquoi elle ne sert pas avait disparu, au motif que ce nom serait
+    « dit plus haut ». Il ne l'est pas : la ligne qui nomme un nom inconnu
+    n'existe que lorsque la console n'a AUCUNE langue à demander, et une
+    langue posée à la main en donne toujours une. Les deux faits doivent tenir
+    sur l'écran ensemble, quelle que soit la valeur du témoin.
+    """
+    texte = _rapport_langue(
+        langue="japanese",
+        langue_temoin={"steam": "klingon", "langue": "japanese",
+                       "motif": "posee a la main"})
+    assert ("  · au dernier lancement, Steam disait « klingon » — la langue "
+            "étant posée à la main, cette valeur ne sert pas ; elle est dite "
+            "pour que ce relevé reste vérifiable") in texte

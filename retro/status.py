@@ -1399,11 +1399,18 @@ def _lignes_temoin_langue(report: Report, decision) -> list[str]:
         # Steam en dit une autre, et le rapport porte les DEUX. La condition
         # nomme `AUTO` plutôt que de se fier à l'écart des deux valeurs —
         # sous « auto », la langue de Steam EST la langue demandée, et une
-        # égalité fortuite ne doit pas décider de ce qu'on écrit. Le nom hors
-        # liste, lui, est dit plus haut : le répéter ici ferait deux fois la
-        # même explication.
+        # égalité fortuite ne doit pas décider de ce qu'on écrit.
+        #
+        # ET ELLE NE REGARDE PAS SI CE NOM EST CONNU. Une garde
+        # `steam in LANGUES` a été essayée ici, au motif que le nom hors liste
+        # serait « dit plus haut » : c'est faux de la branche manuelle.
+        # `_motif_sans_langue` ne parle QUE lorsque la console n'a aucune
+        # langue à demander, or une langue posée à la main en donne toujours
+        # une. Un témoin « klingon » sous un réglage « japanese » perdait donc
+        # sa seule explication, et la valeur brute restait à l'écran sans que
+        # rien ne dise pourquoi elle ne sert pas.
         if (report.langue != langue_mod.AUTO and decision.langue
-                and steam in langue_mod.LANGUES and steam != decision.langue):
+                and steam != decision.langue):
             ligne += (" — la langue étant posée à la main, cette valeur ne "
                       "sert pas ; elle est dite pour que ce relevé reste "
                       "vérifiable")
