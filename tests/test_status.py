@@ -1659,3 +1659,209 @@ def test_un_jeton_sans_dossier_connu_reste_lisible():
     etats = status.etat_amorcage({"inconnu": Profil()}, {}, install_dirs={},
                                  emulation_root_windows="D:\\Emulation")
     assert etats[0].target == "{install_dir}\\config.yml"
+
+
+# --- la section Langue -----------------------------------------------------
+#
+# Elle porte trois choses qu'aucune autre section ne porte : la langue
+# DEMANDÉE et son motif, la valeur brute lue chez Steam au dernier lancement —
+# même quand elle ne sert pas — et, par entrée d'amorçage, lequel des trois
+# états s'applique. Le troisième est celui qui compte : « aucune table
+# déclarée » et « une table qui pose autre chose » se lisent à l'écran de la
+# même façon, un jeu en anglais.
+
+PROFIL_STATUS_LANGUE = """
+schema = 1
+id = "duckstation"
+exe = 'duckstation-qt.exe'
+[[bootstrap]]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé une fois, et ce qui vous appartient.
+[Main]
+Theme = dark
+'''
+[bootstrap.langue]
+repli = "english"
+english = '''
+[Main]
+Language = en
+'''
+french = '''
+[Main]
+Language = fr
+'''
+[[system]]
+id = "psx"
+name = "PlayStation"
+extensions = [".cue"]
+launch = '-batch "{rom}"'
+"""
+
+# Le témoin de l'état qui compte : une entrée d'amorçage sans la moindre table
+# de langues. Cet émulateur ne suit pas la langue DU TOUT, ce qui n'est pas
+# « il la suit mal ».
+PROFIL_STATUS_SANS_LANGUE = """
+schema = 1
+id = "ppsspp"
+exe = 'PPSSPPWindows64.exe'
+[[bootstrap]]
+target = '{install_dir}\\memstick\\PSP\\SYSTEM\\ppsspp.ini'
+content = '''
+; Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+[General]
+CheckForNewVersion = False
+'''
+[[system]]
+id = "psp"
+name = "PSP"
+extensions = [".iso"]
+launch = '"{rom}"'
+"""
+
+
+@pytest.fixture
+def profils_avec_langues(tmp_path):
+    """Un profil qui déclare une table de langues, un profil qui n'en a pas."""
+    avec = tmp_path / "duckstation-langue.toml"
+    avec.write_text(PROFIL_STATUS_LANGUE, encoding="utf-8")
+    sans = tmp_path / "ppsspp-langue.toml"
+    sans.write_text(PROFIL_STATUS_SANS_LANGUE, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(avec),
+            "ppsspp": profiles.load_profile(sans)}
+
+
+def test_un_temoin_absent_ne_fait_supposer_aucune_langue(tmp_path):
+    """Le seul état sous lequel l'absence n'accuse personne : aucun jeu n'a
+    encore été lancé depuis que ce mécanisme existe."""
+    assert launcher.lire_temoin_langue(tmp_path) is None
+
+
+def test_le_temoin_se_relit(tmp_path):
+    dossier = launcher.local_dir(tmp_path)
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / launcher.TEMOIN_LANGUE).write_text(
+        "steam=french\nlangue=french\nmotif=« auto » : Steam dit « french »\n",
+        encoding="utf-8")
+    temoin = launcher.lire_temoin_langue(tmp_path)
+    assert temoin["steam"] == "french"
+    assert temoin["langue"] == "french"
+
+
+def test_un_profil_sans_table_est_NOMME_et_non_tu(profils_avec_langues):
+    """L'état qui compte. Sans lui, un émulateur qui ne suit pas la langue
+    serait indiscernable d'un émulateur qui la suit mal — et les deux se
+    lisent à l'écran de la même façon : un jeu en anglais."""
+    etats = status.etat_langues(profils_avec_langues, voulue="french")
+    muets = [e for e in etats if not e.declared]
+    assert muets, "aucun profil muet n'a été nommé"
+
+
+def test_un_repli_est_nomme_avec_sa_raison(profils_avec_langues):
+    etats = status.etat_langues(profils_avec_langues, voulue="dutch")
+    replis = [e for e in etats if e.declared and e.motif]
+    assert replis
+    assert "dutch" in replis[0].motif and "english" in replis[0].motif
+
+
+def test_une_langue_declaree_est_posee_sans_motif(profils_avec_langues):
+    """Le premier des trois états : la langue voulue est déclarée ici, elle
+    est posée telle quelle. Pas de motif — il n'y a rien à expliquer."""
+    etats = status.etat_langues(profils_avec_langues, voulue="french")
+    poses = [e for e in etats if e.declared]
+    assert [(e.profile_id, e.langue, e.motif) for e in poses] == [
+        ("duckstation", "french", "")]
+
+
+def test_le_rapport_ecrit_la_valeur_brute_de_steam():
+    """Même quand elle ne sert pas : la langue est posée à la main, Steam dit
+    autre chose, et le rapport doit porter les DEUX. C'est ce qui rend le
+    relevé du registre vérifiable depuis le canapé — sans quoi il n'existe
+    aucun moyen de savoir si le lanceur lit vraiment quelque chose."""
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("."),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        langue="japanese",
+        langue_temoin={"steam": "french", "langue": "japanese",
+                       "motif": "posée à la main"}))
+    assert "japanese" in texte
+    assert "french" in texte, (
+        "le rapport tait ce que Steam disait : rien ne permet alors de "
+        "vérifier que le lanceur lit sa langue")
+
+
+def test_sans_temoin_le_rapport_ne_suppose_aucune_langue_de_steam():
+    """Le seul état sous lequel une absence n'accuse personne : aucun jeu
+    n'a encore été lancé. Le confondre avec « Steam n'a rien dit » enverrait
+    chercher une panne là où il n'y a qu'une console qui n'a pas joué."""
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("."),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        langue="auto", langue_temoin=None))
+    assert "aucun jeu" in texte.lower()
+
+
+def test_le_rapport_dit_que_ces_cles_sont_reposees_a_chaque_lancement():
+    """La contrepartie de la décision 4 du spec. Le propriétaire qui change
+    sa langue dans DuckStation et la voit revenir doit lire POURQUOI, et le
+    rapport est le seul endroit où il peut le lire."""
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("."),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        langue="french", langue_temoin={"steam": "french"}))
+    assert "chaque lancement" in texte
+
+
+def test_le_rapport_dit_la_langue_DEMANDEE_et_jamais_posee():
+    """Le témoin porte la langue DEMANDÉE : le lanceur l'écrit AVANT
+    d'amorcer, et une seule ligne ne pourrait de toute façon pas résumer ce
+    qui a été posé sur N cibles, chacune passant par son propre repli. Écrire
+    « posée » ferait affirmer qu'un émulateur a reçu une langue qu'il n'a
+    jamais reçue."""
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("."),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        langue="auto", langue_temoin={"steam": "french", "langue": "french"}))
+    ligne = next(l for l in texte.splitlines() if "Steam dit" in l)
+    assert "demandée" in ligne, ligne
+
+
+def test_la_section_langue_nomme_les_trois_etats(profils_avec_langues):
+    """Les trois états, sur trois lignes distinctes : ce qui est posé, le
+    repli AVEC sa raison, et l'entrée qui n'a aucune table. Le troisième dit
+    « cet émulateur ne suit pas la langue », qui n'est pas « il la suit
+    mal »."""
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        profils=profils_avec_langues, langue="dutch",
+        langue_temoin={"steam": "english", "langue": "dutch",
+                       "motif": "posée à la main"}))
+    assert "repli sur « english »" in texte
+    assert "aucune table de langues déclarée" in texte
+    assert "ppsspp" in texte
+
+
+def test_la_section_langue_ne_montre_pas_de_jeton_de_chemin(
+        profils_avec_langues):
+    """Le jeton `{install_dir}` ne veut rien dire pour qui lit depuis un
+    canapé — c'est la faute déjà corrigée dans la section Amorçage, et la
+    section Langue nomme les mêmes cibles."""
+    etats = status.etat_langues(
+        profils_avec_langues, voulue="french",
+        install_dirs={"ppsspp": "PPSSPP"},
+        emulation_root_windows="D:\\Emulation")
+    muet = next(e for e in etats if e.profile_id == "ppsspp")
+    assert muet.cible == (
+        "D:\\Emulation\\PPSSPP\\memstick\\PSP\\SYSTEM\\ppsspp.ini")
+
+
+def test_sans_langue_lue_la_section_ne_disparait_pas():
+    """Une section qui disparaît se lit comme une panne d'affichage : c'est
+    la règle de tout ce rapport. Un appelant qui n'a pas lu la langue le dit,
+    plutôt que de laisser un blanc."""
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("."),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS")))
+    assert "Langue" in texte

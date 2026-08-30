@@ -39,6 +39,7 @@ from collections.abc import Sequence
 
 from retro import identite as identite_mod
 from retro import install as install_mod
+from retro import langue as langue_mod
 from retro import launcher as launcher_mod
 from retro import licence as licence_mod
 from retro import profiles as profiles_mod
@@ -96,6 +97,27 @@ class SystemRender:
     # posé avant que le mode ne soit résolu. Le motif reste donc sur la ligne
     # du système, là où la légende le remplace d'ordinaire.
     remplissage_impose: bool = False
+
+
+@dataclasses.dataclass(frozen=True)
+class ProfilLangue:
+    """Ce qu'UNE entrée d'amorçage fait de la langue de la console.
+
+    Trois états, et le troisième est celui qui compte : `declared=False` dit
+    « cet émulateur ne suit pas la langue DU TOUT », ce qui n'est pas « il la
+    suit mal ». Les confondre ferait chercher une mauvaise valeur là où il n'y
+    en a aucune — et les deux se lisent à l'écran de la même façon, un jeu en
+    anglais.
+
+    Par ENTRÉE et non par profil, et `cible` est ce qui les distingue :
+    RetroArch en a deux, sa langue d'interface et celle que les jeux lisent,
+    et deux lignes sans chemin se liraient comme un doublon d'affichage.
+    """
+    profile_id: str
+    cible: str
+    declared: bool
+    langue: str = ""
+    motif: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -514,6 +536,26 @@ class Report:
     pads_date: str = ""
     pads: list = dataclasses.field(default_factory=list)
 
+    # LA LANGUE, en trois champs distincts parce que ce sont trois faits
+    # distincts, et que les confondre ferait mentir le rapport :
+    #
+    # `langue`        est ce que le PROPRIÉTAIRE a demandé — « auto » ou un nom
+    #                 de langue Steam. Vide veut dire que l'appelant ne l'a pas
+    #                 lue, jamais qu'elle vaut `auto` : un rapport qui
+    #                 comblerait ce blanc annoncerait un réglage que personne
+    #                 n'a posé.
+    # `langue_temoin` est ce que le lanceur a VU chez Steam au dernier jeu.
+    #                 `None` veut dire « aucun jeu lancé depuis que ce
+    #                 mécanisme existe », et c'est le seul état sous lequel une
+    #                 absence n'accuse personne — le confondre avec « Steam n'a
+    #                 rien dit » enverrait chercher une panne.
+    # `langues`       est ce que chaque entrée d'amorçage en fait. Vide veut
+    #                 dire « aucun profil chargé », pas « aucun émulateur ne
+    #                 suit la langue ».
+    langue: str = ""
+    langue_temoin: dict | None = None
+    langues: list[ProfilLangue] = dataclasses.field(default_factory=list)
+
 
 def _joindre(racine: str, *parties: str) -> str:
     """Concatène des chemins POUR L'AFFICHAGE, au séparateur de la racine.
@@ -787,6 +829,42 @@ def _probleme_remplissage_non_mesure(etats: list[SystemRender]) -> list[Problem]
     )]
 
 
+def etat_langues(profils: dict, voulue: str,
+                 install_dirs: dict | None = None,
+                 emulation_root_windows: str = "") -> list[ProfilLangue]:
+    """Ce que chaque entrée d'amorçage pose comme langue, et pourquoi.
+
+    Par ENTRÉE et non par profil : RetroArch en a deux, sa langue d'interface
+    et celle que les jeux lisent, et un rapport par profil en cacherait une.
+
+    `voulue` est la langue de la CONSOLE — ce que `langue.resoudre` a tranché
+    — et non ce qu'un émulateur pose : c'est justement l'écart entre les deux
+    que cette liste existe pour rendre lisible.
+
+    La cible est rendue LISIBLE, comme dans la section Amorçage : trois des
+    quatre configurations mesurées vivent sous `{install_dir}`, et un jeton
+    brut ne veut rien dire pour qui lit depuis un canapé.
+    """
+    etats = []
+    for pid in sorted(profils):
+        for amorcage in profils[pid].bootstraps:
+            declarees = tuple(nom for nom, _ in amorcage.langues)
+            decision = langue_mod.appliquer(
+                voulue, declarees, amorcage.langue_repli)
+            etats.append(ProfilLangue(
+                profile_id=pid,
+                cible=_cible_lisible(amorcage.target, pid, install_dirs or {},
+                                     emulation_root_windows),
+                declared=bool(declarees),
+                langue=decision.langue,
+                # Le motif d'une entrée SANS table est déjà dit par
+                # `declared` : le répéter ici ferait deux formulations du même
+                # constat, et le rendu n'en garderait qu'une.
+                motif=decision.motif if declarees else "",
+            ))
+    return etats
+
+
 def _probleme_lanceur_perime(perime: bool,
                              emulation_root: pathlib.Path) -> list[Problem]:
     """Le binaire en place est plus vieux que la source déposée à côté.
@@ -953,6 +1031,8 @@ def build_report(
 
     pads_date: str = "",
     pads: Sequence = (),
+    langue: str = "",
+    langue_temoin: dict | None = None,
 ) -> Report:
     """Assemble le rapport. Ne lit que ce qui existe déjà sur le disque, et
     n'écrit jamais : `retro status` est une consultation, pas une validation.
@@ -1003,6 +1083,16 @@ def build_report(
     faux. `None` veut dire que le dossier des plans n'existe pas, et rien n'est
     alors reproché.
 
+    `langue` est ce que le propriétaire a demandé — `launcher.lire_langue` —,
+    et `langue_temoin` ce que le lanceur a vu chez Steam au dernier jeu.
+    Facultatifs tous les deux, et leur vide se lit : `langue` vide veut dire
+    « l'appelant ne l'a pas lue » et non « auto », `langue_temoin` à `None`
+    veut dire « aucun jeu lancé depuis que ce mécanisme existe » et non
+    « Steam n'a rien dit ». La valeur BRUTE du témoin est rendue même quand
+    elle ne sert pas — langue posée à la main, Steam disant autre chose : sans
+    elle, rien ne permet de vérifier depuis un canapé que le lanceur lit
+    vraiment le registre.
+
     `amorcages` est le témoin que le lanceur écrit sur la machine — profil →
     [(date, cible), …], une entrée par cible posée. `retro status` tourne sur l'hôte, qui n'atteint ni
     `C:\\Users` ni `%APPDATA%` de la console : c'est la seule trace dont il
@@ -1014,6 +1104,14 @@ def build_report(
     manettes = etat_manettes(profils) if profils else []
     vibrations = etat_vibrations(profils) if profils else []
     deposes = etat_fragments(profils, fragments) if profils else []
+    # La langue de la CONSOLE d'abord, celle de chaque émulateur ensuite : ce
+    # sont deux résolutions distinctes, et les séparer est ce qui permet
+    # d'écrire « Steam dit dutch » ET « ce profil ne le déclare pas, repli sur
+    # english ». Une seule fonction rendrait l'un des deux faits, et le
+    # rapport ne saurait pas dire lequel manque.
+    voulue = _langue_voulue(langue, langue_temoin)
+    langues = etat_langues(
+        profils, voulue, install_dirs, str(emulation_root)) if profils else []
     return Report(
         emulators=emulateurs,
         systems=list(systems),
@@ -1044,6 +1142,9 @@ def build_report(
 
         pads_date=pads_date,
         pads=list(pads),
+        langue=langue,
+        langue_temoin=langue_temoin,
+        langues=langues,
     )
 
 
@@ -1234,6 +1335,141 @@ def _lignes_amorcage(report: Report) -> list[str]:
     return lignes
 
 
+def _decision_langue(demandee: str, temoin: dict | None):
+    """Ce que la CONSOLE demande, et pourquoi — ou `None` si rien ne le dit.
+
+    `None` a deux causes, et aucune des deux n'est une panne du rapport :
+    l'appelant n'a pas lu la langue, ou il en a passé une que Steam ne nomme
+    pas. `resoudre` lèverait sur la seconde, et `retro status` est une
+    consultation : un rapport qui refuserait de se rendre à cause d'un fichier
+    de réglage mal écrit serait pire que muet. Le refus d'une langue inconnue
+    vit à l'ÉCRITURE — `launcher.ecrire_langue` —, là où quelqu'un est devant
+    un clavier.
+    """
+    if demandee not in langue_mod.VALEURS:
+        return None
+    return langue_mod.resoudre(demandee, (temoin or {}).get("steam", ""))
+
+
+def _langue_voulue(demandee: str, temoin: dict | None) -> str:
+    """La langue que la console veut, ou vide quand rien ne permet de la dire.
+
+    Vide n'est pas un échec : c'est « auto » sur une console dont Steam n'a
+    rien dit, et chaque émulateur pose alors son repli. `appliquer` le sait.
+    """
+    decision = _decision_langue(demandee, temoin)
+    return decision.langue if decision is not None else ""
+
+
+def _lignes_temoin_langue(report: Report, decision) -> list[str]:
+    """La valeur BRUTE lue chez Steam au dernier lancement, même inutilisée.
+
+    Même inutilisée, parce que c'est la seule chose qui rende vérifiable,
+    depuis un canapé, que le lanceur lit vraiment quelque chose : une langue
+    posée à la main pendant que Steam en dit une autre est exactement le cas
+    où les deux faits doivent tenir sur l'écran ensemble.
+
+    Et l'absence de témoin se dit à part : « aucun jeu lancé depuis » est le
+    seul état sous lequel une absence n'accuse personne. Le confondre avec
+    « Steam n'a rien dit » enverrait chercher une panne là où il n'y a qu'une
+    console qui n'a pas encore joué.
+    """
+    temoin = report.langue_temoin
+    if temoin is None:
+        return ["  · aucun jeu lancé depuis que ce mécanisme existe : la "
+                "console n'a encore rien lu chez Steam"]
+    lignes = []
+    steam = temoin.get("steam", "")
+    if steam:
+        ligne = f"  · au dernier lancement, Steam disait « {steam} »"
+        # Le « même quand elle ne sert pas » : la langue est posée à la main,
+        # Steam en dit une autre, et le rapport porte les DEUX. La condition
+        # nomme `AUTO` plutôt que de se fier à l'écart des deux valeurs —
+        # sous « auto », la langue de Steam EST la langue demandée, et une
+        # égalité fortuite ne doit pas décider de ce qu'on écrit.
+        if (report.langue != langue_mod.AUTO and decision is not None
+                and decision.langue and steam != decision.langue):
+            ligne += (" — la langue étant posée à la main, cette valeur ne "
+                      "sert pas ; elle est dite pour que ce relevé reste "
+                      "vérifiable")
+        lignes.append(ligne)
+    else:
+        lignes.append("  · au dernier lancement, Steam n'a rien dit — jamais "
+                      "lancé par Steam, ou sa langue n'a pas pu être lue")
+    # Ce que le lanceur a RETENU la dernière fois. Dit seulement s'il diffère
+    # de ce qui vaut aujourd'hui : c'est alors un réglage changé depuis le
+    # dernier jeu, et sans cette ligne le propriétaire lirait la langue de son
+    # prochain jeu en croyant lire celle du précédent.
+    vue = temoin.get("langue", "")
+    if vue and decision is not None and vue != decision.langue:
+        lignes.append(f"      le dernier jeu a demandé « {vue} » : le réglage "
+                      "a changé depuis, le prochain suivra la ligne ci-dessus")
+    return lignes
+
+
+def _lignes_langue(report: Report) -> list[str]:
+    """La langue de la console, sa source, et ce que chaque émulateur en fait.
+
+    Trois choses qu'aucune autre section ne porte, et une quatrième qui n'est
+    écrite nulle part ailleurs — le rappel que ces clés sont reposées à chaque
+    lancement.
+
+    LA LANGUE EST DITE « DEMANDÉE », JAMAIS « POSÉE ». Le témoin l'écrit AVANT
+    l'amorçage, et une seule ligne ne pourrait de toute façon pas résumer ce
+    qui a été posé sur N cibles, chacune passant par son propre repli. Écrire
+    « posée » ferait affirmer qu'un émulateur a reçu une langue qu'il n'a
+    jamais reçue — ce que les lignes par entrée, elles, disent pour de bon.
+    """
+    decision = _decision_langue(report.langue, report.langue_temoin)
+    lignes: list[str] = []
+    if decision is not None:
+        if decision.langue:
+            lignes.append(f"  · langue demandée : « {decision.langue} » — "
+                          f"{decision.motif}")
+        else:
+            lignes.append(f"  · aucune langue demandée — {decision.motif}")
+            lignes.append("      chaque émulateur pose alors le repli de son "
+                          "profil, quand il en déclare un")
+        lignes += _lignes_temoin_langue(report, decision)
+    for e in report.langues:
+        ou = f" ({e.cible})" if e.cible else ""
+        if not e.declared:
+            # L'ÉTAT QUI COMPTE. Sans lui, un émulateur qui ne suit pas la
+            # langue serait indiscernable d'un émulateur qui la suit mal — et
+            # les deux se lisent à l'écran de la même façon, un jeu en anglais.
+            # Ce que ça COÛTE est dit une seule fois, plus bas : la moitié des
+            # entrées livrées portent cette ligne, et une conséquence répétée
+            # dix fois se lit zéro fois — c'est la règle de la légende du
+            # remplissage.
+            lignes.append(f"  · {e.profile_id}{ou} : aucune table de langues "
+                          "déclarée")
+        elif e.motif:
+            lignes.append(f"  · {e.profile_id}{ou} : {e.motif}")
+        else:
+            lignes.append(f"  · {e.profile_id}{ou} : pose « {e.langue} »")
+    if not lignes:
+        return []
+    # La conséquence des entrées muettes, dite UNE fois — et dite, parce que
+    # « aucune table déclarée » sans elle se lit comme un détail de profil,
+    # alors que c'est la réponse à « pourquoi ce jeu est-il en anglais ».
+    if any(not e.declared for e in report.langues):
+        lignes.append("  un émulateur sans table pose ses propres défauts : "
+                      "ses jeux resteront dans SA langue, quoi que la console "
+                      "demande. Ce n'est pas « il la suit mal », c'est « il "
+                      "ne la suit pas ».")
+    # LA CONTREPARTIE, et le rapport est le seul endroit où elle puisse se
+    # lire. Le propriétaire qui change sa langue dans DuckStation et la voit
+    # revenir au jeu suivant doit lire POURQUOI : sans cette ligne, la
+    # promesse « un émulateur que vous avez réglé vous appartient » a une
+    # exception que rien n'écrit nulle part.
+    lignes.append("  toute table de langues déclarée est reposée à chaque "
+                  "lancement, par la même fusion que les clés imposées : la "
+                  "langue échappe au propriétaire — changée dans l'émulateur, "
+                  "elle reviendra au prochain jeu. « retro langue » est "
+                  "l'endroit où elle se change.")
+    return lignes
+
+
 def _lignes_manettes(report: Report) -> list[str]:
     """Où en est la manette de chaque émulateur.
 
@@ -1391,6 +1627,19 @@ def format_report(report: Report) -> str:
     sections += _section(
         "Amorçage", _lignes_amorcage(report),
         "aucun profil chargé : l'amorçage se lit profil par profil")
+
+    # INCONDITIONNELLE, comme les précédentes, et pour une raison qui lui est
+    # propre : une langue qui ne s'applique pas ne se constate QUE devant la
+    # télévision, sur un jeu en anglais — et un jeu en anglais a trois causes
+    # que rien d'autre ne distingue (la console ne demande rien, l'émulateur
+    # ne déclare aucune table, ou il pose son repli). Le repli de section dit
+    # exactement ce que le vide veut dire.
+    sections += _section(
+        f"Langue — demandée « {report.langue} »" if report.langue
+        else "Langue",
+        _lignes_langue(report),
+        "aucune langue lue : ce rapport ne peut pas dire laquelle la console "
+        "demande")
 
     # INCONDITIONNELLE, comme BIOS, Rendu et Amorçage. Elle l'est ici pour une
     # raison de plus : une manette muette ne se constate que le pad en main,

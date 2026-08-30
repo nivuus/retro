@@ -635,6 +635,38 @@ def ecrire_langue(emulation_root_local, langue: str) -> pathlib.Path:
     return fichier
 
 
+def lire_temoin_langue(emulation_root_local) -> dict[str, str] | None:
+    """Ce que le lanceur a vu chez Steam au dernier jeu, ou None.
+
+    `None` veut dire « aucun jeu n'a été lancé depuis que ce mécanisme
+    existe », et c'est le seul état sous lequel une absence n'accuse personne.
+    Le confondre avec « Steam n'a rien dit » ferait chercher une panne là où
+    il n'y a qu'une console qui n'a pas encore joué.
+
+    Le témoin porte la langue DEMANDÉE, pas celle qui a été posée : le
+    lanceur l'écrit AVANT d'amorcer, et une seule ligne ne pourrait de toute
+    façon pas résumer ce qui a été posé sur N cibles, chacune passant par son
+    propre repli. Ce que chaque émulateur en fait se lit ailleurs, entrée par
+    entrée — `status.etat_langues`.
+
+    Une ligne sans « = » est IGNORÉE plutôt que fatale, comme pour le témoin
+    des manettes : ce fichier est écrit par un autre langage, sur une autre
+    machine, et un rapport partiel en dit plus qu'un rapport qui refuse de se
+    rendre.
+    """
+    fichier = local_dir(emulation_root_local) / TEMOIN_LANGUE
+    try:
+        texte = fichier.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    lu: dict[str, str] = {}
+    for ligne in texte.splitlines():
+        cle, separateur, valeur = ligne.partition("=")
+        if separateur and cle.strip():
+            lu[cle.strip()] = valeur.strip()
+    return lu
+
+
 def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
                 install_dirs: dict[str, str]) -> list[str]:
     """Écrit un plan par système, et retire ceux qui n'ont plus de profil.

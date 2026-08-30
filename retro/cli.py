@@ -656,6 +656,17 @@ def _cmd_status(args) -> int:
             profils=profils,
             render_mode=launcher_mod.lire_mode(
                 pathlib.Path(args.emulation_root)),
+            # La langue DEMANDÉE, et ce que le lanceur a vu chez Steam au
+            # dernier jeu. Deux lectures et non une : la première est un
+            # réglage que le propriétaire a posé ici, la seconde un témoin
+            # écrit là-bas, et le rapport doit porter les DEUX — sans quoi
+            # rien ne permet de vérifier depuis un canapé que le lanceur lit
+            # vraiment le registre de Steam. Même racine, même limite que
+            # `lire_mode` ci-dessus.
+            langue=launcher_mod.lire_langue(
+                pathlib.Path(args.emulation_root)),
+            langue_temoin=launcher_mod.lire_temoin_langue(
+                pathlib.Path(args.emulation_root)),
             steam_input_muets=muets,
             steam_input_echec=echec_steam_input,
             # Le témoin que le lanceur écrit : `status` ne peut pas

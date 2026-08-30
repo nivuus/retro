@@ -733,6 +733,48 @@ def test_un_profil_reste_amorcable_avec_des_amorcages_indices(tmp_path,
     assert launcher.ordonner_reamorcage(tmp_path, "rpcs3").is_file()
 
 
+PROFIL_LANGUE_AMORCABLE = PROFIL.replace(
+    "[[system]]",
+    """[[bootstrap]]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé une fois, et ce qui vous appartient.
+[Main]
+Theme = dark
+'''
+[bootstrap.langue]
+repli = "english"
+english = '''
+[Main]
+Language = en
+'''
+french = '''
+[Main]
+Language = fr
+'''
+[[system]]""", 1)
+
+
+def test_un_fragment_de_langue_ne_passe_pas_pour_un_profil_amorcable(tmp_path):
+    """`profils_amorcables` coupe sur « .bootstrap » : il ignore donc les
+    fragments « duckstation.langue.1.french.ini » déposés à côté. Rien ne
+    l'attestait, et une régression y serait MUETTE — « retro launcher
+    --reamorcer » proposerait un profil nommé « duckstation.langue.1.french »,
+    ou refuserait le vrai, et il faudrait relire le lanceur pour comprendre.
+    """
+    p = tmp_path / "duckstation-langue.toml"
+    p.write_text(PROFIL_LANGUE_AMORCABLE, encoding="utf-8")
+    profils = {"duckstation": profiles.load_profile(p)}
+    launcher.ecrire_plan(tmp_path, "D:\\Emulation", profils,
+                         {"duckstation": "DuckStation"})
+    deposes = [f.name for f in
+               (launcher.local_dir(tmp_path) / launcher.PLAN).iterdir()]
+    assert [n for n in deposes if ".langue." in n], (
+        "aucun fragment de langue déposé : le test ne prouverait rien")
+    assert launcher.profils_amorcables(tmp_path) == ["duckstation"]
+
+
 def test_aucun_plan_ecrit_ne_porte_de_jeton_non_substitue(tmp_path):
     """La moitié Python du garde que le lanceur porte en C#.
 
