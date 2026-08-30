@@ -190,6 +190,67 @@ LargeMotor = SDL-1/LargeMotor
 SmallMotor = SDL-1/SmallMotor
 """
 
+# LA LANGUE DE L'INTERFACE DE PCSX2.
+#
+# RELEVÉE le 2026-08-30, en deux endroits, parce qu'aucun des deux ne suffit.
+#
+# LA CLÉ vient de la source : pcsx2-qt/Translations.cpp lit
+# Host::GetBaseStringSettingValue("UI", "Language", GetDefaultLanguage()).
+# C'est « [UI] Language », et pas la section [Main] de DuckStation — deux
+# émulateurs proches ne rangent pas leurs réglages au même endroit, et
+# recopier l'un dans l'autre aurait écrit une clé qu'aucun des deux ne lit.
+#
+# LES VALEURS viennent de LA VERSION INSTALLÉE, pas du dépôt amont : les
+# fichiers D:\Emulation\PCSX2\translations\pcsx2-qt_<code>.qm, énumérés sur
+# la console. C'est le relevé qui vaut, parce qu'une langue que le dépôt
+# traduit mais que cette construction-ci ne livre pas n'existe pas ici : le
+# réglage serait écrit, accepté, et l'interface resterait en anglais.
+#
+# CE QUE CE RELEVÉ A DONNÉ DE PLUS QUE PRÉVU : PCSX2 distingue « es-419 » de
+# « es-ES », exactement comme Steam distingue « latam » de « spanish ». Les
+# deux se correspondent terme à terme, sans arbitrage — c'est le seul
+# émulateur relevé jusqu'ici dont la liste épouse celle de Steam sur ce point.
+#
+# Deux langues de Steam manquent à cette construction — le thaï et le malais —
+# et prennent donc le repli. « retro status » les nomme.
+#
+# COMME DUCKSTATION, CE PROFIL NE POSE QUE L'INTERFACE. La PlayStation 2 tient
+# sa langue de sa région, gravée dans le disque et dans le BIOS employé ;
+# PCSX2 n'expose aucun réglage de langue système qu'un jeu interrogerait. Ne
+# rien déclarer sur ce second axe est ici la réponse juste, pas une mesure
+# qui manque.
+[bootstrap.langue]
+repli = "english"
+arabic     = "[UI]\nLanguage = ar-SA"
+bulgarian  = "[UI]\nLanguage = bg-BG"
+czech      = "[UI]\nLanguage = cs-CZ"
+danish     = "[UI]\nLanguage = da-DK"
+german     = "[UI]\nLanguage = de-DE"
+greek      = "[UI]\nLanguage = el-GR"
+english    = "[UI]\nLanguage = en-US"
+latam      = "[UI]\nLanguage = es-419"
+spanish    = "[UI]\nLanguage = es-ES"
+finnish    = "[UI]\nLanguage = fi-FI"
+french     = "[UI]\nLanguage = fr-FR"
+hungarian  = "[UI]\nLanguage = hu-HU"
+indonesian = "[UI]\nLanguage = id-ID"
+italian    = "[UI]\nLanguage = it-IT"
+japanese   = "[UI]\nLanguage = ja-JP"
+koreana    = "[UI]\nLanguage = ko-KR"
+dutch      = "[UI]\nLanguage = nl-NL"
+norwegian  = "[UI]\nLanguage = no-NO"
+polish     = "[UI]\nLanguage = pl-PL"
+brazilian  = "[UI]\nLanguage = pt-BR"
+portuguese = "[UI]\nLanguage = pt-PT"
+romanian   = "[UI]\nLanguage = ro-RO"
+russian    = "[UI]\nLanguage = ru-RU"
+swedish    = "[UI]\nLanguage = sv-SE"
+turkish    = "[UI]\nLanguage = tr-TR"
+ukrainian  = "[UI]\nLanguage = uk-UA"
+vietnamese = "[UI]\nLanguage = vi-VN"
+schinese   = "[UI]\nLanguage = zh-CN"
+tchinese   = "[UI]\nLanguage = zh-TW"
+
 [input]
 steam_input = "required"
 mode        = "xinput"

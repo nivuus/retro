@@ -239,6 +239,60 @@ enforced = """
 melonds_touch_mode = "Touch"
 """
 
+# LA LANGUE DE LA NINTENDO DS — ET C'EST L'AUTRE AXE, celui que les JEUX
+# lisent. Ce n'est pas l'interface de RetroArch (elle est réglée plus haut,
+# dans retroarch.cfg) : c'est la langue du firmware que la console DS présente
+# au jeu, celle qui décide si Pokémon s'ouvre en français ou en anglais.
+#
+# RELEVÉE le 2026-08-30 dans src/libretro/libretro_core_options.h du cœur, où
+# chaque option déclare son nom, ses valeurs admises et son défaut. Les six
+# valeurs sont EXACTEMENT celles-là, capitale comprise — « French » et non
+# « french » : une option de cœur dont la valeur n'est pas dans la liste est
+# ignorée sans un mot, et le jeu repart dans la langue précédente.
+#
+# LA SECONDE CLÉ N'EST PAS UN BONUS, C'EST LA CONDITION DE LA PREMIÈRE. La
+# description de `melonds_language` dans cette même source le dit : « Selected
+# language will be used IF 'Use Firmware Settings' is disabled or if firmware
+# file was not found ». Son défaut est bien « disabled », donc la langue
+# s'applique aujourd'hui — mais un propriétaire qui activerait les réglages
+# firmware ferait ignorer TOUTE cette table, sans qu'aucun message ne le dise,
+# et le symptôme serait « la console demande le français, le jeu est en
+# anglais ». Les deux clés voyagent donc ensemble, dans chaque langue.
+#
+# Les langues de Steam que le cœur ne connaît pas — soit vingt-quatre des
+# trente et une — prennent le repli. « latam » est rendu par « Spanish », le
+# seul espagnol de la liste : un choix déclaré, pas un repli.
+[bootstrap.langue]
+repli = "english"
+english  = """
+melonds_use_fw_settings = "disabled"
+melonds_language = "English"
+"""
+japanese = """
+melonds_use_fw_settings = "disabled"
+melonds_language = "Japanese"
+"""
+french   = """
+melonds_use_fw_settings = "disabled"
+melonds_language = "French"
+"""
+german   = """
+melonds_use_fw_settings = "disabled"
+melonds_language = "German"
+"""
+italian  = """
+melonds_use_fw_settings = "disabled"
+melonds_language = "Italian"
+"""
+spanish  = """
+melonds_use_fw_settings = "disabled"
+melonds_language = "Spanish"
+"""
+latam    = """
+melonds_use_fw_settings = "disabled"
+melonds_language = "Spanish"
+"""
+
 [input]
 steam_input = "required"
 mode        = "xinput"
