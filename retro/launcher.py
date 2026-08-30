@@ -44,6 +44,7 @@ EXE = "retro-launch.exe"
 SOURCE = "retro-launch.cs"
 PLAN = "systems"
 MODE = "mode.txt"
+LANGUE_FICHIER = "langue.txt"
 
 
 def launcher_dir(emulation_root: str) -> str:
@@ -590,6 +591,42 @@ def ecrire_mode(emulation_root_local, mode: str) -> pathlib.Path:
     dossier.mkdir(parents=True, exist_ok=True)
     fichier = dossier / MODE
     fichier.write_text(mode + "\n", encoding="utf-8")
+    return fichier
+
+
+def lire_langue(emulation_root_local) -> str:
+    """La langue choisie par le propriétaire, ou `auto` à défaut.
+
+    Dans un fichier, PAS dans les options de lancement de Steam, et pour la
+    raison exacte qui y a mis le mode de rendu : l'identifiant d'un raccourci
+    dérive de ses options. Écrire la langue là ferait changer d'identifiant à
+    toute la bibliothèque à chaque changement de langue, et tout l'artwork
+    serait à retélécharger pour un réglage.
+    """
+    fichier = local_dir(emulation_root_local) / LANGUE_FICHIER
+    try:
+        valeur = fichier.read_text(encoding="utf-8").strip()
+    except OSError:
+        return langue_mod.AUTO
+    return valeur if valeur in langue_mod.VALEURS else langue_mod.AUTO
+
+
+def ecrire_langue(emulation_root_local, langue: str) -> pathlib.Path:
+    """Pose la langue. Le lanceur la relit à chaque jeu : rien à
+    resynchroniser, aucune entrée Steam touchée, aucune vignette à reprendre.
+
+    Refusée ICI si elle est inconnue, et non ignorée à la lecture : une
+    coquille posée en silence ferait croire à un réglage appliqué.
+    """
+    if langue not in langue_mod.VALEURS:
+        raise langue_mod.LangueError(
+            f"langue inconnue : « {langue} ». Les langues sont celles de "
+            f"Steam, par leur nom, ou « {langue_mod.AUTO} »."
+        )
+    dossier = local_dir(emulation_root_local)
+    dossier.mkdir(parents=True, exist_ok=True)
+    fichier = dossier / LANGUE_FICHIER
+    fichier.write_text(langue + "\n", encoding="utf-8")
     return fichier
 
 

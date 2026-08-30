@@ -169,6 +169,42 @@ def test_changer_de_mode_ne_touche_pas_aux_options_de_lancement(tmp_path):
     assert (tmp_path / launcher.DIR / launcher.MODE).is_file()
 
 
+# --- la langue choisie -------------------------------------------------
+
+def test_sans_fichier_la_langue_vaut_auto(tmp_path):
+    """Le défaut est de suivre Steam : c'est ce que le propriétaire a
+    choisi, et un défaut figé ferait mentir la commande qui l'affiche."""
+    assert launcher.lire_langue(tmp_path) == langue_mod.AUTO
+
+
+def test_une_langue_posee_se_relit(tmp_path):
+    launcher.ecrire_langue(tmp_path, "japanese")
+    assert launcher.lire_langue(tmp_path) == "japanese"
+
+
+def test_un_fichier_illisible_retombe_sur_auto(tmp_path):
+    """Un fichier abîmé ne doit pas empêcher un jeu de se lancer : `auto`
+    est le comportement par défaut, pas un aveu."""
+    dossier = launcher.local_dir(tmp_path)
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / launcher.LANGUE_FICHIER).write_text("n'importe quoi\n",
+                                                   encoding="utf-8")
+    assert launcher.lire_langue(tmp_path) == langue_mod.AUTO
+
+
+def test_une_langue_inconnue_est_refusee_a_l_ecriture(tmp_path):
+    """Refusée à l'écriture, pas ignorée à la lecture : une coquille posée
+    en silence ferait croire à un réglage appliqué."""
+    with pytest.raises(langue_mod.LangueError):
+        launcher.ecrire_langue(tmp_path, "frensh")
+
+
+def test_auto_s_ecrit_comme_les_autres(tmp_path):
+    launcher.ecrire_langue(tmp_path, "french")
+    launcher.ecrire_langue(tmp_path, langue_mod.AUTO)
+    assert launcher.lire_langue(tmp_path) == langue_mod.AUTO
+
+
 # --- le lanceur doit exister --------------------------------------------
 
 def test_un_lanceur_absent_se_voit(tmp_path):
