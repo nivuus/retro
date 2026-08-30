@@ -64,11 +64,36 @@ quand vous voulez :
   d'émulation déclaré dans le profil avec ce que votre machine offre. Le mode
   vit dans un fichier que le lanceur relit à chaque jeu : en changer ne touche
   aucune entrée Steam, donc aucune vignette n'est à retélécharger.
-- **`retro langue`** lit ou pose la langue de la console. La langue vit dans un
-  fichier que le lanceur relit à chaque jeu : en changer ne touche aucune entrée
-  Steam, donc aucune vignette n'est à retélécharger. Sans `--langue`, affiche la
-  langue courante ; avec `--langue`, pose une nouvelle langue et confirme
-  l'écriture. C'est `auto` par défaut — la langue suit celle de Steam.
+- **`retro langue`** lit ou pose la langue de la console — une seule, pour tous
+  les systèmes, comme le mode de rendu. Sans `--langue`, elle affiche celle qui
+  est en vigueur ; avec, elle la pose et nomme le fichier écrit. C'est `auto`
+  par défaut : le lanceur lit alors la langue du client Steam dans le registre,
+  par son **nom** — `french`, `koreana`, `brazilian`, et non un code ISO. Un
+  nom que `retro` ne connaît pas ne fait rien échouer et ne se perd pas non
+  plus : chaque table déclare le **repli** qui s'applique alors, `retro status`
+  dit lequel, et le choix a été fait par `retro scan` — le lanceur lit une
+  ligne de plan, il ne décide de rien. Comme le mode de rendu, la langue vit à
+  côté des plans de lancement et non dans les options d'un raccourci : en
+  changer ne crée donc aucune entrée Steam, et rien n'est à retélécharger.
+
+  **Ces clés-là sont reposées à chaque lancement**, par la même fusion que les
+  clés imposées, et c'est la seule exception à « un émulateur que vous avez
+  réglé vous appartient » : la langue que vous changeriez dans l'émulateur
+  lui-même reviendrait au jeu suivant. `retro langue` est l'endroit où elle se
+  change. À l'inverse, un émulateur dont le profil **ne déclare aucune table**
+  ne reçoit rien du tout — ses jeux restent dans **sa** langue, quoi que la
+  console demande. Ce n'est pas « il la suit mal », c'est « il ne la suit pas »,
+  et les deux se lisent pareil à l'écran : un jeu en anglais.
+
+  **Le mécanisme est en place et testé, mais aucun profil ne déclare encore de
+  table** : la commande accepte les trente et une langues de Steam et n'en pose
+  aujourd'hui aucune. C'est l'état réel de la console, et `retro status` est le
+  seul endroit où il se lit — « aucune table de langues déclarée », pour les
+  dix entrées d'amorçage des six profils qui en portent une ; les quatre autres
+  profils n'ont aucune entrée d'amorçage, donc pas même une ligne. Les valeurs
+  se relèvent sur chaque émulateur, une par une : voir `docs/dettes.md`, D12.
+  Ajouter une table **exige un nouveau `retro scan`** — ce sont les fragments
+  qu'il dépose que le lanceur fusionne.
 - **`retro bios`** obtient les BIOS manquants depuis une source **que vous
   déclarez** dans votre propre manifeste, et n'écrit que ce qu'elle a vérifié :
   chaque fichier reçu est comparé au **md5 que le profil déclare**, jamais à un
@@ -206,13 +231,15 @@ nom du système.
 
 ### Ce qui manque, et qui est écrit quelque part
 
-**Neuf** manques constatés sont consignés dans `docs/dettes.md`, chacun avec
+**Douze** manques constatés sont consignés dans `docs/dettes.md`, chacun avec
 ce qu'il coûte vu du canapé et où il se joue dans le code : aucune vibration
 nulle part, rien qui garantisse une image maximale sans déformation, ni capteur
 de mouvement ni manette PlayStation, la console qui tourne sur un paquet périmé
 sans que rien ne le dise, **quatre réglages critiques que le mécanisme
 d'amorçage ne sait pas tenir**, une PS4 dont l'émulateur ne peut recevoir aucun
-jeu, et une PS Vita où installer un jeu échoue par les deux voies prévues. Ceux
+jeu, une PS Vita où installer un jeu échoue par les deux voies prévues, et
+**une langue que le mécanisme sait poser et qu'aucun profil ne déclare
+encore**. Ceux
 qui touchent la manette débordent sur l'invité Windows, qui a son propre fichier
 dans `nivuus/installer` : `docs/console-dettes.md`.
 

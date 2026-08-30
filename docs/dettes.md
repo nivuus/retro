@@ -1296,6 +1296,129 @@ aller, à côté de celle du paquet.
 
 ---
 
+## D12 — La langue est posable, et aucun profil ne dit quoi poser
+
+**Constatée le 2026-08-30**, en livrant le mécanisme lui-même. Ce n'est pas une
+panne, c'est une chaîne complète à laquelle il manque sa dernière pièce — et
+cette pièce est un **relevé**, pas du code. Elle est ouverte le jour de la
+livraison plutôt que découverte trois semaines plus tard : sans cette entrée,
+un mécanisme qui ne pose rien se lit comme un mécanisme qui marche.
+
+### Ce qui est livré, et testé
+
+| Pièce | Où |
+|---|---|
+| La résolution — ce que la CONSOLE veut, ce qu'UN ÉMULATEUR pose, séparément | `retro/langue.py` ; les **31 noms de langue de Steam**, relevés le 2026-08-30 et non devinés (le relevé est en fin de ce fichier) |
+| La déclaration : une table `[bootstrap.langue]` par entrée d'amorçage, gardée par **quatre refus** au chargement | `retro/profiles.py`, `_lire_langues` |
+| Un fragment de configuration **par langue**, déposé par `retro scan` | `retro/launcher.py`, `langue_name` et `fragments_attendus` |
+| Une **ligne de plan par langue**, replis déjà résolus par Python — le lanceur lit, il ne décide pas | `retro/launcher.py`, `ecrire_plan` (`bootstrap_langue.<rang>.<langue>`) |
+| `langue.txt`, relu à chaque jeu, et la commande qui l'écrit | `retro/launcher.py` (`lire_langue`, `ecrire_langue`), `retro/cli.py` (`_cmd_langue`) |
+| La lecture de `HKCU\Software\Valve\Steam`, la fusion du fragment après les clés imposées, et le témoin `langue-vue.txt` | `retro/data/launcher/retro-launch.cs` |
+| Le rapport : langue demandée, ce que Steam disait au dernier jeu, ce que chaque entrée posera au prochain | `retro/status.py`, `etat_langues` et `_lignes_langue` |
+
+**Et aucun des dix profils livrés ne déclare de `[bootstrap.langue]`.** La
+commande accepte les trente et une langues, et n'en pose aucune.
+
+### Les tables qui manquent — deux cas, deux coûts
+
+**Six profils portent déjà une entrée d'amorçage**, dix entrées en tout :
+DuckStation (1), PCSX2 (1), Dolphin (2), RetroArch (2), RPCS3 (2), Vita3K (2).
+Chez eux la cible est déjà mesurée et le dialecte déjà tranché ; il ne manque
+que la table elle-même — le nom de la clé, et la valeur qu'elle prend pour
+chaque langue. **Rien ne s'en déduit** : selon l'émulateur, cette valeur peut
+être le nom de la langue, un code court, un entier ou un identifiant maison,
+et c'est précisément ce qui doit se relever dans sa source ou dans un fichier
+qu'il a lui-même écrit. Une valeur recopiée d'une documentation poserait une
+clé d'apparence juste qui ne ferait rien — ce sont les deux pièges déjà payés
+en D7 sur RPCS3, `XInput` avec ses deux majuscules et le `Device` qu'il faut
+citer.
+
+**Quatre n'ont aucune entrée d'amorçage** : `cemu`, `flycast`, `ppsspp`,
+`xemu`. Chez eux, la question de la langue ne se pose même pas encore — il faut
+d'abord établir **où vit le fichier de réglages**, ce qu'un `[[bootstrap]]`
+répond, et chacun des quatre porte déjà en tête de profil la note qui dit que
+personne n'a regardé. Conséquence facile à manquer : la section Langue de
+`retro status` parcourt les **entrées d'amorçage**, pas les profils. Ces
+quatre-là n'y apparaissent donc **pas du tout** — pas même une ligne « aucune
+table ». Leur silence s'y lit comme une absence de sujet, alors que c'est la
+même dette.
+
+### Il manque à la langue le pendant de `fill_absent`
+
+Le remplissage sait distinguer deux choses que la langue confond : `fill`
+déclare le comportement, `fill_absent` déclare que **la question a été posée et
+que la réponse est non**, et `retro status` affiche cette raison. Rien ne joue
+ce rôle pour la langue. Une entrée sans `[bootstrap.langue]` rend un seul état,
+« aucune table de langues déclarée », et cet état recouvre deux situations qui
+n'appellent pas le même geste :
+
+- l'émulateur **n'expose réellement aucun réglage de langue** — il n'y a rien à
+  poser, et il n'y aura jamais rien ;
+- **personne n'a encore relevé sa table** — c'est l'état des dix entrées
+  aujourd'hui.
+
+Tant que la dette est ouverte, les deux se confondent sans dommage : la réponse
+est « aucune, partout ». **C'est sa clôture qui arme le piège.** Le jour où huit
+entrées sur dix porteront leur table, les deux qui n'en auront pas seront
+indiscernables — un oubli aura exactement la même trace à l'écran qu'un constat
+d'impossibilité, et le rapport dira des deux la même phrase. Les quatre profils
+sans amorçage portent aujourd'hui cette distinction **en commentaire** (« ce
+bloc absent dit donc “personne n'a encore regardé”, pas “cet émulateur se
+débrouille” ») : un commentaire n'est pas un garde-fou, et il ne remonte dans
+aucun rapport.
+
+C'est nommé ici et **pas implémenté** : la forme juste — un champ jumeau, ou un
+`langue_absente` porteur d'une raison, sur le modèle exact de `fill_absent` et
+de la `note` qu'un `args` vide exige — se décide avec la première table qu'on
+relèvera pour de bon, pas avant d'en avoir vu une.
+
+### Et `--explain` ne rend rien de la langue
+
+`--explain` est le seul contrôle lisible à distance, sans lancer de jeu. Il ne
+porte **aucune ligne** sur la langue : ni la valeur lue chez Steam, ni celle
+qui serait retenue, ni le fragment qui serait fusionné. La décision de langue
+est prise après le point où `--explain` rend son rapport et sort.
+
+Pire, et c'est ce qui en fait une dette plutôt qu'un manque de confort :
+`amorcage_a_poser.<n>` ne consulte que `bootstrap_enforced.<n>`. Une entrée qui
+ne porterait **qu'une table de langues** — aucune clé imposée — et dont la
+cible existe déjà obtiendrait « non (la cible existe) », alors que sa fusion de
+langue, elle, aura bien lieu au prochain jeu. Le commentaire voisin dit
+exactement pourquoi le cas imposé a été traité : « répondre "non (la cible
+existe)" quand il y en a mentirait sur le seul contrôle vérifiable à
+distance ». La langue rouvre ce mensonge par l'autre porte. Aujourd'hui il ne
+se produit pas, faute de table ; il naîtra avec la première.
+
+### Rien de tout cela n'a été compilé
+
+**Il n'existe aucun compilateur C# sur l'hôte** — ni `csc`, ni `mcs`, ni
+`mono`, ni `dotnet` — c'est la dette D7, et elle vaut ici à l'identique. Le
+`.cs` n'est validé que par des tests Python qui exigent qu'il *lise* chaque clé
+du plan. **Restent à mesurer sur la console :** la lecture réelle du registre,
+la **double fusion** — les clés imposées puis la langue, sur la même cible et
+au même lancement —, l'écriture du témoin `langue-vue.txt`, et le fait qu'une
+langue changée à chaud soit bien reprise au jeu suivant.
+
+**L'ordre sur la machine est obligatoire** : `retro launcher`, `compiler.cmd`,
+**puis** `retro scan`. Un lanceur d'avant échoue bruyamment sur un plan
+d'après ; c'est la conséquence que D7 porte déjà, et le plan a gagné depuis des
+lignes `bootstrap_langue.*` qu'un binaire ancien ne sait pas lire.
+
+**Ce que ça coûte aujourd'hui :** rien qui casse — et c'est ce qui rend la
+dette facile à oublier. Une commande existe, elle répond, elle écrit son
+fichier, `retro status` la rapporte honnêtement, et **aucun jeu ne change de
+langue**. Vu du canapé : le propriétaire pose `french`, lance Crash Team
+Racing, et le jeu démarre en anglais — sans le moindre message, parce qu'il n'y
+a rien à signaler. La seule chose qui le lui dise est la ligne « aucune table
+de langues déclarée » de `retro status`, qu'il faut penser à aller lire.
+
+**Où ça se joue :** les tables `[bootstrap.langue]` dans
+`retro/data/profiles/*.toml` — c'est là qu'est tout le travail restant —, la
+distinction manquante dans `retro/profiles.py` (`_lire_langues`) et son rendu
+dans `retro/status.py` (`_lignes_langue`), et la sortie `--explain` de
+`retro/data/launcher/retro-launch.cs`.
+---
+
 ## Relevé — où Steam dit sa langue, et sous quels noms — 2026-08-30
 
 Fait pour la tâche 1 de
