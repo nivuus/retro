@@ -254,7 +254,7 @@ AUTO = "auto"
 LANGUES = (
     "arabic", "bulgarian", "schinese", "tchinese", "czech", "danish",
     "dutch", "english", "finnish", "french", "german", "greek",
-    "hungarian", "indonesian", "italian", "japanese", "koreana",
+    "hungarian", "indonesian", "italian", "japanese", "koreana", "malay",
     "norwegian", "polish", "portuguese", "brazilian", "romanian",
     "russian", "spanish", "latam", "swedish", "thai", "turkish",
     "ukrainian", "vietnamese",
@@ -318,9 +318,11 @@ def appliquer(voulue: str, declarees: tuple[str, ...], repli: str) -> Decision:
     return Decision(repli, f"repli sur « {repli} »")
 ```
 
-**Avant d'écrire :** remplacer `LANGUES` par la liste épinglée en tâche 1 si
-elle diffère. La liste ci-dessus est celle que Steam documente ; elle doit être
-**confirmée**, pas recopiée de confiance.
+**La liste ci-dessus EST le relevé de la tâche 1** — trente et une langues,
+confirmées sur `partner.steamgames.com/doc/store/localization/languages` le
+2026-08-30 et consignées dans `docs/dettes.md`. La transcrire telle quelle.
+La première rédaction de ce plan en comptait trente et oubliait `malay` :
+c'est précisément pourquoi elle se relève au lieu de se deviner.
 
 - [ ] **Step 4: Lancer les tests, vérifier qu'ils passent**
 

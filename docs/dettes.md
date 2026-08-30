@@ -1293,3 +1293,61 @@ diagnostiqueront donc l'une pour l'autre.
 fusionneur de `retro/data/launcher/retro-launch.cs`, et le témoin que D6 est en
 train de construire — c'est probablement là que l'identité du fragment doit
 aller, à côté de celle du paquet.
+
+---
+
+## Relevé — où Steam dit sa langue, et sous quels noms — 2026-08-30
+
+Fait pour la tâche 1 de
+`docs/superpowers/plans/2026-08-30-langue-de-la-console.md`, dont tout le
+reste dépend : le spec disait explicitement que ce point n'était pas prouvé.
+
+### La clé de registre : elle existe
+
+Commande jouée depuis l'hôte, par le canal WinRM du dépôt
+(`packages/installer/console/guest/winrm_exec.py`, transport NTLM) :
+
+```
+reg query "HKCU\Software\Valve\Steam" /v Language
+```
+
+Sortie :
+
+```
+HKEY_CURRENT_USER\Software\Valve\Steam
+    Language    REG_SZ    english
+```
+
+**Ce que ça tranche :** la clé existe, elle est de type `REG_SZ`, et sa valeur
+est le NOM de la langue **en minuscules** — `english`, pas `English` ni `en`.
+Le lanceur peut donc la lire par `Microsoft.Win32.Registry`, qui vit dans
+`mscorlib` : aucune référence supplémentaire à passer à `csc.exe`.
+
+**Ce que ça ne tranche PAS, et qui n'est pas mesuré :** à quel moment cette
+valeur suit un changement de langue fait dans l'interface de Steam — tout de
+suite, ou seulement après un redémarrage du client. Le mesurer demande une
+interaction graphique en session 1 et modifie l'environnement du
+propriétaire. **Le témoin rend la question sans objet** : `retro status`
+affiche la valeur BRUTE lue chez Steam, donc un décalage éventuel se voit
+de lui-même dans le rapport. Aucun avertissement « redémarrez Steam » n'est
+écrit, parce qu'il serait déduit d'un fait qu'on n'a pas.
+
+### Les noms de langue : trente et un, et la liste n'était pas devinable
+
+Relevés sur `partner.steamgames.com/doc/store/localization/languages`, colonne
+« API language code » — **les noms, pas les codes web** (`french`, jamais
+`fr`) :
+
+```
+arabic, bulgarian, schinese, tchinese, czech, danish, dutch, english,
+finnish, french, german, greek, hungarian, indonesian, italian, japanese,
+koreana, malay, norwegian, polish, portuguese, brazilian, romanian, russian,
+spanish, latam, swedish, thai, turkish, ukrainian, vietnamese
+```
+
+**Ce relevé a corrigé une faute.** La liste écrite de mémoire dans le plan en
+comptait trente et **oubliait `malay`**. C'est exactement la raison pour
+laquelle cette liste se relève au lieu de se deviner : `koreana` n'est pas
+`korean`, `brazilian` n'est pas `portuguese_br`, `latam` ne ressemble à rien,
+et une langue manquante est une ligne de plan absente — donc un jeu qui ne
+se lance pas, sur une console dont le propriétaire parle malais.
