@@ -30,6 +30,7 @@ import importlib.resources
 import pathlib
 import shutil
 
+from retro import langue as langue_mod
 from retro import profiles as profiles_mod
 from retro import render as render_mod
 
@@ -318,6 +319,34 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
             # vient de poser.
             f"bootstrap_enforced.{rang}={impose}",
         ]
+        # LA LANGUE : une ligne par langue de Steam, replis DÉJÀ RÉSOLUS.
+        #
+        # C'est la transposition exacte des lignes `auto_<classe>` du rendu, et
+        # pour la même raison : le lanceur classe ce qu'il mesure et lit la
+        # réponse, il ne rejoue aucune décision, donc il ne peut pas en prendre
+        # une autre. Un lanceur qui calculerait le repli pourrait en choisir un
+        # que `retro status` n'annonce pas — et deux juges qui se contredisent
+        # ne se contredisent jamais à voix haute.
+        #
+        # TOUTES les langues, y compris celles que ce profil ne déclare pas :
+        # le lanceur doit trouver une ligne quoi que Steam dise, sinon
+        # `Valeur()` lèverait sur une langue parfaitement légitime.
+        #
+        # `defaut` couvre le seul cas que Python ne peut pas pré-résoudre :
+        # Steam muet — jamais lancé, valeur absente, lecture impossible.
+        #
+        # Une entrée SANS table de langues n'écrit AUCUNE ligne, sur le modèle
+        # de `bootstrap_count=0` : écrire trente lignes vides ferait boucler
+        # le lanceur sur du rien.
+        if amorcage.langues:
+            declarees = tuple(nom for nom, _ in amorcage.langues)
+            for voulue in (*langue_mod.LANGUES, ""):
+                posee = langue_mod.appliquer(
+                    voulue, declarees, amorcage.langue_repli).langue
+                cle = voulue or "defaut"
+                lignes.append(
+                    f"bootstrap_langue.{rang}.{cle}={plan_dir}\\"
+                    f"{langue_name(profile_id, rang, posee, amorcage.target)}")
     return "\n".join(lignes) + "\n"
 
 

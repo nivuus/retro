@@ -3,6 +3,7 @@ import pathlib
 
 import pytest
 
+from retro import langue as langue_mod
 from retro import launcher, profiles, render
 
 
@@ -947,3 +948,78 @@ def test_le_lanceur_substitue_l_identifiant_du_jeu():
     assert src.index('"{rom_id}"') < src.index('.Replace("{rom}", rom)'), (
         "{rom_id} doit etre substitue AVANT {rom}"
     )
+
+
+# --- les lignes de langue du plan ------------------------------------------
+
+def _plan_avec_langues():
+    """Un plan écrit pour une entrée qui déclare english et french.
+
+    `profiles.System` exige `extensions` et `bios` — ni l'un ni l'autre
+    n'a de défaut dans le dataclass — d'où leur présence ici : les omettre
+    lèverait un `TypeError` avant même d'atteindre le plan.
+    """
+    amorcage = profiles.Bootstrap(
+        target=r"%USERPROFILE%\Documents\DuckStation\settings.ini",
+        content="; Écrit par « retro »\n",
+        langues=(("english", "[Main]\nLanguage = en\n"),
+                 ("french", "[Main]\nLanguage = fr\n")),
+        langue_repli="english",
+    )
+    systeme = profiles.System(
+        id="psx", name="PlayStation", extensions=(".cue",), launch="{rom}",
+        bios=())
+    texte = launcher.plan_systeme(
+        "duckstation", systeme, "E:\\D\\duck.exe", "E:\\D",
+        plan_dir="E:\\_launcher\\systems", bootstraps=(amorcage,))
+    return dict(l.split("=", 1) for l in texte.splitlines()
+                if "=" in l and not l.startswith("#"))
+
+
+def test_le_plan_porte_une_ligne_par_langue_de_steam():
+    """TOUTES les langues, pas seulement celles que le profil déclare : le
+    lanceur doit trouver une ligne quoi que Steam dise, sinon `Valeur()`
+    lèverait sur une langue parfaitement légitime."""
+    l = _plan_avec_langues()
+    for nom in langue_mod.LANGUES:
+        assert f"bootstrap_langue.1.{nom}" in l
+
+
+def test_une_langue_declaree_pointe_vers_son_propre_fragment():
+    l = _plan_avec_langues()
+    assert l["bootstrap_langue.1.french"] == (
+        "E:\\_launcher\\systems\\duckstation.langue.1.french.ini")
+
+
+def test_une_langue_non_declaree_pointe_vers_LE_REPLI_deja_resolu():
+    """C'est tout le principe : Python résout, le lanceur lit une ligne. Un
+    lanceur qui calculerait le repli pourrait en choisir un autre que celui
+    que `retro status` annonce, et les deux ne se contrediraient jamais à
+    voix haute."""
+    l = _plan_avec_langues()
+    assert l["bootstrap_langue.1.dutch"] == (
+        "E:\\_launcher\\systems\\duckstation.langue.1.english.ini")
+
+
+def test_le_plan_porte_un_defaut_pour_un_steam_muet():
+    """Le seul cas que Python ne peut pas pré-résoudre. Une clé absente
+    resterait une faute du plan, et `Valeur()` lèverait devant la
+    télévision."""
+    l = _plan_avec_langues()
+    assert l["bootstrap_langue.1.defaut"] == (
+        "E:\\_launcher\\systems\\duckstation.langue.1.english.ini")
+
+
+def test_une_entree_sans_table_n_ecrit_aucune_ligne_de_langue():
+    """Sur le modèle de `bootstrap_count=0` : écrire trente lignes vides
+    ferait boucler le lanceur sur du rien."""
+    amorcage = profiles.Bootstrap(
+        target=r"%USERPROFILE%\Documents\DuckStation\settings.ini",
+        content="; Écrit par « retro »\n")
+    systeme = profiles.System(
+        id="psx", name="PlayStation", extensions=(".cue",), launch="{rom}",
+        bios=())
+    texte = launcher.plan_systeme(
+        "duckstation", systeme, "E:\\D\\duck.exe", "E:\\D",
+        plan_dir="E:\\_launcher\\systems", bootstraps=(amorcage,))
+    assert "bootstrap_langue." not in texte
