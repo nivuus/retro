@@ -1419,6 +1419,118 @@ dans `retro/status.py` (`_lignes_langue`), et la sortie `--explain` de
 `retro/data/launcher/retro-launch.cs`.
 ---
 
+## D13 — Deux juges de la langue, et une seule indulgence sur deux
+
+**Constatée le 2026-08-30**, en relisant le mécanisme de D12 des deux côtés à
+la fois. Les deux lectures de `langue.txt` — celle de Python et celle du
+lanceur — ne traitent pas de la même façon une valeur que Steam ne nomme pas.
+Aucune des deux n'a tort prise seule ; ensemble, elles font dire deux choses
+différentes à deux juges qui ne se contrediront jamais à voix haute.
+
+### Le fait, des deux côtés
+
+| | Ce qu'elle fait d'une valeur hors liste |
+|---|---|
+| `launcher.lire_langue` (`retro/launcher.py:602`) | **la ramène à `auto`** — `return valeur if valeur in langue_mod.VALEURS else langue_mod.AUTO` |
+| `LangueChoisie()` (`retro/data/launcher/retro-launch.cs:1591`) | **ne valide rien** : elle rend la valeur telle quelle, en minuscules |
+
+L'écart est délibéré des deux côtés, et chacun porte sa raison écrite. Python
+lit pour **rendre un rapport**, et `test_un_fichier_illisible_retombe_sur_auto`
+(`tests/test_launcher.py:185`) tient que « un fichier abîmé ne doit pas
+empêcher un jeu de se lancer ». Le lanceur, lui, lit pour **lancer un jeu**, et
+son commentaire dit pourquoi il ne valide pas : « AUCUNE LISTE DE LANGUES ICI,
+contrairement aux trois modes de rendu : valider demanderait de porter les noms
+de Steam dans ce fichier, donc d'y décider quelque chose. »
+
+**Et c'est bien une exception, pas le motif de la maison.** Pour le rendu, les
+deux côtés normalisent : `ModeChoisi()` (`retro-launch.cs:1570`) teste
+`native | auto | full` et retombe sur `auto`, exactement comme `lire_mode`. Les
+deux juges du rendu disent donc toujours la même chose. La langue est le seul
+endroit où ils divergent.
+
+### Ce que ça produit
+
+Sur un `langue.txt` portant, disons, `frensh` :
+
+1. **`retro status`** lit `auto` — la valeur a été normalisée avant qu'il ne la
+   voie — et annonce donc la langue de **Steam** : « langue demandée :
+   “english” — “auto” : Steam dit “english” ».
+2. **Le lanceur** prend `frensh` pour une langue posée à la main, ne trouve
+   aucun `bootstrap_langue.<rang>.frensh` dans le plan, et retombe sur la ligne
+   `defaut` — c'est-à-dire le **repli** du profil, celui prévu pour « Steam
+   muet ». Ce n'est ni `english`, ni `frensh`.
+3. **Le témoin ne rattrape pas l'écart, il le maquille.** `langue-vue.txt`
+   portera `langue=frensh` et `motif=posee a la main` ; `retro status` verra
+   que cette valeur diffère de celle qu'il annonce et écrira « le dernier jeu a
+   demandé “frensh” […] : **le réglage a changé depuis, le prochain suivra la
+   ligne ci-dessus** ». Cette phrase est fausse : rien n'a changé, et le
+   prochain jeu fera exactement pareil. Le seul indice visible envoie donc
+   chercher un changement de réglage qui n'a pas eu lieu.
+
+Avant le premier jeu, il n'y a pas même cet indice : sans témoin, le rapport
+dit « aucun jeu lancé depuis », et l'écart est entièrement muet.
+
+### Comment on y arrive — et c'est ce qui borne la gravité
+
+**`retro langue` ne peut pas produire cet état.** La valeur est refusée deux
+fois : par `choices=langue_mod.VALEURS` à l'analyse des arguments
+(`retro/cli.py:953`), puis par `ecrire_langue`, qui lève devant le
+propriétaire — c'est ce que garde
+`test_une_langue_inconnue_est_refusee_a_l_ecriture`
+(`tests/test_launcher.py:195`). Il faut donc **éditer `langue.txt` à la main**
+pour y arriver.
+
+Une seconde voie est plausible et **n'a pas été mesurée** : `ecrire_langue`
+écrit directement, sans le basculement atomique dont `shortcuts.vdf` bénéficie,
+donc une écriture interrompue laisserait un nom tronqué — `fren` — qui produit
+exactement le même écart. C'est une déduction de lecture, pas un constat ; elle
+est notée pour qu'on sache où regarder, pas pour être crue.
+
+**Et rien de tout cela ne coûte quoi que ce soit aujourd'hui** : aucun profil
+ne déclare de table de langues (D12), donc le plan ne porte aucune ligne
+`bootstrap_langue.*` et le lanceur ne pose rien, quelle que soit la valeur
+qu'il a lue. Comme le trou de `--explain`, cette dette naît le jour où la
+première table est relevée.
+
+### Pourquoi elle n'est pas corrigée ici
+
+Parce que la corriger, c'est **choisir lequel des deux juges cède**, et les
+deux indulgences ont été écrites exprès, chacune pour sa raison. Toucher celle
+de Python touche un test écrit pour empêcher qu'un fichier abîmé bloque un
+lancement ; toucher celle du C# revient sur le refus, argumenté dans la source,
+d'y porter une liste de langues. C'est une décision de conception, et le dépôt
+s'applique déjà cette règle en D7 : ça **se décide en revue, pas au détour
+d'une dette**.
+
+### Les deux issues, sans trancher
+
+- **Le lanceur valide contre ce que porte le plan.** Il n'y porterait alors
+  aucune liste : le plan écrit déjà une ligne `bootstrap_langue.<rang>.<langue>`
+  par langue de Steam, donc la liste y est. Reste une question ouverte, et elle
+  n'est pas mineure : une entrée **sans** table n'écrit aucune de ces lignes, et
+  il n'y aurait alors rien contre quoi valider.
+- **Python cesse de normaliser, et le rapport nomme la valeur inconnue.**
+  `retro status` sait déjà dire cette phrase-là — `_motif_sans_langue`
+  (`retro/status.py:1438`) écrit « Steam dit “…”, un nom que “retro” ne connaît
+  pas » — mais il ne la dit que de la valeur de **Steam**, jamais de celle du
+  propriétaire. Le coût est le test cité plus haut, qu'il faudrait rouvrir.
+
+**Ce que ça coûte aujourd'hui :** rien de mesurable, et c'est exactement le
+profil d'une dette qu'on oublie. Le jour où les tables existeront, un fichier
+touché à la main enverra les jeux dans une langue que personne n'a demandée,
+pendant que le rapport en annoncera une autre — et la seule ligne qui en parle
+accusera un changement de réglage inexistant. Vu du canapé : le jeu n'est pas
+dans la bonne langue, `retro status` dit qu'il devrait l'être, et les deux ont
+l'air d'accord.
+
+**Où ça se joue :** `retro/launcher.py` (`lire_langue`, et l'écriture non
+atomique d'`ecrire_langue`), `LangueChoisie()` et `FragmentDeLangue()` dans
+`retro/data/launcher/retro-launch.cs`, le rendu du témoin dans
+`retro/status.py` (`_lignes_temoin_langue`), et le test
+`test_un_fichier_illisible_retombe_sur_auto` de `tests/test_launcher.py`, qui
+est la contrainte à rouvrir si c'est Python qui cède.
+---
+
 ## Relevé — où Steam dit sa langue, et sous quels noms — 2026-08-30
 
 Fait pour la tâche 1 de

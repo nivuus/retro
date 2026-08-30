@@ -231,7 +231,7 @@ nom du système.
 
 ### Ce qui manque, et qui est écrit quelque part
 
-**Douze** manques constatés sont consignés dans `docs/dettes.md`, chacun avec
+**Treize** manques constatés sont consignés dans `docs/dettes.md`, chacun avec
 ce qu'il coûte vu du canapé et où il se joue dans le code : aucune vibration
 nulle part, rien qui garantisse une image maximale sans déformation, ni capteur
 de mouvement ni manette PlayStation, la console qui tourne sur un paquet périmé
@@ -239,9 +239,9 @@ sans que rien ne le dise, **quatre réglages critiques que le mécanisme
 d'amorçage ne sait pas tenir**, une PS4 dont l'émulateur ne peut recevoir aucun
 jeu, une PS Vita où installer un jeu échoue par les deux voies prévues, et
 **une langue que le mécanisme sait poser et qu'aucun profil ne déclare
-encore**. Ceux
-qui touchent la manette débordent sur l'invité Windows, qui a son propre fichier
-dans `nivuus/installer` : `docs/console-dettes.md`.
+encore** — dont l'hôte et la console ne lisent d'ailleurs pas le réglage de la
+même façon. Ceux qui touchent la manette débordent sur l'invité Windows, qui a
+son propre fichier dans `nivuus/installer` : `docs/console-dettes.md`.
 
 **Quatre ont bougé le 2026-08-29, et deux sont nées le même jour.** La
 **manette muette dans DuckStation** est réglée : Crash Team Racing répond,
