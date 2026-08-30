@@ -109,6 +109,32 @@ bios_dir = 'RetroArch-Win64\system'
 #
 # IMPOSÉ, parce que RetroArch RÉÉCRIT son retroarch.cfg en quittant : une
 # valeur posée une fois y serait remplacée par la première partie jouée.
+#
+# --- ET LE BOUTON « GUIDE », QUI DOIT REVENIR À STEAM. --------------------
+#
+# Les autoconfigurations livrées lient le bouton Guide/PS/Home au menu de
+# RetroArch (« input_menu_toggle_btn = "5" » pour une manette Xbox, « "12" »
+# pour une DualShock 4). Elles s'appliquent AU BRANCHEMENT de la manette et
+# recouvrent le retroarch.cfg. Sur cette console, ce bouton appartient à
+# Steam : l'ouverture du menu de l'émulateur y est une sortie de route.
+#
+# « nul » NE SUFFIT PAS, et c'est le piège. La condition qui décide est dans
+# input/input_driver.c de la révision 1.22.2, lignes 5733-5741 :
+#
+#     && ( binds[port][RARCH_MENU_TOGGLE].joykey
+#            == input_autoconf_binds[joy_idx][RARCH_MENU_TOGGLE].joykey
+#       || binds[port][RARCH_MENU_TOGGLE].joykey == NO_BTN)
+#
+# « nul » VAUT NO_BTN : il satisfait la seconde branche, et la liaison de
+# l'autoconfiguration s'applique quand même. C'est pourquoi le retroarch.cfg
+# de cette console portait « nul » pendant que le bouton PS ouvrait le menu.
+#
+# Une valeur qui n'est NI NO_BTN NI celle de l'autoconfiguration fait tomber
+# la condition, et le bouton ne fait plus rien. « 31 » est au-delà du nombre
+# de boutons de toute manette réelle : il ne peut donc être ni pressé par
+# accident, ni égal à un Guide (5 chez Xbox, 12 chez Sony). Ce nombre ne
+# désigne AUCUN périphérique — c'est ce qui permet à ce réglage d'être livré,
+# là où l'autoconfiguration, elle, nomme un vendor et un product.
 [[bootstrap]]
 target = '{install_dir}\RetroArch-Win64\retroarch.cfg'
 content = """
@@ -120,6 +146,7 @@ video_driver = "d3d11"
 """
 enforced = """
 input_driver = "dinput"
+input_menu_toggle_btn = "31"
 """
 
 # --- L'ÉCRAN TACTILE DE LA NINTENDO DS. -----------------------------------
