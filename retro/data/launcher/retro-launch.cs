@@ -501,16 +501,19 @@ static class RetroLaunch
         // Un fragment vide veut dire que cette entree ne declare aucune table
         // de langues : il n'y a rien a poser, et rien n'est suppose.
         string fragmentLangue = FragmentDeLangue(p, n, langueDuLancement);
-        // L'etiquette NOMME la langue, sur les trois lignes que la fusion peut
-        // ecrire — celle qui pose, celle qui cree, et celle qui constate que
-        // la cible est deja conforme. Un journal qui dirait seulement
-        // « langue » laisserait chercher LAQUELLE a ete posee.
+        // L'etiquette NOMME la langue POSEE, sur les trois lignes que la
+        // fusion peut ecrire — celle qui pose, celle qui cree, et celle qui
+        // constate que la cible est deja conforme. Un journal qui dirait
+        // seulement « langue » laisserait chercher LAQUELLE a ete posee.
         //
-        // Vide veut dire que la ligne « defaut » du plan a repondu : Steam
-        // muet, ou une langue que ce plan ne connait pas. Le dire vaut mieux
-        // que taire la question.
-        string etiquetteLangue = "langue "
-            + (langueDuLancement.Length > 0 ? langueDuLancement : "(defaut)");
+        // ELLE SE LIT SUR LE FRAGMENT, JAMAIS SUR LA LANGUE DEMANDEE. Sur un
+        // repli — « french » demande, seul « english » declare — le plan
+        // renvoie le fragment english : etiqueter la ligne « french » ferait
+        // dire au journal l'inverse de ce que la fusion vient d'ecrire,
+        // pendant que « retro status » annonce, lui, « repli sur english ».
+        // Deux juges qui se contredisent, et le journal est le seul recit du
+        // lancement devant la television.
+        string etiquetteLangue = "langue " + LangueDuFragment(fragmentLangue);
         if (fragmentLangue.Length > 0
             && FusionnerFragment(cible, fragmentLangue, profil, "de langue",
                                  etiquetteLangue, "cle(s) de langue"))
@@ -1662,6 +1665,32 @@ static class RetroLaunch
         if (langue.Length > 0 && p.TryGetValue(prefixe + langue, out chemin))
             return chemin;
         return p.TryGetValue(prefixe + "defaut", out chemin) ? chemin : "";
+    }
+
+    // LA LANGUE QUE CE FRAGMENT POSE, lue sur son nom de fichier.
+    //
+    // C'est « retro scan » qui nomme ces fichiers, et il y met la langue
+    // expres : « duckstation.langue.1.english.ini » — l'identifiant du profil,
+    // le mot « langue », le rang de l'entree, PUIS la langue, puis l'extension
+    // de la cible (voir langue_name dans retro/launcher.py). Le nom est donc
+    // le seul endroit du lanceur qui sache LAQUELLE a ete posee : la langue
+    // demandee, elle, ne le dit pas — sur un repli, ou sur la ligne
+    // « defaut », le plan renvoie un fragment qui porte un autre nom.
+    //
+    // AUCUNE DECISION N'EST PRISE ICI : on lit le nom du fichier que le plan a
+    // designe, on n'en deduit aucun repli. C'est la meme regle que
+    // FragmentDeLangue juste au-dessus.
+    //
+    // Un nom qui ne suit pas cette forme est rendu TEL QUEL, et un chemin vide
+    // rend « (defaut) » : inventer « (inconnue) » effacerait le seul indice
+    // qui resterait pour retrouver le fichier lu.
+    static string LangueDuFragment(string chemin)
+    {
+        if (chemin.Length == 0) return "(defaut)";
+        string nom = Path.GetFileNameWithoutExtension(chemin);
+        int point = nom.LastIndexOf('.');
+        if (point < 0 || point == nom.Length - 1) return nom;
+        return nom.Substring(point + 1);
     }
 
     // Ce qu'on a vu chez Steam, pour que « retro status » puisse le dire

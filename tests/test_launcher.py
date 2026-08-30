@@ -1236,19 +1236,69 @@ def test_le_journal_de_la_langue_NOMME_la_langue_posee():
     """Devant la télévision, le journal est le seul récit du lancement : le
     témoin ne porte que la langue du lancement, pas ce qui a atteint chaque
     cible. Et parler de « clés imposées » sur la ligne de langue nommerait
-    l'autre régime."""
+    l'autre régime.
+
+    L'ÉTIQUETTE SE LIT SUR LE FRAGMENT, JAMAIS SUR `langueDuLancement`. Sur un
+    repli — « french » demandé, seul « english » déclaré — le plan renvoie le
+    fragment english, et l'étiquette disait « langue french » pendant que
+    `retro status` annonçait « repli sur english ». Deux juges qui se
+    contredisent, sur le seul récit dont dispose le propriétaire.
+    """
     src = _source_du_lanceur()
     debut = src.index("string etiquetteLangue")
     etiquette = src[debut:src.index(";", debut)]
-    assert "langueDuLancement" in etiquette, (
-        "l'étiquette du journal ne porte pas la langue employée : la ligne "
-        "ne dirait pas LAQUELLE a été posée")
+    assert "LangueDuFragment(fragmentLangue)" in etiquette, (
+        "l'étiquette du journal ne se lit pas sur le fragment employé : sur "
+        "un repli, elle nommerait la langue DEMANDÉE, pas la POSÉE")
+    assert "langueDuLancement" not in etiquette, (
+        "l'étiquette réutilise la langue demandée : c'est exactement ce qui "
+        "faisait mentir le journal sur un repli")
     appel = src[src.index("FusionnerFragment(cible, fragmentLangue"):]
     appel = appel[:appel.index(";")]
     assert "etiquetteLangue" in appel
     assert "imposee" not in appel, (
         "la ligne de langue dénombre des « clés imposées » : ce n'est pas ce "
         "régime, et le journal en devient trompeur")
+
+
+def test_l_etiquette_de_langue_se_lit_sur_LE_NOM_QUE_LE_SCAN_DEPOSE():
+    """Le contrat entre `langue_name` et `LangueDuFragment` n'a pas d'autre
+    gardien : faute de compilateur C#, ce test rejoue la lecture du nom de
+    fichier en Python sur les noms QUE LE SCAN DÉPOSE VRAIMENT, et vérifie que
+    la source du lanceur découpe bien de cette façon.
+
+    Renommer les fragments sans toucher au lanceur laisserait le journal
+    nommer un morceau de chemin au lieu d'une langue, sans que rien n'échoue.
+    """
+    src = _source_du_lanceur()
+    corps = src[src.index("static string LangueDuFragment"):]
+    corps = corps[:corps.index("\n    }")]
+    for morceau in ("Path.GetFileNameWithoutExtension",
+                    "LastIndexOf('.')", "Substring(point + 1)"):
+        assert morceau in corps, (
+            f"LangueDuFragment ne lit plus le nom par « {morceau} » : le "
+            "découpage a changé de moyen, et le contrat avec `langue_name` "
+            "doit être réexaminé")
+
+    def _langue_du_fragment(chemin: str) -> str:
+        """La transcription EXACTE des quatre lignes du C# ci-dessus."""
+        if not chemin:
+            return "(defaut)"
+        nom = chemin.rsplit("\\", 1)[-1].rsplit(".", 1)[0]
+        point = nom.rfind(".")
+        if point < 0 or point == len(nom) - 1:
+            return nom
+        return nom[point + 1:]
+
+    for langue, cible in (("english", "settings.ini"),
+                          ("koreana", "config.yml"),
+                          ("brazilian", "Default.opt")):
+        nom = launcher.langue_name("duckstation", 1, langue, cible)
+        assert _langue_du_fragment("E:\\_launcher\\systems\\" + nom) == langue
+    # Et le cas que la ligne « defaut » du plan ne produit JAMAIS : un chemin
+    # vide. Il ne peut pas atteindre la fusion — elle est gardée par
+    # `fragmentLangue.Length > 0` — mais l'étiquette, elle, est composée avant.
+    assert _langue_du_fragment("") == "(defaut)"
 
 
 def test_un_temoin_de_langue_qui_ne_s_ecrit_pas_LE_DIT():
