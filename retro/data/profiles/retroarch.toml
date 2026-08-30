@@ -130,11 +130,20 @@ bios_dir = 'RetroArch-Win64\system'
 # de cette console portait « nul » pendant que le bouton PS ouvrait le menu.
 #
 # Une valeur qui n'est NI NO_BTN NI celle de l'autoconfiguration fait tomber
-# la condition, et le bouton ne fait plus rien. « 31 » est au-delà du nombre
-# de boutons de toute manette réelle : il ne peut donc être ni pressé par
-# accident, ni égal à un Guide (5 chez Xbox, 12 chez Sony). Ce nombre ne
-# désigne AUCUN périphérique — c'est ce qui permet à ce réglage d'être livré,
-# là où l'autoconfiguration, elle, nomme un vendor et un product.
+# la condition, et le bouton ne fait plus rien.
+#
+# LE CHOIX DU NOMBRE EST MESURÉ, pas supposé. Les 134 liaisons de menu que
+# portent les autoconfigurations livrées avec la révision 1.22.2 emploient
+# 2, 4, 5, 8, 10, 11, 12, 15, 16, 18, 27 et 31 — recensées le 2026-08-30 sur
+# la console. « 31 » était donc un mauvais choix, et un premier essai l'a
+# montré : c'est la valeur de l'autoconfiguration HID de la DualShock 4, qui
+# aurait rendu la condition VRAIE au lieu de la casser. « 63 » est au-delà du
+# maximum relevé et au-delà du nombre de boutons de toute manette réelle : ni
+# pressable par accident, ni égal à un Guide.
+#
+# Ce nombre ne désigne AUCUN périphérique — c'est ce qui permet à ce réglage
+# d'être livré, là où l'autoconfiguration, elle, nomme un vendor et un
+# product et devait rester sur la machine du propriétaire.
 [[bootstrap]]
 target = '{install_dir}\RetroArch-Win64\retroarch.cfg'
 content = """
@@ -146,7 +155,7 @@ video_driver = "d3d11"
 """
 enforced = """
 input_driver = "dinput"
-input_menu_toggle_btn = "31"
+input_menu_toggle_btn = "63"
 """
 
 # --- L'ÉCRAN TACTILE DE LA NINTENDO DS. -----------------------------------
