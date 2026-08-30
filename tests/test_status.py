@@ -1629,6 +1629,12 @@ def test_une_cible_pas_encore_amorcee_montre_un_chemin_et_non_un_jeton():
         target = "{install_dir}\\GuiConfigs\\CurrentSettings.ini"
         content = ""
         enforced = ""
+        # Le doublon PORTE les champs de langue, plutôt que `etat_amorcage`
+        # ne les lise par `getattr` : c'est exactement la panne de D7 —
+        # `getattr(profil, "bootstrap", None)` rendait « aucun amorçage
+        # déclaré » pour tous les profils, sans erreur ni symptôme.
+        langues = ()
+        langue_repli = ""
 
     class Profil:
         bootstraps = [Amorce()]
@@ -1652,6 +1658,8 @@ def test_un_jeton_sans_dossier_connu_reste_lisible():
         target = "{install_dir}\\config.yml"
         content = ""
         enforced = ""
+        langues = ()
+        langue_repli = ""
 
     class Profil:
         bootstraps = [Amorce()]
@@ -1910,7 +1918,9 @@ def test_une_langue_de_steam_hors_liste_est_nommee_et_non_prise_pour_un_silence(
         "      chaque émulateur pose alors le repli de son profil, quand il en "
         "déclare un",
         "  · au dernier lancement, Steam disait « klingon »",
-        "  ce que chaque entrée d'amorçage posera au prochain jeu :",
+        "  ce que chaque entrée d'amorçage posera au prochain jeu, si Steam "
+        "dit toujours « klingon » — c'est ce qu'il disait au dernier "
+        "lancement, et l'hôte ne lit pas ce registre :",
         "  · duckstation (%USERPROFILE%\\Documents\\DuckStation\\settings.ini) "
         ": repli sur « english »",
         "  · ppsspp (D:\\Emulation\\PPSSPP\\memstick\\PSP\\SYSTEM\\ppsspp.ini) "
@@ -2022,3 +2032,82 @@ def test_une_langue_manuelle_explique_la_valeur_de_steam_meme_hors_liste():
     assert ("  · au dernier lancement, Steam disait « klingon » — la langue "
             "étant posée à la main, cette valeur ne sert pas ; elle est dite "
             "pour que ce relevé reste vérifiable") in texte
+
+
+# --- les clés de langue SONT des clés imposées ------------------------------
+#
+# `profiles.py` les classe comme telles et leur applique la garde d'en-tête à
+# ce titre : le fichier promet au propriétaire trois catégories parce que la
+# langue en occupe une. Les compter là et pas ici faisait dire deux choses
+# différentes du même fichier par deux juges.
+
+def test_les_cles_de_langue_comptent_parmi_les_cles_imposees(
+        profils_avec_langues):
+    """L'entrée de `duckstation` n'a AUCUN champ `enforced` — rien que sa
+    table de langues. Elle rendait `imposees == 0`, donc « aucun réglage
+    imposé », alors que la console repose `[Main] Language` à chaque
+    lancement."""
+    etats = status.etat_amorcage(profils_avec_langues, {})
+    compte = {e.profile_id: e.imposees for e in etats}
+    assert compte["duckstation"] == 1, (
+        "les clés de langue ne sont pas comptées : le rapport promet un "
+        "fichier que le lanceur va pourtant reprendre")
+    assert compte["ppsspp"] == 0
+
+
+def test_une_seule_langue_est_comptee_et_non_toutes(profils_avec_langues):
+    """Deux langues déclarées, la MÊME clé chacune — `_lire_langues` l'exige.
+    Les additionner rendrait 2 sur un fichier qui n'en reprend qu'une."""
+    amorcage = profils_avec_langues["duckstation"].bootstraps[0]
+    assert len(amorcage.langues) == 2
+    assert status._cles_imposees(amorcage) == 1
+
+
+def test_la_ligne_des_cles_imposees_parait_pour_une_entree_de_langue_seule(
+        profils_avec_langues):
+    """La ligne du rapport, et pas seulement le compte : c'est elle qui
+    disparaissait de la section Amorçage."""
+    lignes = status._lignes_amorcage(status.Report(
+        emulators=[], systems=[], bios=[], problems=[],
+        bios_root=pathlib.Path("/BIOS"),
+        amorcages=status.etat_amorcage(profils_avec_langues, {})))
+    assert [l for l in lignes if "impose 1 clé(s)" in l], lignes
+
+
+def test_sous_auto_la_prevision_dit_DE_QUOI_elle_depend(profils_avec_langues):
+    """Les lignes par entrée sont au futur, mais sous « auto » elles dérivent
+    d'une mesure PASSÉE — la valeur que le lanceur a lue chez Steam au dernier
+    lancement. Le propriétaire qui change sa langue dans Steam lisait
+    « duckstation : « french » » alors que son prochain jeu partirait en
+    japonais.
+
+    Le qualificatif est corrigé, pas la mécanique : l'hôte n'atteint pas ce
+    registre, et c'est la raison d'être du témoin."""
+    texte = _rapport_langue(
+        profils_avec_langues, langue="auto",
+        langue_temoin={"steam": "french", "langue": "french",
+                       "motif": "auto : Steam dit french"})
+    assert ("  ce que chaque entrée d'amorçage posera au prochain jeu, si "
+            "Steam dit toujours « french » — c'est ce qu'il disait au dernier "
+            "lancement, et l'hôte ne lit pas ce registre :") in texte, texte
+
+
+def test_une_langue_posee_a_la_main_ne_depend_de_rien(profils_avec_langues):
+    """Elle vient de `langue.txt`, qui est lu ICI et maintenant : ajouter une
+    condition ferait douter d'une prévision qui, elle, est certaine."""
+    texte = _rapport_langue(
+        profils_avec_langues, langue="french",
+        langue_temoin={"steam": "japanese", "langue": "french",
+                       "motif": "posee a la main"})
+    assert "  ce que chaque entrée d'amorçage posera au prochain jeu :" in texte
+
+
+def test_sous_auto_sans_valeur_de_steam_la_prevision_le_dit_aussi(
+        profils_avec_langues):
+    """Steam muet vaut « le repli partout » — mais le prochain lancement peut
+    très bien lire une valeur. La prévision reste conditionnelle."""
+    texte = _rapport_langue(profils_avec_langues, langue="auto",
+                            langue_temoin=None)
+    assert ("  ce que chaque entrée d'amorçage posera au prochain jeu, si "
+            "Steam n'en dit toujours rien — l'hôte ne lit pas ce registre, il "
+            "ne sait que ce que le dernier lancement en a rapporté :") in texte

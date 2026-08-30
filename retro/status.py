@@ -138,6 +138,12 @@ class Amorcage:
     # lancement, donc rendues à cette valeur chaque fois que le propriétaire
     # les changerait dans l'interface de son émulateur. Il doit le lire AVANT,
     # pas le découvrir après. Zéro pour les profils qui n'imposent rien.
+    #
+    # LES CLÉS DE LANGUE Y SONT COMPTÉES, parce que `profiles.py` les classe
+    # comme imposées et leur applique la garde d'en-tête à ce titre. Sans
+    # elles, une entrée qui n'aurait QU'une table de langues rendait zéro, la
+    # ligne « la console y impose N clé(s) » disparaissait de la section
+    # Amorçage, et deux juges disaient deux choses du même fichier.
     imposees: int = 0
 
 
@@ -198,13 +204,36 @@ def etat_amorcage(profils: dict,
                 target=cible or _cible_lisible(
                     amorcage.target, pid, install_dirs or {},
                     emulation_root_windows),
-                # `cles_de` et non `cles_ini` : le dialecte suit l'extension de
-                # la cible. Compté à l'INI seul, un config.yml rendait ZÉRO, et
-                # le rapport annonçait « aucun réglage imposé » là où la console
-                # en reprend un.
-                imposees=len(profiles_mod.cles_de(amorcage.target,
-                                                  amorcage.enforced))))
+                imposees=_cles_imposees(amorcage)))
     return etats
+
+
+def _cles_imposees(amorcage) -> int:
+    """Combien de clés UNE entrée d'amorçage repose à chaque lancement.
+
+    `cles_de` et non `cles_ini` : le dialecte suit l'extension de la cible.
+    Compté à l'INI seul, un config.yml rendait ZÉRO, et le rapport annonçait
+    « aucun réglage imposé » là où la console en reprend un.
+
+    LES DEUX FRAGMENTS IMPOSÉS, et non le seul `enforced`. La table de langues
+    passe par la MÊME fusion, à chaque lancement, et `profiles.py` la soumet
+    aux mêmes gardes à ce titre. La compter ailleurs et pas ici faisait dire
+    « imposees == 0 » d'une entrée qui n'aurait qu'une table de langues : la
+    ligne « la console y impose N clé(s), reposée(s) à chaque lancement »
+    disparaissait de la section Amorçage, et `retro status` promettait au
+    propriétaire un fichier intact que le lanceur allait pourtant reprendre.
+
+    UNE SEULE langue est comptée : toutes posent EXACTEMENT les mêmes clés —
+    `profiles._lire_langues` le refuse autrement —, donc les additionner
+    multiplierait le compte par le nombre de langues déclarées. Et les deux
+    fragments ne se recouvrent pas : `_valider_impose_contre_langues` le
+    refuse, donc la somme ne compte rien deux fois.
+    """
+    fragments = [amorcage.enforced]
+    if amorcage.langues:
+        fragments.append(amorcage.langues[0][1])
+    return sum(len(profiles_mod.cles_de(amorcage.target, f))
+               for f in fragments)
 
 
 # Les trois états d'un fragment déposé à côté des plans. « conforme » n'est PAS
@@ -1455,6 +1484,35 @@ def _motif_sans_langue(report: Report, decision) -> str:
     return decision.motif
 
 
+def _condition_langue(report: Report) -> str:
+    """Sous quelle CONDITION les lignes qui suivent disent vrai.
+
+    Elles sont au futur — « posera au prochain jeu » —, mais sous « auto »
+    elles reposent sur une mesure PASSÉE : `_langue_voulue` dérive du témoin,
+    donc de ce que le lanceur a lu chez Steam AU DERNIER LANCEMENT. Le
+    propriétaire qui change sa langue dans Steam et lance `retro status` lit
+    « duckstation : « french » » pendant que son prochain jeu partira en
+    japonais.
+
+    Le qualificatif est corrigé, PAS la mécanique : la conception assume que
+    `retro status` tourne sur l'hôte, qui n'atteint pas ce registre — c'est la
+    raison d'être du témoin. Ce qu'on doit au propriétaire, c'est donc de dire
+    de quoi cette prévision dépend, pas de prétendre lire ce qu'on ne lit pas.
+
+    Rien à dire sur une langue posée à la main : elle vient de `langue.txt`,
+    qui est lu ICI et maintenant, et Steam n'y change rien.
+    """
+    if report.langue != langue_mod.AUTO:
+        return ""
+    steam = (report.langue_temoin or {}).get("steam", "")
+    if steam:
+        return (f", si Steam dit toujours « {steam} » — c'est ce qu'il disait "
+                "au dernier lancement, et l'hôte ne lit pas ce registre")
+    return (", si Steam n'en dit toujours rien — l'hôte ne lit pas ce "
+            "registre, il ne sait que ce que le dernier lancement en a "
+            "rapporté")
+
+
 def _lignes_langue(report: Report) -> list[str]:
     """La langue de la console, sa source, et ce que chaque émulateur en fait.
 
@@ -1489,7 +1547,7 @@ def _lignes_langue(report: Report) -> list[str]:
     # Amorçage a réglé le même problème avec « pas encore amorcé ».
     if report.langues:
         lignes.append("  ce que chaque entrée d'amorçage posera au prochain "
-                      "jeu :")
+                      "jeu" + _condition_langue(report) + " :")
     for e in report.langues:
         ou = f" ({e.cible})" if e.cible else ""
         if not e.declared:
