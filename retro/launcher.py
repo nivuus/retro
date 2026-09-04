@@ -634,8 +634,29 @@ def lire_langue(emulation_root_local) -> str:
     try:
         valeur = fichier.read_text(encoding="utf-8").strip()
     except OSError:
+        # PAS DE FICHIER, donc rien à nommer : « auto » est le défaut réel de
+        # la console. C'est la seule indulgence qui reste, et elle est d'une
+        # autre nature que celle qui a été retirée — elle ne remplace aucune
+        # valeur, elle en constate l'absence.
         return langue_mod.AUTO
-    return valeur if valeur in langue_mod.VALEURS else langue_mod.AUTO
+    # UNE VALEUR INCONNUE EST RENDUE TELLE QUELLE — retiré le 2026-09-04, et
+    # le motif qui tenait l'indulgence a été mesuré FAUX (dette D13).
+    #
+    # Elle disait : « un fichier abîmé ne doit pas empêcher un jeu de se
+    # lancer ». Or cette fonction ne peut empêcher AUCUN jeu de se lancer :
+    # ses deux seuls appelants sont `retro status` et l'affichage de
+    # `retro langue`, tous deux de rapport. Le chemin de LANCEMENT ne passe
+    # pas par Python — c'est le lanceur C# qui lit ce fichier sur la console,
+    # et il prend la valeur au mot.
+    #
+    # L'indulgence ne protégeait donc rien, et elle COÛTAIT : le rapport
+    # ramenait « frensh » à `auto` et annonçait la langue de Steam, pendant
+    # que le lanceur retombait sur le repli de chaque profil. Deux juges, deux
+    # réponses, et aucune contradiction à voix haute.
+    #
+    # Un fichier VIDE reste `auto` : il ne nomme rien, et inventer une valeur
+    # là où il n'y en a aucune serait le défaut inverse.
+    return valeur or langue_mod.AUTO
 
 
 def ecrire_langue(emulation_root_local, langue: str) -> pathlib.Path:

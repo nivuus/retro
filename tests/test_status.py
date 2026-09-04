@@ -2375,3 +2375,47 @@ def test_le_temoin_s_apparie_par_cible_et_non_par_rang(tmp_path):
     # Et la langue posée suit sa propre cible, pas celle d'à côté.
     assert par_cible["C:\\A\\Dolphin.ini"].langue_posee == "english"
     assert par_cible["C:\\A\\GCPadNew.ini"].langue_posee == ""
+
+
+# --- D13 : une valeur que « retro » ne connaît pas est NOMMÉE --------------
+#
+# `lire_langue` ne ramène plus une valeur inconnue à `auto` : le rapport la
+# reçoit telle quelle. Sans le rendu ci-dessous, la normalisation ne serait
+# pas remplacée par la vérité mais par le SILENCE — `_decision_langue` rend
+# None sur une valeur hors liste, et la section perdait alors toute ligne sur
+# la langue demandée.
+
+def test_une_langue_inconnue_du_fichier_est_nommee_et_non_tue(
+        profils_avec_langues):
+    """Le rapport doit dire QUELLE valeur il a lue, et ce que la console en
+    fera. La taire laisserait le propriétaire devant des jeux en anglais avec
+    un rapport qui n'explique rien."""
+    texte = _rapport_langue(profils=profils_avec_langues, langue="frensh")
+    section = _section_langue(texte)
+    assert "frensh" in section
+    assert "ne connaît pas" in section
+
+
+def test_une_langue_inconnue_dit_ce_que_LE_LANCEUR_en_fera(
+        profils_avec_langues):
+    """Le fait qui compte, et que seul ce dépôt peut connaître : le lanceur
+    prend la valeur au mot, ne trouve aucun fragment à ce nom, et retombe sur
+    le repli de CHAQUE profil. Ce n'est ni la langue de Steam, ni la valeur
+    lue — c'est une troisième chose, et personne ne la devinerait."""
+    texte = _rapport_langue(profils=profils_avec_langues, langue="frensh")
+    section = _section_langue(texte)
+    assert "repli" in section
+
+
+def test_une_langue_inconnue_n_accuse_pas_un_changement_de_reglage(
+        profils_avec_langues):
+    """La phrase que D13 relève comme FAUSSE : « le réglage a changé depuis,
+    le prochain suivra la ligne ci-dessus ». Rien n'a changé, et le prochain
+    jeu fera exactement pareil — le seul indice visible envoyait chercher un
+    changement qui n'a pas eu lieu."""
+    texte = _rapport_langue(
+        profils=profils_avec_langues, langue="frensh",
+        langue_temoin={"steam": "english", "langue": "frensh",
+                       "motif": "posee a la main"})
+    section = _section_langue(texte)
+    assert "le réglage a changé depuis" not in section

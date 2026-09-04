@@ -1598,6 +1598,28 @@ def _lignes_langue(report: Report) -> list[str]:
     """
     decision = _decision_langue(report.langue, report.langue_temoin)
     lignes: list[str] = []
+    if decision is None and report.langue:
+        # UNE VALEUR QUE « retro » NE CONNAÎT PAS, et il faut la NOMMER.
+        #
+        # `lire_langue` ne la ramène plus à `auto` (dette D13) : la
+        # normalisation mentait. Mais la remplacer par le SILENCE serait à
+        # peine mieux — sans ces lignes, la section perdait toute mention de
+        # la langue demandée, et le propriétaire lisait des replis sans
+        # savoir d'où ils venaient.
+        #
+        # CE QUE LE LANCEUR EN FERA est le fait qui compte, et personne ne le
+        # devinerait : il prend la valeur AU MOT, ne trouve aucun fragment à
+        # ce nom dans le plan, et retombe sur la ligne « defaut » — c'est-à-
+        # dire le repli de chaque profil. Ni la langue de Steam, ni la valeur
+        # lue : une troisième chose.
+        lignes.append(
+            f"  · langue demandée : « {report.langue} » — un nom que "
+            "« retro » ne connaît pas ; il n'a pas été posé par "
+            "« retro langue », qui le refuse")
+        lignes.append(
+            "      le lanceur prendra cette valeur au mot, ne trouvera aucun "
+            "fragment à ce nom, et chaque entrée posera son repli — corriger "
+            "avec « retro langue --langue <nom> »")
     if decision is not None:
         if decision.langue:
             lignes.append(f"  · langue demandée : « {decision.langue} » — "

@@ -182,13 +182,41 @@ def test_une_langue_posee_se_relit(tmp_path):
     assert launcher.lire_langue(tmp_path) == "japanese"
 
 
-def test_un_fichier_illisible_retombe_sur_auto(tmp_path):
-    """Un fichier abîmé ne doit pas empêcher un jeu de se lancer : `auto`
-    est le comportement par défaut, pas un aveu."""
+def test_une_valeur_inconnue_est_RENDUE_et_non_ramenee_a_auto(tmp_path):
+    """CETTE CONTRAINTE A ÉTÉ RETOURNÉE le 2026-09-04, et le motif qui la
+    tenait a été mesuré FAUX (dette D13).
+
+    Elle disait : « un fichier abîmé ne doit pas empêcher un jeu de se
+    lancer ». Or `lire_langue` ne peut empêcher aucun jeu de se lancer — ses
+    deux seuls appelants sont `retro status` et l'affichage de
+    `retro langue`, tous deux de rapport. Le chemin de LANCEMENT ne passe pas
+    par Python : c'est le lanceur C# qui lit `langue.txt` sur la console.
+
+    L'indulgence ne protégeait donc rien, et elle COÛTAIT : le rapport
+    annonçait la langue de Steam pendant que le lanceur, lui, prenait la
+    valeur au mot et retombait sur le repli du profil. Deux juges, deux
+    réponses, aucune contradiction à voix haute.
+    """
     dossier = launcher.local_dir(tmp_path)
     dossier.mkdir(parents=True, exist_ok=True)
-    (dossier / launcher.LANGUE_FICHIER).write_text("n'importe quoi\n",
+    (dossier / launcher.LANGUE_FICHIER).write_text("frensh\n",
                                                    encoding="utf-8")
+    assert launcher.lire_langue(tmp_path) == "frensh"
+
+
+def test_un_fichier_absent_vaut_toujours_auto(tmp_path):
+    """La seule indulgence qui reste, et elle est d'une autre nature : il n'y
+    a PAS de fichier. « auto » est alors le défaut réel de la console, pas une
+    valeur qu'on aurait devinée à la place d'une autre."""
+    assert launcher.lire_langue(tmp_path) == langue_mod.AUTO
+
+
+def test_un_fichier_vide_vaut_auto(tmp_path):
+    """Un fichier vide ne NOMME rien : il n'y a aucune valeur à rapporter, et
+    inventer « frensh » là où il n'y a rien serait le défaut inverse."""
+    dossier = launcher.local_dir(tmp_path)
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / launcher.LANGUE_FICHIER).write_text("   \n", encoding="utf-8")
     assert launcher.lire_langue(tmp_path) == langue_mod.AUTO
 
 
