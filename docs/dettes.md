@@ -354,6 +354,148 @@ couples section/clé.
 DuckStation conserve ce qu'il ne comprend pas. C'est écrit ici pour que
 personne ne s'en serve comme preuve — **la seule preuve reste l'effet observé.**
 
+### Où en est D2 — 2026-09-04 : les sept systèmes muets, RELEVÉS
+
+**Cette dette comptait SIX systèmes sans bloc de rendu. Ils sont SEPT.** La
+phrase est d'avant la clôture de D5, et la PS Vita s'y est ajoutée sans que
+personne ne recompte. Mesuré le 2026-09-04 : `cemu`/Wii U, `flycast`/Dreamcast,
+`pcsx2`/PS2, `ppsspp`/PSP, `rpcs3`/PS3, `vita3k`/PS Vita, `xemu`/Xbox.
+
+**Le Dreamcast en est sorti** (voir plus bas). Six restent.
+
+#### Le relevé, fait une bonne fois — et il change la nature de la dette
+
+Le blocage de D2 n'était pas d'écrire des blocs TOML : c'était que **personne ne
+savait quelles valeurs y mettre**, et que trois tentatives s'étaient déjà
+brisées sur des valeurs recopiées. Les sept sont relevées, **dans la source de
+chaque émulateur, à la révision que le manifeste épingle**, avec leur DÉFAUT —
+sans lequel un essai ne prouve rien (troisième faux oracle).
+
+| Système | Résolution interne | Ratio | **Mise à l'échelle entière** | Surcharge en ligne de commande |
+|---|---|---|---|---|
+| **Dreamcast** (Flycast v2.7) | `[config] rend.Resolution`, **pixels**, déf. 480 | 4 clés, aucune énumération | ✅ `rend.IntegerScale`, déf. `false` | ✅ `-config sec:clé=val`, **transitoire** |
+| **PS2** (PCSX2 2.6.3) | `[EmuCore/GS] upscale_multiplier`, float, déf. **1.0** | `AspectRatio`, chaîne, déf. `Auto 4:3/3:2` | ✅ `IntegerScaling`, déf. `false` | ❌ aucune — un argument inconnu est une ERREUR FATALE |
+| **PSP** (PPSSPP 1.20.4) | `[Graphics] InternalResolution`, int, déf. **calculé** | `DisplayAspectRatio`, float, déf. 1.0 | ✅ `DisplayIntegerScale`, déf. `False` | ⚠ `--appendconfig=FICHIER`, mais **il RÉÉCRIT `ppsspp.ini`** |
+| **Xbox** (xemu 0.8.136) | `[display.quality] surface_scale`, int, déf. 1 | `[display.ui] aspect_ratio`, déf. `"auto"` | ❌ **n'existe pas** | ⚠ `-config_path`, et le fichier est réécrit à la sortie |
+| **PS3** (RPCS3 épinglé) | `Video: Resolution Scale`, %, déf. 100 | `Video: Aspect ratio`, déf. `16:9` | ❌ **n'existe pas** | ⚠ `--config <yml partiel>`, mais il **écarte la config du propriétaire** |
+| **Wii U** (Cemu 2.6) | **aucune clé** — c'est un *graphic pack* | `FullscreenScaling` 0/1, déf. 0 | ❌ **n'existe pas** | ❌ aucune |
+| **PS Vita** (Vita3K roulant) | `resolution-multiplier`, float, déf. 1.0 | `stretch_the_display_area`, déf. `false` | ⚠ `fullscreen_hd_res_pixel_perfect` — **conditionnel**, voir plus bas | ❌ aucune |
+
+**Le fait le plus important de ce tableau, et il n'était écrit nulle part :
+trois des sept émulateurs n'ont AUCUNE mise à l'échelle entière.** Xbox, PS3 et
+Wii U n'exposent rien sur le troisième axe — cherché exhaustivement dans les
+trois arbres (`integer scal`, `pixel.perfect`, `integer_scal`,
+`nearest.neigh`) : zéro occurrence. Ce qui existe chez eux est un **filtre**
+(`Output Scaling Mode = Nearest`, `UpscaleFilter = 3`, `filtering = "nearest"`),
+qui retire le flou mais laisse des pixels de tailles inégales — la lecture du
+calcul de destination le confirme dans les trois cas : réels flottants, aucun
+`floor`, aucun `min(w/fbw, h/fbh)`.
+
+**Pour ces trois-là, la réponse est donc `fill_absent`, pas une mesure qui
+manque.** C'est le pendant exact de ce que Dolphin déclare déjà.
+
+#### Ce que le Dreamcast a reçu, et pourquoi lui seul
+
+`flycast.toml` porte désormais son `[system.render]` complet, les deux modes,
+et son `fill` sur chacun. Il est **le seul des sept** qui puisse en recevoir un
+sans rien inventer, parce qu'il est le seul dont la ligne de commande pose une
+clé arbitraire **sans réécrire le fichier du propriétaire** — vérifié à deux
+niveaux dans sa source plutôt que cru sur parole : `IniFile::setRaw` écrit dans
+`entry.transientValue` et jamais dans `entry.value`, et `IniFile::save` saute
+les entrées transitoires.
+
+Quatre pièges de forme sont écrits dans le profil, chacun du genre qui pose une
+clé d'apparence juste qui ne fait rien. Le plus coûteux :
+**`rend.LinearInterpolation` a pour défaut `true`, et rien dans le code ne
+l'éteint quand la mise à l'échelle entière est active** — les deux réglages ne
+se consultent nulle part. Poser `IntegerScale` sans éteindre celui-là donne un
+multiple entier repassé au filtre linéaire : **très exactement l'image floue que
+D2 existe pour empêcher**, et qu'on croirait normale.
+
+**🔴 NON VÉRIFIÉ : le résultat à l'écran.** Personne n'a regardé une partie. La
+mesure exige la console, elle est due, et rien ici ne la remplace.
+
+#### Pourquoi les six autres ne suivent pas — et ce n'est plus « faute de relevé »
+
+Le relevé est fait. Ce qui bloque désormais est **le moyen de livraison**, et
+c'est un fait de conception, pas une mesure :
+
+- **`[system.render.native]` et `.full` portent les deux PREMIERS axes**, sous
+  forme d'arguments de ligne de commande (ou d'un `{render_config}`). Or aucun
+  des six n'accepte un réglage de rendu en ligne de commande sans contrepartie :
+  PCSX2 n'a rien du tout (et un argument inconnu y est une erreur fatale), Cemu
+  n'a rien du tout, PPSSPP réécrit son `ppsspp.ini`, xemu réécrit son
+  `xemu.toml` à la sortie, RPCS3 écarte la configuration du propriétaire.
+- **Le troisième axe, lui, a une autre voie** : `fill_enforced` sur le bloc
+  `[system.render]`, posé par le fragment `enforced` d'un `[[bootstrap]]` —
+  c'est ce que DuckStation emploie déjà pour son `CropMode`.
+
+**C'est le travail du sous-projet D, et cette dette le disait déjà** — « le
+troisième axe ne se greffe pas avant les deux premiers ». Ce qui a changé, c'est
+que ce sous-projet n'a plus de relevé à faire : il a un tableau.
+
+#### 🟡 Un arbitrage que le relevé fait apparaître — PCSX2
+
+**PCSX2 est le prochain candidat, et de loin.** Il a la mise à l'échelle entière
+(`[EmuCore/GS] IntegerScaling`, défaut `false`), son fichier est un **INI**
+— le dialecte que la fusion connaît —, et il porte **déjà** une entrée
+`[[bootstrap]]` sur `inis\PCSX2.ini`. Rien ne manque techniquement.
+
+Ce qui manque est une décision : **`fill_enforced` est PAR PROFIL, une seule
+valeur pour les deux modes** (`_lire_remplissage_impose` — « le fragment
+`enforced` est posé une fois par lancement, AVANT que le mode ne soit
+résolu »). Or la politique veut `entier` en natif et `ajuste` en full. Imposer
+`IntegerScaling = true` donnerait donc `entier` **aussi en mode full**, ce qui
+contredit la politique — et un profil qui la contredit est **refusé au
+chargement**, délibérément.
+
+Trois issues, et aucune n'est gratuite :
+
+1. **Accepter `entier` partout pour PCSX2**, et l'écrire comme un écart assumé.
+   Le mode `full` rendrait alors des bandes noires là où il pourrait remplir.
+2. **Donner au mécanisme d'amorçage un fragment PAR MODE**, ce qui est une
+   évolution réelle : le lanceur pose les clés imposées avant de résoudre le
+   mode, et l'inverser touche l'ordre de `Amorcer()`.
+3. **Ne pas poser le remplissage de PCSX2 du tout**, et le déclarer `fill_absent`
+   — ce qui serait FAUX : la clé existe, elle est relevée.
+
+**Rien n'est fait ici, et l'issue 3 est écartée d'office** : déclarer absent ce
+qu'on vient de relever serait le seul des trois qui mente. **Question au
+propriétaire :** accepte-t-on qu'un émulateur impose le même remplissage dans
+les deux modes quand son réglage ne vit que dans son fichier, ou l'amorçage
+doit-il apprendre à poser un fragment par mode ?
+
+#### Un piège propre à la PS Vita, mesuré et à écrire avant tout bloc
+
+`fullscreen_hd_res_pixel_perfect` **n'est pas un interrupteur de mise à l'échelle
+entière** : il ne s'engage que si l'affichage est **plein écran ET que sa
+résolution est un multiple exact de 960×540** — `screen.extent.width %
+DEFAULT_RES_WIDTH` et `% (DEFAULT_RES_HEIGHT - 4)`, lus dans
+`renderer/src/vulkan/screen_filters.cpp` et le renderer GL. En 1920×1080 il
+agit ; en 2560×1440, **il ne fait rien, et rien ne le dit**.
+
+Un profil qui déclarerait `fill = "entier"` pour la PS Vita promettrait donc
+quelque chose que l'émulateur ne tient qu'à certaines résolutions. C'est à
+écrire dans le bloc le jour où il s'écrit — et c'est une raison de plus de ne
+pas l'écrire avant que D9 permette d'y faire entrer un jeu.
+
+**Et un piège de FORME dans le même fichier :** deux des trois clés emploient
+des **tirets bas** (`stretch_the_display_area`, `fullscreen_hd_res_pixel_perfect`)
+et la troisième un **tiret** (`resolution-multiplier`). Le fichier XML de
+réglages de Vita3K, lui, écrit les trois avec des tirets. Recopier depuis le
+mauvais des deux endroits donne une clé ignorée en silence.
+
+#### Ce qui reste dû, et ce qui exige la console
+
+- **Écrire les six blocs restants** : travail de dépôt, désormais sans inconnue
+  de valeur, mais qui demande d'abord l'arbitrage PCSX2 ci-dessus et, pour
+  quatre des six, un moyen de livraison que le mécanisme n'a pas.
+- **Voir une image.** Aucun `fill` livré — ni ceux de RetroArch, ni celui du
+  Dreamcast d'aujourd'hui — n'a jamais été vu agir sur un écran. C'est la seule
+  preuve qui vaille, et elle est sur la console.
+- **L'arbitrage de l'en-tête effacé** (section 🔴 plus haut) **n'a toujours pas
+  été rendu**, et il n'a pas bougé depuis le 2026-08-29.
+
 ---
 
 ## D3 — DuckStation : la manette ne répond pas — RÉGLÉE le 2026-08-29
