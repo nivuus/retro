@@ -2295,3 +2295,83 @@ def test_le_rapport_lit_un_temoin_qui_porte_la_langue(profils_avec_langues):
     duck = next(e for e in etats if e.profile_id == "duckstation")
     assert duck.date == "2026-09-04 21:03:11"
     assert duck.target == "C:\\A\\settings.ini"
+
+
+# --- le témoin s'apparie par CIBLE, jamais par rang -------------------------
+#
+# Trouvé le 2026-09-04 en lançant « retro status » pour de vrai, avec un témoin
+# à trois lignes. `etat_amorcage` prenait `poses[rang]` — la n-ième ligne du
+# témoin pour la n-ième entrée du profil. Or le lanceur TRIE ses lignes
+# (`lignes.Sort()` dans InscrireTemoin) et l'ordre alphabétique n'est pas
+# l'ordre du profil.
+#
+# Le rapport affichait donc le chemin d'une cible avec le COMPTE DE CLÉS d'une
+# autre. Sur Dolphin : « Dolphin.ini — la console y impose 104 clé(s) », quand
+# ce fichier en reçoit 2 et que 104 est le compte de GCPadNew.ini.
+#
+# Le défaut était invisible tant que Dolphin n'avait que ses deux fichiers de
+# manette, aux comptes voisins. La troisième cible l'a rendu criant.
+
+PROFIL_TROIS_CIBLES = """
+schema = 1
+id = "dolphin"
+exe = 'Dolphin.exe'
+[[bootstrap]]
+target = '%APPDATA%\\Dolphin Emulator\\Config\\GCPadNew.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé une fois, et ce qui vous appartient.
+[GCPad1]
+Theme = ignore
+'''
+enforced = '''
+[GCPad1]
+Device = XInput/0/Gamepad
+Buttons/A = `Button A`
+'''
+langue_absente = "ce fichier ne porte que des liaisons de manette"
+[[bootstrap]]
+target = '%APPDATA%\\Dolphin Emulator\\Config\\Dolphin.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé une fois, et ce qui vous appartient.
+[Interface]
+Theme = dark
+'''
+[bootstrap.langue]
+repli = "english"
+english = '''
+[Interface]
+LanguageCode = en
+'''
+[[system]]
+id = "gamecube"
+name = "GameCube"
+extensions = [".iso"]
+launch = '-e "{rom}"'
+"""
+
+
+def test_le_temoin_s_apparie_par_cible_et_non_par_rang(tmp_path):
+    """Le lanceur TRIE les lignes du témoin ; l'ordre alphabétique n'est pas
+    celui du profil. Les apparier par rang fait afficher le chemin d'une cible
+    avec le compte de clés d'une autre — et ce compte est la phrase qui dit au
+    propriétaire ce que la console lui reprend."""
+    fichier = tmp_path / "dolphin.toml"
+    fichier.write_text(PROFIL_TROIS_CIBLES, encoding="utf-8")
+    profils = {"dolphin": profiles.load_profile(fichier)}
+    # Le témoin, DANS L'ORDRE OÙ LE LANCEUR L'ÉCRIT : trié, donc Dolphin.ini
+    # avant GCPadNew.ini — l'inverse de l'ordre du profil.
+    temoin = {"dolphin": [
+        ("2026-09-04 21:00:00", "C:\\A\\Dolphin.ini", "english"),
+        ("2026-09-04 21:00:00", "C:\\A\\GCPadNew.ini", ""),
+    ]}
+    par_cible = {e.target: e for e in status.etat_amorcage(profils, temoin)}
+    assert set(par_cible) == {"C:\\A\\Dolphin.ini", "C:\\A\\GCPadNew.ini"}
+    # Dolphin.ini ne reçoit QUE la langue : une clé.
+    assert par_cible["C:\\A\\Dolphin.ini"].imposees == 1
+    # GCPadNew.ini reçoit les deux liaisons imposées.
+    assert par_cible["C:\\A\\GCPadNew.ini"].imposees == 2
+    # Et la langue posée suit sa propre cible, pas celle d'à côté.
+    assert par_cible["C:\\A\\Dolphin.ini"].langue_posee == "english"
+    assert par_cible["C:\\A\\GCPadNew.ini"].langue_posee == ""

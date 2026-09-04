@@ -206,13 +206,12 @@ def etat_amorcage(profils: dict,
         if not profils[pid].bootstraps:
             etats.append(Amorcage(profile_id=pid, declare=False))
             continue
-        for rang, amorcage in enumerate(profils[pid].bootstraps):
+        for amorcage in profils[pid].bootstraps:
             # TROIS ÉLÉMENTS, et le troisième peut être vide. `lire_amorcages`
-            # rend désormais (date, cible, langue posée) : déplier en deux
-            # levait un ValueError sur un témoin RÉEL, et aucun test ne
-            # l'attrapait parce qu'ils fabriquaient tous le témoin à la main.
-            date, cible, langue_posee = (
-                poses[rang] if rang < len(poses) else ("", "", ""))
+            # rend (date, cible, langue posée) : déplier en deux levait un
+            # ValueError sur un témoin RÉEL, et aucun test ne l'attrapait parce
+            # qu'ils fabriquaient tous le témoin à la main.
+            date, cible, langue_posee = _pose_de(poses, amorcage.target)
             etats.append(Amorcage(
                 # Amorçée, la cible est celle que le lanceur a RÉSOLUE et
                 # écrite au témoin ; pas encore amorcée, c'est celle que le
@@ -228,6 +227,41 @@ def etat_amorcage(profils: dict,
                 imposees=_cles_imposees(amorcage),
                 langue_posee=langue_posee))
     return etats
+
+
+def _pose_de(poses: list, target: str) -> tuple[str, str, str]:
+    """La ligne de témoin qui parle de CETTE cible, et non de la n-ième.
+
+    APPARIER PAR RANG ÉTAIT FAUX, et c'est mesuré (2026-09-04) : le lanceur
+    TRIE les lignes du témoin — `lignes.Sort()` dans `InscrireTemoin` — et
+    l'ordre alphabétique n'est pas celui du profil. Le rapport affichait donc
+    le chemin d'une cible avec le COMPTE DE CLÉS d'une autre. Sur Dolphin :
+    « Dolphin.ini — la console y impose 104 clé(s) », quand ce fichier en
+    reçoit deux et que 104 est le compte de son fichier de manettes.
+
+    Ce n'est pas un détail d'affichage : ce compte est la phrase qui dit au
+    propriétaire ce que la console lui reprend dans CE fichier-là.
+
+    L'APPARIEMENT SE FAIT SUR LE DERNIER SEGMENT DU CHEMIN, et pas sur le
+    chemin entier, parce que les deux ne sont pas écrits dans la même langue :
+    le profil déclare `%APPDATA%\…` ou `{install_dir}\…`, le témoin porte ce
+    que la console a réellement ouvert, variables développées. Comparer les
+    chaînes entières ne rapprocherait jamais rien.
+
+    CHAQUE LIGNE N'EST CONSOMMÉE QU'UNE FOIS : deux cibles d'un même profil qui
+    finiraient par le même nom de fichier — rien ne l'interdit — retomberaient
+    sinon sur la même ligne, et la seconde passerait pour amorcée à la date de
+    la première. Consommée dans l'ordre du profil, chacune prend la sienne.
+
+    Sans correspondance, on rend du vide : « pas encore amorcé », qui est
+    l'état juste d'une cible dont le témoin ne parle pas.
+    """
+    voulu = target.rsplit("\\", 1)[-1].casefold()
+    for n, pose in enumerate(poses):
+        if pose[1].rsplit("\\", 1)[-1].casefold() == voulu:
+            poses.pop(n)
+            return pose
+    return ("", "", "")
 
 
 def _cles_imposees(amorcage) -> int:

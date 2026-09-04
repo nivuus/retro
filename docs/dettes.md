@@ -1772,6 +1772,42 @@ levait un `ValueError` au lieu de s'afficher.
 quatrième colonne. Le côté hôte l'accepte, donc le jour où il l'écrira rien ne
 cassera — c'était tout l'objet de faire cette moitié-ci d'abord.
 
+#### 🔴 Un rapport qui mentait sur CHAQUE cible — trouvé en le lançant
+
+Trouvé le 2026-09-04, non par relecture mais **en lançant `retro status` pour
+de vrai** avec un témoin à trois lignes. `etat_amorcage` prenait `poses[rang]`
+— la n-ième ligne du témoin pour la n-ième entrée du profil. Or le lanceur
+**TRIE** ses lignes (`lignes.Sort()` dans `InscrireTemoin`), et l'ordre
+alphabétique n'est pas celui du profil.
+
+Le rapport affichait donc le chemin d'une cible avec **le compte de clés d'une
+autre** :
+
+| Le rapport disait | La vérité |
+|---|---|
+| `Dolphin.ini` — la console y impose **104** clé(s) | Dolphin.ini en reçoit **2** |
+| `GCPadNew.ini` — la console y impose **80** clé(s) | GCPadNew.ini en reçoit **104** |
+| `WiimoteNew.ini` — la console y impose **2** clé(s) | WiimoteNew.ini en reçoit **80** |
+
+Ce n'est pas un détail d'affichage : ce compte est la phrase qui dit au
+propriétaire **ce que la console lui reprend dans ce fichier-là**, et c'est le
+prix assumé du régime `enforced`. La donner pour un autre fichier est le genre
+de faux témoignage que ce rapport existe pour éviter.
+
+**Le défaut était invisible tant que Dolphin n'avait que ses deux fichiers de
+manette**, aux comptes voisins et à l'ordre alphabétique compatible. La
+troisième cible — celle que la langue a fait ajouter — l'a rendu criant. C'est
+la même leçon que D6 : **réparer un défaut en arme un autre**, et seul le fait
+de lancer la chose l'a montré.
+
+**Corrigé** (`retro/status.py`, `_pose_de`) : l'appariement se fait sur le
+dernier segment du chemin, et non sur le chemin entier — le profil déclare
+`%APPDATA%\…` ou `{install_dir}\…` quand le témoin porte ce que la console a
+réellement ouvert, variables développées, si bien que comparer les chaînes
+entières ne rapprocherait jamais rien. Chaque ligne n'est consommée qu'une
+fois, dans l'ordre du profil : deux cibles finissant par le même nom de fichier
+— rien ne l'interdit — retomberaient sinon sur la même ligne.
+
 #### 🔴 Le mensonge d'`--explain` n'est plus hypothétique : il est NÉ
 
 Cette dette écrivait « Aujourd'hui il ne se produit pas, faute de table ; il
