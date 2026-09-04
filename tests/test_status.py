@@ -2111,3 +2111,92 @@ def test_sous_auto_sans_valeur_de_steam_la_prevision_le_dit_aussi(
     assert ("  ce que chaque entrée d'amorçage posera au prochain jeu, si "
             "Steam n'en dit toujours rien — l'hôte ne lit pas ce registre, il "
             "ne sait que ce que le dernier lancement en a rapporté :") in texte
+
+
+# --- le QUATRIÈME état : « mesuré, cet émulateur n'a rien à régler » --------
+#
+# `langue_absente` est au rapport ce que `fill_absent` est à la section Rendu.
+# Les trois états précédents en cachaient deux dans un seul : « aucune table de
+# langues déclarée » se disait aussi bien d'un fichier qui n'a AUCUN réglage de
+# langue que d'une table que personne n'a relevée. Les deux se lisent à l'écran
+# de la même façon — un jeu en anglais — et n'appellent pas le même geste :
+# l'une est finie, l'autre est un relevé qui reste dû.
+
+PROFIL_STATUS_LANGUE_ABSENTE = """
+schema = 1
+id = "rpcs3"
+exe = 'rpcs3.exe'
+[[bootstrap]]
+target = '{install_dir}\\config\\input_configs\\global\\Default.yml'
+content = '''
+# Écrit par « retro » au premier lancement, parce que ce fichier était absent.
+Player 1 Input:
+  Handler: XInput
+'''
+langue_absente = "ce fichier ne porte que le gestionnaire de manette"
+[[system]]
+id = "ps3"
+name = "PlayStation 3"
+extensions = [".bin"]
+launch = '"{rom}"'
+"""
+
+
+@pytest.fixture
+def profils_avec_langue_absente(tmp_path):
+    """Les trois états d'entrée côte à côte : une table, un aveu d'absence,
+    et une entrée que personne n'a relevée."""
+    avec = tmp_path / "duckstation-langue.toml"
+    avec.write_text(PROFIL_STATUS_LANGUE, encoding="utf-8")
+    sans = tmp_path / "ppsspp-langue.toml"
+    sans.write_text(PROFIL_STATUS_SANS_LANGUE, encoding="utf-8")
+    absente = tmp_path / "rpcs3-langue.toml"
+    absente.write_text(PROFIL_STATUS_LANGUE_ABSENTE, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(avec),
+            "ppsspp": profiles.load_profile(sans),
+            "rpcs3": profiles.load_profile(absente)}
+
+
+def test_une_entree_sans_reglage_de_langue_porte_sa_raison(
+        profils_avec_langue_absente):
+    """`etat_langues` doit rendre la RAISON, pas seulement un booléen de
+    plus : c'est elle que le rapport affiche, et sans elle le quatrième état
+    ne se distingue du troisième que par une nuance de formulation."""
+    etats = status.etat_langues(profils_avec_langue_absente, voulue="french")
+    muet = next(e for e in etats if e.profile_id == "rpcs3")
+    assert not muet.declared
+    assert muet.absente == "ce fichier ne porte que le gestionnaire de manette"
+
+
+def test_le_rapport_distingue_un_releve_du_a_un_constat_d_impossibilite(
+        profils_avec_langue_absente):
+    """Les deux phrases doivent DIFFÉRER dans le rapport. Sans cela, un oubli
+    de relevé a exactement la même trace à l'écran qu'un constat
+    d'impossibilité, et le rapport dit des deux la même chose."""
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        profils=profils_avec_langue_absente, langue="french",
+        langue_temoin={"steam": "french", "langue": "french",
+                       "motif": "posée à la main"}))
+    section = _section_langue(texte)
+    # Le relevé qui reste dû garde sa phrase — c'est celle que D12 tient en
+    # vue, et la changer ferait disparaître la dette du rapport.
+    assert "ppsspp" in section and "aucune table de langues déclarée" in section
+    # Le constat, lui, porte SA raison, et ne se dit pas « déclarée » : il
+    # n'y a rien à déclarer.
+    assert "ce fichier ne porte que le gestionnaire de manette" in section
+    ligne_rpcs3 = next(l for l in section.splitlines() if "rpcs3" in l)
+    assert "aucune table de langues déclarée" not in ligne_rpcs3
+
+
+def test_un_constat_d_impossibilite_n_appelle_aucun_releve(
+        profils_avec_langue_absente):
+    """La conséquence collective — « un émulateur sans table pose ses propres
+    défauts » — vaut pour les deux. Ce qui ne vaut que pour l'un est le
+    GESTE : une entrée dont l'absence est mesurée est FINIE, et le rapport ne
+    doit pas envoyer relever ce qui a déjà été relevé."""
+    etats = status.etat_langues(profils_avec_langue_absente, voulue="french")
+    a_relever = [e.profile_id for e in etats
+                 if not e.declared and not e.absente]
+    assert a_relever == ["ppsspp"]

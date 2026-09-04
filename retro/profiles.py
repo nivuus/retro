@@ -299,6 +299,24 @@ class Bootstrap:
     # La langue posée quand celle de la console n'est pas déclarée ci-dessus.
     # Vide si et seulement si `langues` est vide.
     langue_repli: str = ""
+    # LE PENDANT DE `fill_absent`, ET LA MÊME DISTINCTION. Sans lui, une
+    # entrée sans table rend un seul état — « aucune table de langues
+    # déclarée » — qui recouvre DEUX situations n'appelant pas le même geste :
+    #
+    #   · l'émulateur n'expose RÉELLEMENT aucun réglage de langue dans ce
+    #     fichier — il n'y a rien à poser, et il n'y aura jamais rien ;
+    #   · personne n'a encore relevé sa table.
+    #
+    # Tant qu'aucune entrée ne portait de table, les deux se confondaient sans
+    # dommage : la réponse était « aucune, partout ». C'est la CLÔTURE qui arme
+    # le piège — le jour où la plupart des entrées portent leur table, celles
+    # qui n'en ont pas deviennent indiscernables, et un oubli a exactement la
+    # même trace à l'écran qu'un constat d'impossibilité.
+    #
+    # Il porte une RAISON, jamais un booléen, pour la raison qui vaut pour
+    # `fill_absent` et pour la `note` d'un `args` vide : « non » sans son motif
+    # ne se distingue pas d'un « non » recopié sans avoir regardé.
+    langue_absente: str = ""
 
 
 def folder_key(nom: str) -> str:
@@ -927,6 +945,8 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
             "lancement."
         )
     langues, repli = _lire_langues(path, target, brut.get("langue"))
+    langue_absente = _lire_langue_absente(path, brut.get("langue_absente"),
+                                          langues)
     # Le dialecte se vérifie ICI, à la lecture du profil, et non au lancement
     # sur la console : une extension inconnue doit faire échouer la personne
     # qui écrit le profil, pas le propriétaire devant sa télévision. UN SEUL
@@ -966,7 +986,49 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     _valider_impose_contre_langues(path, target, enforced, langues)
     return Bootstrap(target=target, content=content,
                      enforced=enforced.strip(),
-                     langues=langues, langue_repli=repli)
+                     langues=langues, langue_repli=repli,
+                     langue_absente=langue_absente)
+
+
+def _lire_langue_absente(path: pathlib.Path, brut, langues) -> str:
+    """L'aveu « cet émulateur n'a aucun réglage de langue ICI », et sa raison.
+
+    Les trois refus sont ceux de `fill_absent`, transposés : les deux à la
+    fois ne veulent rien dire, un aveu vide n'avoue rien, et un aveu qui n'est
+    pas du texte ne nomme pas le profil qui le porte.
+
+    NI L'UN NI L'AUTRE EST PERMIS, et c'est l'état des entrées livrées : ni
+    table, ni aveu, c'est-à-dire « personne n'a encore regardé ». Ce troisième
+    état est celui que ce champ existe pour SORTIR de l'ambiguïté, pas pour
+    interdire.
+    """
+    if brut is None:
+        return ""
+    if not isinstance(brut, str):
+        raise ProfileError(
+            f"{path} [[bootstrap]] : 'langue_absente' doit être du TEXTE — la "
+            "raison pour laquelle cet émulateur n'a aucun réglage de langue "
+            f"dans ce fichier ; reçu un {type(brut).__name__}. Un booléen "
+            "dirait « non » sans dire pourquoi, et un « non » sans motif ne se "
+            "distingue pas d'un « non » recopié sans avoir regardé."
+        )
+    if langues and brut.strip():
+        raise ProfileError(
+            f"{path} [[bootstrap]] : cette entrée déclare SOIT la table "
+            "« [bootstrap.langue] » — les langues qu'elle pose —, SOIT "
+            "'langue_absente', qui dit que la question a été posée et que la "
+            "réponse est non. Les deux à la fois ne veulent rien dire, et le "
+            "rapport devrait choisir laquelle des deux il croit."
+        )
+    if not brut.strip():
+        raise ProfileError(
+            f"{path} [[bootstrap]] : 'langue_absente' est vide. Un aveu vide "
+            "n'avoue rien : il se lirait comme « personne n'a encore regardé "
+            "», qui est très exactement l'état dont ce champ existe pour "
+            "sortir — et le rapport n'aurait aucune raison à afficher. Le "
+            "retirer, ou écrire ce qui a été constaté et où."
+        )
+    return brut.strip()
 
 
 def cles_ini(fragment: str) -> list[tuple[str, str]]:

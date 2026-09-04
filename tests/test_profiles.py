@@ -2289,3 +2289,95 @@ def test_un_repli_qui_n_est_pas_un_nom_est_refuse(tmp_path):
         _ecrire(tmp_path, texte)
     assert "langue.toml" in str(exc.value)
     assert "repli" in str(exc.value)
+
+
+# --- `langue_absente` : le pendant de `fill_absent`, pour la langue --------
+#
+# D12 nommait le manque et ne l'implémentait pas : « une entrée sans
+# [bootstrap.langue] rend un seul état, "aucune table de langues déclarée",
+# et cet état recouvre deux situations qui n'appellent pas le même geste ».
+# Le remplissage tient déjà la même distinction — `fill` déclare le
+# comportement, `fill_absent` déclare que la question a été POSÉE et que la
+# réponse est non — et c'est ce patron-là qui est repris ici, mot pour mot.
+
+PROFIL_LANGUE_ABSENTE = PROFIL + """
+[[bootstrap]]
+target = '%USERPROFILE%\\Documents\\DuckStation\\settings.ini'
+content = '''
+; Écrit par « retro », qui distingue trois choses : ce qu'il IMPOSE et repose
+; à chaque lancement, ce qu'il a posé une fois, et ce qui vous appartient.
+[Main]
+Theme = dark
+'''
+langue_absente = "ce fichier ne porte que des liaisons de manette"
+"""
+
+
+def test_une_entree_peut_declarer_qu_elle_n_a_aucun_reglage_de_langue(
+        tmp_path):
+    """L'état qui manquait, et le seul qui ne se déduise de rien : la
+    question a été posée à la source de l'émulateur, et la réponse est non.
+    Sans lui, cette entrée est indiscernable de celle que personne n'a
+    encore relevée."""
+    profil = _ecrire(tmp_path, PROFIL_LANGUE_ABSENTE)
+    amorcage = profil.bootstraps[0]
+    assert amorcage.langues == ()
+    assert amorcage.langue_absente == (
+        "ce fichier ne porte que des liaisons de manette")
+
+
+def test_une_entree_que_personne_n_a_relevee_ne_declare_rien(tmp_path):
+    """Le troisième état, et c'est celui des entrées livrées : ni table, ni
+    aveu. Il doit rester DISTINCT des deux autres — c'est tout l'objet de ce
+    champ."""
+    profil = _ecrire(tmp_path, PROFIL_IMPOSE)
+    assert profil.bootstraps[0].langues == ()
+    assert profil.bootstraps[0].langue_absente == ""
+
+
+def test_une_table_de_langues_et_un_aveu_d_absence_sont_refuses(tmp_path):
+    """Les deux à la fois ne veulent rien dire — c'est le refus exact de
+    `fill` et `fill_absent`. Une entrée qui pose une langue ET affirme qu'il
+    n'y en a pas laisserait le rapport choisir laquelle des deux il croit."""
+    # L'aveu se déclare AVANT « [bootstrap.langue] » : après, TOML le
+    # rangerait DANS la table et il passerait pour un nom de langue — le
+    # profil serait bien refusé, mais pour une tout autre raison, et ce test
+    # ne prouverait rien. C'est le piège que PROFIL_LANGUE_ET_IMPOSE
+    # documente déjà pour `enforced`.
+    texte = PROFIL_LANGUE.replace(
+        "[bootstrap.langue]",
+        'langue_absente = "aucun réglage de langue"\n\n[bootstrap.langue]')
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    message = str(exc.value)
+    assert "langue.toml" in message
+    assert "langue_absente" in message
+    assert "[bootstrap.langue]" in message
+
+
+def test_un_aveu_d_absence_vide_est_refuse(tmp_path):
+    """`langue_absente = ""` est au champ ce que `[bootstrap.langue]` vide
+    est à la table : écrit puis laissé vide. Le lire comme « personne n'a
+    regardé » effacerait la seule chose que ce champ existe pour dire — la
+    RAISON —, et le rapport n'aurait rien à afficher."""
+    texte = PROFIL_LANGUE_ABSENTE.replace(
+        'langue_absente = "ce fichier ne porte que des liaisons de manette"',
+        'langue_absente = "   "')
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    message = str(exc.value)
+    assert "langue.toml" in message
+    assert "langue_absente" in message
+
+
+def test_un_aveu_d_absence_qui_n_est_pas_du_texte_est_refuse(tmp_path):
+    """Le pendant du `isinstance` d'`enforced` : `true` au lieu d'une phrase
+    remonterait un `AttributeError` nu, sans nommer le profil qui le porte."""
+    texte = PROFIL_LANGUE_ABSENTE.replace(
+        'langue_absente = "ce fichier ne porte que des liaisons de manette"',
+        "langue_absente = true")
+    with pytest.raises(profiles.ProfileError) as exc:
+        _ecrire(tmp_path, texte)
+    message = str(exc.value)
+    assert "langue.toml" in message
+    assert "langue_absente" in message

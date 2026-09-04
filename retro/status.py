@@ -118,6 +118,12 @@ class ProfilLangue:
     declared: bool
     langue: str = ""
     motif: str = ""
+    # LE QUATRIÈME ÉTAT, et il se lit contre `declared` : « mesuré, cette
+    # cible n'a AUCUN réglage de langue », avec sa raison. C'est le pendant de
+    # `fill_absent` dans la section Rendu, et il existe pour la même raison —
+    # sans lui, un relevé qui reste DÛ et un constat d'impossibilité rendent la
+    # même phrase, alors que le premier appelle un geste et le second est fini.
+    absente: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -893,6 +899,7 @@ def etat_langues(profils: dict, voulue: str,
                 # `declared` : le répéter ici ferait deux formulations du même
                 # constat, et le rendu n'en garderait qu'une.
                 motif=decision.motif if declarees else "",
+                absente=amorcage.langue_absente,
             ))
     return etats
 
@@ -1550,7 +1557,16 @@ def _lignes_langue(report: Report) -> list[str]:
                       "jeu" + _condition_langue(report) + " :")
     for e in report.langues:
         ou = f" ({e.cible})" if e.cible else ""
-        if not e.declared:
+        if not e.declared and e.absente:
+            # MESURÉ : il n'y a rien à poser, et il n'y aura jamais rien. Le
+            # dire autrement que « aucune table déclarée » est tout l'objet de
+            # ce quatrième état : cette entrée-là est FINIE, et envoyer relever
+            # ce qui a déjà été relevé est le geste que ce rapport doit éviter.
+            # La raison est CITÉE, jamais résumée — c'est elle qui distingue un
+            # constat d'un « non » recopié sans avoir regardé.
+            lignes.append(f"  · {e.profile_id}{ou} : aucun réglage de langue "
+                          f"dans ce fichier — {e.absente}")
+        elif not e.declared:
             # L'ÉTAT QUI COMPTE. Sans lui, un émulateur qui ne suit pas la
             # langue serait indiscernable d'un émulateur qui la suit mal — et
             # les deux se lisent à l'écran de la même façon, un jeu en anglais.
