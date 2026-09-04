@@ -1665,6 +1665,43 @@ compilateur.
   langue demandée.** Aucune des sept tables n'a été vue agir. Elles sont
   relevées, pas mesurées — c'est la distinction que D3 a payée cher.
 
+#### 🔴 Un silence NEUF, que les tables viennent de créer — à arbitrer
+
+`retro langue` avertit quand **aucune** entrée ne déclare de table. Cette
+condition est désormais fausse, donc l'avertissement ne sort plus jamais — et
+la disparition est voulue, cette dette l'annonçait. Mais elle découvre un cas
+que personne n'avait à traiter tant qu'il n'y avait aucune table : **une langue
+déclarée par CERTAINES entrées et pas par les autres.**
+
+Couverture mesurée le 2026-09-04, sur les sept entrées qui portent une table :
+
+| Langue | Entrées qui la déclarent |
+|---|---|
+| english, french, german, italian, spanish | 7 / 7 |
+| schinese, japanese, polish, portuguese, brazilian, swedish, latam | 6 / 7 |
+| dutch, finnish, koreana, russian, turkish | 5 / 7 |
+| tchinese, norwegian | 4 / 7 |
+| arabic, czech, danish, greek, hungarian, indonesian, ukrainian | 3 / 7 |
+| romanian, vietnamese | 2 / 7 |
+| **bulgarian, malay, thai** | **1 / 7** |
+
+Le propriétaire qui pose `malay` voit sa commande réussir sans un mot, et six
+entrées sur sept partiront dans leur repli. C'est **exactement** le raisonnement
+déjà écrit dans `_cmd_langue` — « le taire ferait croire au propriétaire que son
+choix s'applique » — appliqué à un cas que ce code ne couvre pas.
+
+**Et ce n'est pas toujours un défaut**, ce qui est précisément ce qui rend
+l'arbitrage nécessaire : la PS Vita n'a pas de thaï, la GameCube n'a que six
+langues système. Le repli est alors la réponse JUSTE, pas une lacune. Un
+avertissement qui ne ferait pas cette différence crierait à tort — et une garde
+qui crie à tort est une garde qu'on finit par désarmer.
+
+**Ce n'est pas implémenté, délibérément :** c'est une évolution de la commande,
+donc une décision de portée, et `retro status` dit déjà la chose entrée par
+entrée. **Question au propriétaire :** `retro langue --langue malay` doit-elle
+dire « six entrées sur sept poseront leur repli » — et si oui, est-ce un
+avertissement qui change le code de retour, ou une simple note ?
+
 #### Deux fragilités que les tables apportent avec elles
 
 - **RPCS3 : la liste des langues est une propriété de l'ARCHIVE, pas du code.**
