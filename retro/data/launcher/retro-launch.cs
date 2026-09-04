@@ -1398,9 +1398,31 @@ static class RetroLaunch
                     // (la cible existe) » quand il y en a mentirait sur le seul
                     // controle verifiable a distance — et c'est precisement le
                     // fichier du proprietaire qui est en jeu.
+                    //
+                    // ET LA LANGUE ROUVRE CE MENSONGE PAR L'AUTRE PORTE. Une
+                    // entree qui ne porte QU'une table de langues — aucune cle
+                    // imposee — recoit elle aussi une fusion a chaque
+                    // lancement. Le cas n'etait pas theorique : dolphin.toml
+                    // le livre sur Dolphin.ini.
+                    //
+                    // ON AVOUE, ON NE SIMULE PAS. FusionAPoser sait comparer
+                    // un fragment IMPOSE a la cible ; la langue, elle, depend
+                    // de celle du lancement, donc du registre de Steam lu au
+                    // moment ou le jeu part — ce que « --explain » ne fait
+                    // pas, puisqu'il doit rester sans effet de bord et
+                    // lisible en session 0. Repondre « non » serait faux ;
+                    // repondre « oui » le serait aussi les fois ou la cible
+                    // est deja conforme. « inconnu » est le seul des trois qui
+                    // ne mente pas, et un aveu s'exploite quand un faux
+                    // negatif ne s'exploite pas.
                     aPoser = imposeN.Length > 0
                         ? FusionAPoser(cibleAmorcage, imposeN)
-                        : "non (la cible existe)";
+                        : (p.ContainsKey(Indice("bootstrap_langue.", n)
+                                         + ".defaut")
+                            ? "inconnu (aucune cle imposee, mais cette cible "
+                              + "recoit une fusion de langue a chaque "
+                              + "lancement, que ce rapport ne simule pas)"
+                            : "non (la cible existe)");
                 else
                     aPoser = "oui";
                 rapport.AppendLine(Indice("amorcage_a_poser.", n) + "=" + aPoser);

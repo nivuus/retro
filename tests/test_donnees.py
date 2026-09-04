@@ -2395,3 +2395,49 @@ def test_flycast_pose_son_remplissage_par_la_ligne_de_commande():
             "(core/cfg/option.h : le paramètre `section` vaut \"config\" par "
             "défaut). « -config rend:… » créerait une section que Flycast ne "
             "lit jamais, sans un mot.")
+
+
+# --- D12 : « --explain » n'a plus le droit de répondre « non » à tort ------
+#
+# Le mensonge que D12 annonçait comme futur est NÉ le 2026-08-30 :
+# `dolphin.toml` déclare une table de langues sur `Dolphin.ini` et AUCUNE clé
+# `enforced` — `test_dolphin_impose_les_quatre_ports` l'exige même
+# explicitement. Le plan écrit donc `bootstrap_enforced.<n>` vide, et
+# `amorcage_a_poser.<n>` ne consultait que cette ligne : il répondait
+# « non (la cible existe) » sur une cible où une fusion de langue aura bel et
+# bien lieu au prochain jeu.
+#
+# UN CONTRÔLE QUI RÉPOND « NON » À TORT EST PIRE QUE PAS DE CONTRÔLE, parce
+# qu'on s'en sert : c'est le seul état de l'amorçage vérifiable à distance,
+# sans lancer de jeu.
+#
+# La correction est en C#, et **il n'existe aucun compilateur C# sur l'hôte** :
+# le lanceur ne peut donc pas se mettre à SIMULER la fusion de langue ici sans
+# être vu tourner. Il avoue son ignorance à la place — un aveu est
+# exploitable, un faux négatif ne l'est pas.
+def test_explain_avoue_son_ignorance_sur_une_cible_qui_n_a_que_des_langues():
+    """Sans cette garde, le seul contrôle à distance de l'amorçage ment sur
+    une cible LIVRÉE, et rien ne le dit."""
+    from retro import launcher
+    source = (launcher.SOURCES / launcher.SOURCE).read_text(
+        encoding="utf-8-sig")
+    # La clé que le plan écrit dès qu'une entrée porte une table : c'est elle
+    # qui distingue « rien à poser » de « une fusion de langue aura lieu ».
+    assert '"bootstrap_langue."' in source, (
+        "le lanceur ne compose plus le préfixe des lignes de langue")
+    debut = source.index("amorcage_a_poser.")
+    # La branche « la cible existe » doit consulter la langue AVANT de
+    # conclure. On lit la fenêtre qui précède l'écriture de la ligne.
+    fenetre = source[max(0, debut - 3000):debut]
+    assert "non (la cible existe)" in fenetre, (
+        "la branche « la cible existe » a disparu : ce test ne garde plus rien")
+    assert 'Indice("bootstrap_langue.", n)' in fenetre, (
+        "« amorcage_a_poser » ne consulte toujours que "
+        "« bootstrap_enforced » : sur une entrée qui ne porte QU'une table de "
+        "langues — dolphin.toml, Dolphin.ini — il répond « non (la cible "
+        "existe) » alors que la fusion de langue aura lieu au prochain jeu. "
+        "Un contrôle qui répond « non » à tort est pire que pas de contrôle.")
+    assert "inconnu (" in fenetre, (
+        "le lanceur doit AVOUER son ignorance plutôt que répondre « non » : "
+        "il ne sait pas simuler la fusion de langue, et un aveu est "
+        "exploitable quand un faux négatif ne l'est pas")
