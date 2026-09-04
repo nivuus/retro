@@ -85,19 +85,27 @@ quand vous voulez :
   console demande. Ce n'est pas « il la suit mal », c'est « il ne la suit pas »,
   et les deux se lisent pareil à l'écran : un jeu en anglais.
 
-  **Le mécanisme est en place et testé, mais aucun profil ne déclare encore de
-  table** : la commande accepte les trente et une langues de Steam et n'en pose
-  aujourd'hui aucune. C'est l'état réel de la console, et il se dit à deux
-  endroits. `retro langue` **le dit en posant votre choix** : elle écrit le
-  fichier, avertit sur la sortie d'erreur qu'aucun profil ne peut appliquer ce
-  choix, et rend 1 — le taire ferait croire que la langue s'applique, et le jeu
-  démarrerait en anglais sans un mot. `retro status` le dit entrée par entrée —
-  « aucune table de langues déclarée », pour les
-  dix entrées d'amorçage des six profils qui en portent une ; les quatre autres
-  profils n'ont aucune entrée d'amorçage, donc pas même une ligne. Les valeurs
-  se relèvent sur chaque émulateur, une par une : voir `docs/dettes.md`, D12.
-  Ajouter une table **exige un nouveau `retro scan`** — ce sont les fragments
-  qu'il dépose que le lanceur fusionne.
+  **Les tables sont relevées — et aucune n'a encore été VUE agir.** Les onze
+  entrées d'amorçage des six profils qui en portent disent toutes où elles en
+  sont : sept déclarent une table, quatre déclarent que la question a été posée
+  à la source de l'émulateur et que **la réponse est non** — un fichier de
+  manettes n'a pas de langue, et le dire n'est pas la même chose que se taire.
+  `retro status` distingue les deux, parce qu'à l'écran un relevé oublié et une
+  impossibilité mesurée se lisent tous les deux comme un jeu en anglais.
+
+  Les quatre profils qui n'ont **aucune** entrée d'amorçage — `cemu`,
+  `flycast`, `ppsspp`, `xemu` — y ont désormais leur ligne aussi : il ne leur
+  manque pas une table, il leur manque le fichier de réglages où la poser.
+
+  Chaque valeur a été relevée dans la source de son émulateur, ou sur l'archive
+  que le manifeste épingle quand la source ne la porte pas — c'est le cas de
+  RPCS3, dont les langues d'interface sont les fichiers de traduction livrés et
+  non une liste écrite dans le code. **Ce qui reste dû est la preuve** : un jeu
+  vu dans la langue demandée, ce qu'aucune table n'a encore obtenu, et ce que
+  seule la console peut donner. Voir `docs/dettes.md`, D12.
+
+  Ajouter ou changer une table **exige un nouveau `retro scan`** — ce sont les
+  fragments qu'il dépose que le lanceur fusionne.
 - **`retro bios`** obtient les BIOS manquants depuis une source **que vous
   déclarez** dans votre propre manifeste, et n'écrit que ce qu'elle a vérifié :
   chaque fichier reçu est comparé au **md5 que le profil déclare**, jamais à un
@@ -242,9 +250,9 @@ de mouvement ni manette PlayStation, la console qui tourne sur un paquet périm�
 sans que rien ne le dise, **quatre réglages critiques que le mécanisme
 d'amorçage ne sait pas tenir**, une PS4 dont l'émulateur ne peut recevoir aucun
 jeu, une PS Vita où installer un jeu échoue par les deux voies prévues, et
-**une langue que le mécanisme sait poser et qu'aucun profil ne déclare
-encore** — dont l'hôte et la console ne lisent d'ailleurs pas le réglage de la
-même façon. Ceux qui touchent la manette débordent sur l'invité Windows, qui a
+**une langue dont les tables sont désormais relevées mais dont aucune n'a
+encore été vue agir** — et dont l'hôte et la console ne lisent d'ailleurs pas
+le réglage de la même façon. Ceux qui touchent la manette débordent sur l'invité Windows, qui a
 son propre fichier dans `nivuus/installer` : `docs/console-dettes.md`.
 
 **Quatre ont bougé le 2026-08-29, et deux sont nées le même jour.** La
