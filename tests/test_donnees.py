@@ -2345,3 +2345,53 @@ def test_chaque_cible_d_amorcage_dit_ou_en_est_sa_langue():
         "D12) — il leur manque SOIT une table « [bootstrap.langue] », SOIT "
         "un « langue_absente » qui dise ce qui a été constaté et où :\n  "
         + "\n  ".join(muettes))
+
+
+# --- D2 : le remplissage de Flycast, gelé contre sa source ----------------
+#
+# Flycast est le SEUL des sept émulateurs sans bloc de rendu qui puisse en
+# recevoir un sans rien inventer : son « -config section:clé=valeur » pose
+# n'importe quelle clé de façon TRANSITOIRE, sans réécrire l'emu.cfg du
+# propriétaire (core/cfg/cl.cpp et core/cfg/ini.cpp, révision v2.7). Les six
+# autres n'ont aucun moyen de recevoir un réglage de rendu en ligne de
+# commande — voir docs/dettes.md, D2.
+#
+# Cette garde gèle les quatre valeurs qui décident de l'image, parce que
+# chacune est un piège documenté :
+#   · la SECTION est le mot « config », et le drapeau s'appelle aussi
+#     « -config » : « -config config:… » a l'air d'une faute de frappe et
+#     c'est la forme juste. « -config rend:… » crée une section morte ;
+#   · rend.IntegerScale porte le S majuscule de WideScreen, quand ses voisins
+#     WidescreenGameHacks et ScreenStretching l'ont minuscule ;
+#   · rend.LinearInterpolation a pour défaut TRUE : ne pas l'éteindre laisse
+#     un filtre linéaire par-dessus la mise à l'échelle entière, donc une
+#     image floue qu'on croirait normale — la faute exacte de D2 ;
+#   · rend.Resolution est une HAUTEUR EN PIXELS, pas un multiplicateur
+#     (core/rend/transform_matrix.cpp : `RenderResolution / 480.f`).
+def test_flycast_pose_son_remplissage_par_la_ligne_de_commande():
+    """Les valeurs viennent de la révision v2.7 épinglée au manifeste, et
+    aucune n'est le défaut de Flycast — un essai dont la valeur posée est le
+    défaut ne peut rien conclure, c'est le troisième faux oracle de D2."""
+    profil = profiles.load_profile(PROFILS / "flycast.toml")
+    systeme = profil.systems[0]
+    assert systeme.render is not None, (
+        "flycast.toml n'a plus de bloc de rendu : les trois modes lanceraient "
+        "la même commande, et « retro status » le nommerait sans le corriger")
+    natif, plein = systeme.render.native, systeme.render.full
+    # NATIF : la trame d'origine, agrandie d'un multiple entier, sans filtre.
+    assert "rend.Resolution=480" in natif.args
+    assert "rend.IntegerScale=yes" in natif.args
+    assert "rend.LinearInterpolation=no" in natif.args
+    assert natif.fill == "entier"
+    # PLEIN : la résolution interne montée à la session, mise à l'échelle
+    # ajustée. {height} et non {scale} — la clé attend des PIXELS.
+    assert "rend.Resolution={height}" in plein.args
+    assert "rend.IntegerScale=no" in plein.args
+    assert plein.fill == "ajuste"
+    # LA SECTION, sur les deux modes : « config », le piège de ce profil.
+    for mode in (natif, plein):
+        assert "-config config:" in mode.args, (
+            "la section des clés de rendu de Flycast est le mot « config » "
+            "(core/cfg/option.h : le paramètre `section` vaut \"config\" par "
+            "défaut). « -config rend:… » créerait une section que Flycast ne "
+            "lit jamais, sans un mot.")

@@ -83,7 +83,7 @@ id         = "dreamcast"
 name       = "Dreamcast"
 folders    = ["Sega Dreamcast", "DC"]
 extensions = [".chd", ".gdi", ".cdi", ".cue"]
-launch     = '-config window:fullscreen=yes "{rom}"'
+launch     = '-config window:fullscreen=yes {render} "{rom}"'
 # dc_boot.bin est FACULTATIF : l'exécutable livré porte « Forcing HLE BIOS »
 # et l'option « HLE BIOS », et docs.libretro.com marque ce fichier « Optional »
 # — c'est aussi de là que vient son MD5, la seule empreinte publiquement
@@ -97,3 +97,88 @@ launch     = '-config window:fullscreen=yes "{rom}"'
 bios       = [
   { file = "dc_boot.bin", md5 = "e10c53c2f8b90bab96ead2d368858623", required = false },
 ]
+
+# Dreamcast : entre la PlayStation (« light ») et la GameCube (« medium »).
+# « medium » est retenu par prudence, et c'est un ARBITRAGE, pas une mesure :
+# personne n'a chronométré une partie sur cette machine. Le coût ne décide que
+# de ce que le mode « auto » retient par classe de machine — se tromper coûte
+# un mode moins ambitieux, jamais une image fausse.
+cost       = "medium"
+
+# --- LE RENDU (dette D2) --------------------------------------------------
+#
+# FLYCAST EST LE SEUL DES SEPT ÉMULATEURS SANS BLOC DE RENDU QUI PUISSE EN
+# RECEVOIR UN SANS RIEN INVENTER, et c'est son « -config » qui le permet.
+# Relevé le 2026-09-04 sur la révision v2.7, celle dont le manifeste porte
+# l'empreinte :
+#
+#   core/cfg/cl.cpp, chaîne d'usage de l'exécutable lui-même :
+#       -config section:key=value,...  set a transient config value.
+#                                      Transient config values won't be saved
+#                                      to emu.cfg.
+#
+# TRANSITOIRE, et c'est vérifié à deux niveaux dans la source plutôt que cru
+# sur parole : `IniFile::setRaw` écrit dans `entry.transientValue` et jamais
+# dans `entry.value` (core/cfg/ini.cpp), et `IniFile::save` saute les entrées
+# transitoires. L'emu.cfg du propriétaire n'est donc PAS réécrit — c'est ce
+# qui permet de poser un rendu par lancement sans lui reprendre ses réglages,
+# et c'est exactement ce que le régime « enforced » doit faire ailleurs à
+# grands frais.
+#
+# ⚠ LA SECTION EST LE MOT « config », ET LE DRAPEAU AUSSI. « -config config:… »
+# a l'air d'une faute de frappe et c'est la forme juste : dans
+# core/cfg/option.h, le paramètre `section` du constructeur d'`Option` vaut
+# "config" par défaut, et le « rend. » fait partie du NOM DE LA CLÉ, pas de la
+# section. « -config rend:Resolution=… » créerait une section « [rend] » que
+# Flycast ne lit jamais, sans un mot.
+#
+# ⚠ TROIS PIÈGES DE FORME, chacun du genre qui pose une clé d'apparence juste
+# qui ne fait rien :
+#   · rend.IntegerScale porte le S majuscule de rend.WideScreen, quand ses
+#     voisins rend.WidescreenGameHacks et rend.ScreenStretching l'ont
+#     minuscule. Casse incohérente entre clés voisines ;
+#   · le symbole C++ est `RenderResolution` mais la clé est `rend.Resolution` ;
+#   · rend.Resolution est une HAUTEUR EN PIXELS, pas un multiplicateur —
+#     core/rend/transform_matrix.cpp : `float upscaling = RenderResolution /
+#     480.f`. C'est de là que vient le 480 du mode natif, et c'est une lecture
+#     du calcul, pas une supposition sur le matériel.
+#
+# ⚠ ET LE PIÈGE QUI COMPTE LE PLUS, parce qu'il produit très exactement
+# l'image floue que D2 existe pour empêcher : rend.LinearInterpolation a pour
+# défaut **true** (core/cfg/option.cpp). Rien dans le code ne l'éteint quand
+# la mise à l'échelle entière est active — vérifié, les deux réglages ne se
+# consultent nulle part. Poser IntegerScale sans éteindre celui-là donnerait
+# un multiple entier repassé au filtre linéaire : une image qu'on croirait
+# normale. L'infobulle de Flycast le dit elle-même (« Disable with integer
+# scaling »), mais une infobulle n'éteint rien.
+#
+# AUCUNE DES VALEURS POSÉES N'EST UN DÉFAUT DE FLYCAST — Resolution 480,
+# IntegerScale false, LinearInterpolation true. C'est la leçon du TROISIÈME
+# faux oracle de D2 : un essai dont la valeur posée est le défaut de
+# l'émulateur ne prouve rien, pas même que la clé a été lue.
+#
+# 🔴 CE QUI N'EST PAS VÉRIFIÉ, ET C'EST TOUT CE QUI COMPTE VRAIMENT : le
+# résultat À L'ÉCRAN. Personne n'a regardé une partie avec ces réglages posés.
+# La mesure exige la console, elle est due, et rien ici ne la remplace.
+[system.render]
+# native_height et max_scale ne sont PAS déclarés : ils ne sont exigés que par
+# {scale}, et ce profil ne l'emploie pas. rend.Resolution attend des pixels,
+# donc c'est {height} — la hauteur de la session — qui va directement dedans,
+# sans division ni plafond intermédiaires.
+[system.render.native]
+# La trame d'origine (480 lignes), agrandie du plus grand multiple ENTIER qui
+# tienne, sans filtre par-dessus.
+args = '-config config:rend.Resolution=480,rend.IntegerScale=yes,rend.LinearInterpolation=no'
+crt_absent = "Flycast n'embarque aucun shader CRT accessible en ligne de commande : la révision v2.7 n'expose sur ce point que rend.LinearInterpolation, un filtre de mise à l'échelle et non une simulation de tube. NON VÉRIFIÉ : ce que Flycast rend de lui-même — personne n'a regardé une partie."
+fill = "entier"
+[system.render.full]
+# La résolution interne montée à la hauteur de la session, et la mise à
+# l'échelle entière ÉTEINTE EXPLICITEMENT : une fois la trame montée, il n'y a
+# plus de trame à préserver, et un multiple entier ne ferait que rendre des
+# bandes noires plus grandes. Le filtre linéaire revient à son défaut, qui est
+# celui que Flycast emploie hors mise à l'échelle entière — il est écrit
+# quand même, parce que « -config » est transitoire et qu'un emu.cfg où le
+# propriétaire l'aurait éteint rendrait sinon deux images différentes selon
+# l'historique de sa machine.
+args = '-config config:rend.Resolution={height},rend.IntegerScale=no,rend.LinearInterpolation=yes'
+fill = "ajuste"
