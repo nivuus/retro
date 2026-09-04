@@ -372,6 +372,19 @@ content = '''
 ;      « retro » ne lit même pas.
 ;
 ; Une sauvegarde horodatée est faite avant chaque modification.
+;
+; ⚠ CE TEXTE-CI PEUT DISPARAÎTRE, ET LES RÉGLAGES, EUX, RESTENT.
+; DuckStation réécrit ce fichier quand on le ferme proprement DEPUIS SON
+; INTERFACE, et il en efface alors TOUS les commentaires — celui-ci compris.
+; Mesuré : 2187 octets devenus 985. Les clés survivent toutes ; seules les
+; explications sont perdues.
+;
+; Ce que « retro » repose au lancement suivant, ce sont les CLÉS du point 1,
+; pas ce texte : la fusion ne connaît que des couples section/clé. Si vous
+; lisez ce fichier sans en-tête, rien n'est cassé — les trois règles
+; ci-dessus s'appliquent toujours, et « retro status » les redit. La console,
+; elle, ne provoque jamais cet effacement : elle lance DuckStation en
+; « -batch -nogui », qui n'ouvre aucune interface et ne réécrit rien.
 [Main]
 ; « Confirmer la fermeture du jeu », décochée : une confirmation est une
 ; boîte de plus à fermer sans souris.

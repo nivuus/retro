@@ -2441,3 +2441,61 @@ def test_explain_avoue_son_ignorance_sur_une_cible_qui_n_a_que_des_langues():
         "le lanceur doit AVOUER son ignorance plutôt que répondre « non » : "
         "il ne sait pas simuler la fusion de langue, et un aveu est "
         "exploitable quand un faux négatif ne l'est pas")
+
+
+# --- L'ARBITRAGE DE L'EN-TÊTE EFFACÉ REPOSE SUR CE FAIT-CI ----------------
+#
+# Rendu le 2026-09-04 : on ACCEPTE qu'un `settings.ini` de la console puisse
+# perdre son en-tête explicatif après un passage par l'interface de
+# DuckStation, plutôt que d'étendre la fusion — qui ne connaît que des couples
+# section/clé — à du texte libre.
+#
+# Ce qui a tranché n'est pas un goût, c'est une mesure : DuckStation efface
+# les commentaires à une fermeture propre DEPUIS SON INTERFACE, et sous
+# « -batch -nogui » — le seul mode que la console emploie — la réécriture
+# n'a pas lieu. La perte exige donc un geste humain délibéré, accompli par la
+# personne même à qui l'en-tête s'adresse, au moment où elle a l'interface
+# sous les yeux.
+#
+# TOUT L'ARBITRAGE REPOSE SUR CE « SEUL MODE ». Le jour où un profil lancerait
+# DuckStation avec son interface, l'en-tête deviendrait effaçable par le
+# fonctionnement NORMAL de la console — et l'arbitrage serait faux EN SILENCE,
+# sans que personne ne relise cette section-là. Ce qui doit tenir s'épingle ;
+# ce qui n'est qu'observé finit par bouger.
+def test_duckstation_ne_se_lance_jamais_avec_son_interface():
+    """Si ce test tombe, l'arbitrage de l'en-tête effacé est à REPRENDRE —
+    pas la ligne de lancement à rendre verte."""
+    profil = profiles.load_profile(PROFILS / "duckstation.toml")
+    for systeme in profil.systems:
+        lance = systeme.launch
+        assert "-nogui" in lance, (
+            f"duckstation.toml [{systeme.id}] : « -nogui » a disparu de la "
+            "ligne de lancement. L'arbitrage de l'en-tête effacé (D2) repose "
+            "sur le fait que la console n'ouvre JAMAIS l'interface de "
+            "DuckStation : c'est elle, et elle seule, qui réécrit le "
+            "settings.ini en effaçant tous ses commentaires. Reprendre "
+            "l'arbitrage avant de changer cette ligne.")
+        assert "-batch" in lance, (
+            f"duckstation.toml [{systeme.id}] : « -batch » a disparu. Même "
+            "raison que « -nogui » ci-dessus — et sans lui, éteindre le jeu "
+            "rend la fenêtre de bibliothèque de DuckStation au lieu de rendre "
+            "la main à Steam.")
+
+
+def test_l_en_tete_de_duckstation_dit_qu_il_est_effacable():
+    """La seconde contrepartie de l'arbitrage. Un en-tête qui explique trois
+    catégories de réglages mais tait sa PROPRE fragilité est incomplet : le
+    propriétaire qui le relit après un passage par l'interface ne trouve
+    rien, et rien ne lui dit que quelque chose a été perdu.
+
+    Les clés, elles, sont reposées — c'est le rôle d'`enforced`. C'est
+    l'explication qui ne revient pas, et c'est exactement ce qu'il faut
+    dire."""
+    profil = profiles.load_profile(PROFILS / "duckstation.toml")
+    entete = profil.bootstraps[0].content.lower()
+    assert "efface" in entete or "effacé" in entete or "efface" in entete, (
+        "l'en-tête de duckstation.toml ne dit pas qu'il peut être effacé. "
+        "L'arbitrage de D2 ne tient qu'avec cet aveu.")
+    assert "commentaire" in entete, (
+        "l'en-tête ne dit pas CE QUI est effacé — les commentaires, dont "
+        "lui-même — ni que les clés, elles, sont reposées")

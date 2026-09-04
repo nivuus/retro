@@ -1211,6 +1211,32 @@ def _valider_regimes(path: pathlib.Path, target: str,
     TROIS catégories — imposé, posé une fois, à vous. La garde est
     volontairement grossière : elle n'attrape pas une formulation
     malheureuse, elle attrape l'oubli.
+
+    ⚠ CE QUE CETTE GARDE PROTÈGE, ET CE QU'ELLE NE PROTÈGE PAS. Elle protège
+    le DÉPÔT, pas la machine : elle garantit que le profil LIVRÉ porte
+    l'explication, jamais que le fichier posé sur la console la porte encore.
+
+    Ce n'est pas une nuance. Mesuré le 2026-08-29 : DuckStation réécrit son
+    `settings.ini` à une fermeture propre depuis son interface et en EFFACE
+    TOUS LES COMMENTAIRES — 2187 octets devenus 985. Les clés survivent ;
+    l'en-tête, non. Le mécanisme `enforced` repose les clés au lancement
+    suivant ; RIEN ne repose l'explication, puisque la fusion ne connaît que
+    des couples section/clé.
+
+    L'ARBITRAGE A ÉTÉ RENDU le 2026-09-04, et c'est OUI : on accepte qu'un
+    fichier de la console puisse perdre son en-tête. Ce qui l'a tranché est le
+    mode d'emploi de la console — sous `-batch -nogui`, le SEUL mode qu'elle
+    emploie, la réécriture n'a pas lieu. La perte exige donc un geste humain
+    délibéré, accompli par la personne même à qui l'en-tête s'adresse, au
+    moment précis où elle a l'interface sous les yeux. Étendre la fusion à du
+    texte libre pour protéger un commentaire dans un cas qui ne survient pas
+    en exploitation serait le mauvais marché.
+
+    Deux contreparties tiennent cet arbitrage, et sans elles il ne tient pas :
+    l'en-tête livré DIT lui-même qu'il est effaçable et par quoi (voir les
+    profils), et `-batch -nogui` est ÉPINGLÉ PAR UN TEST — tout ceci repose
+    sur ce fait, et le jour où un profil lancerait DuckStation avec son
+    interface, il deviendrait faux EN SILENCE.
     """
     if not enforced.strip():
         return
