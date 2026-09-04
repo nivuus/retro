@@ -335,17 +335,41 @@ interface.** Le mécanisme `enforced` repose bien les clés au lancement suivant
 `-batch -nogui` — le seul mode que la console emploie — la réécriture n'a pas
 lieu : c'est le passage par l'interface qui efface.
 
-**Ce n'est pas corrigé, délibérément. L'arbitrage appartient au propriétaire :**
+#### ⚖ ARBITRAGE RENDU LE 2026-09-04 — **OUI, on l'accepte**, sous trois conditions
 
-> **Accepte-t-on qu'un `settings.ini` puisse se retrouver sans son en-tête
-> explicatif après un passage par l'interface de DuckStation — oui ou non ?**
+La question posée était : *accepte-t-on qu'un `settings.ini` puisse se retrouver
+sans son en-tête explicatif après un passage par l'interface de DuckStation ?*
 
-Si **oui**, il n'y a rien à faire, et la garde du `content` protège alors le
-dépôt, pas la machine : elle garantit que le profil livré porte l'explication,
-pas que le fichier de la console la porte encore. Si **non**, l'en-tête devient
-une chose que `enforced` doit reposer comme il repose les clés — ce que le
-mécanisme de fusion ne sait pas faire aujourd'hui, puisqu'il ne connaît que des
-couples section/clé.
+**Oui.** Ce qui a tranché est dans la mesure elle-même, et non dans un goût :
+**sous `-batch -nogui` — le seul mode que la console emploie — la réécriture n'a
+pas lieu.** La perte exige donc un geste humain délibéré, accompli par la
+personne même à qui l'en-tête s'adresse, au moment précis où elle a l'interface
+sous les yeux. Étendre la fusion des couples section/clé à du **texte libre**
+pour protéger un commentaire dans un cas qui ne survient pas en exploitation est
+le mauvais marché.
+
+**Trois conditions tiennent cet arbitrage, et elles sont remplies :**
+
+1. **La garde du `content` cesse de faire croire ce qu'elle ne fait pas.** Elle
+   protège le **dépôt**, pas la machine — elle garantit que le profil LIVRÉ
+   porte l'explication, jamais que le fichier de la console la porte encore.
+   C'est écrit **là où la garde vit** (`retro/profiles.py`,
+   `_valider_regimes`), et pas seulement ici : c'est là qu'on le relira.
+2. **L'en-tête dit lui-même qu'il est effaçable, et par quoi.** Un en-tête qui
+   explique trois catégories de réglages mais tait sa propre fragilité est
+   incomplet : le propriétaire qui le relit après coup ne trouve rien, et rien
+   ne lui dit que quelque chose a été perdu. Il dit désormais ce qui s'efface
+   (les commentaires, lui compris), ce qui survit (les clés, reposées), que
+   rien n'est cassé dans ce cas, et que la console ne provoque jamais cet
+   effacement.
+3. **`-batch -nogui` est ÉPINGLÉ PAR UN TEST**
+   (`test_duckstation_ne_se_lance_jamais_avec_son_interface`). Tout l'arbitrage
+   repose sur ce « seul mode » : le jour où un profil lancerait DuckStation avec
+   son interface, l'en-tête deviendrait effaçable par le fonctionnement
+   **normal** de la console, et cet arbitrage serait faux **en silence**. Le
+   test le dit en toutes lettres — si cette ligne change, c'est l'arbitrage
+   qu'il faut reprendre, pas le test qu'il faut rendre vert. Ce qui doit tenir
+   s'épingle ; ce qui n'est qu'observé finit par bouger.
 
 #### Et un faux oracle, issu de la même mesure
 
@@ -459,11 +483,15 @@ Trois issues, et aucune n'est gratuite :
 3. **Ne pas poser le remplissage de PCSX2 du tout**, et le déclarer `fill_absent`
    — ce qui serait FAUX : la clé existe, elle est relevée.
 
-**Rien n'est fait ici, et l'issue 3 est écartée d'office** : déclarer absent ce
-qu'on vient de relever serait le seul des trois qui mente. **Question au
-propriétaire :** accepte-t-on qu'un émulateur impose le même remplissage dans
-les deux modes quand son réglage ne vit que dans son fichier, ou l'amorçage
-doit-il apprendre à poser un fragment par mode ?
+**ARBITRAGE RENDU LE 2026-09-04 : PCSX2 N'EST PAS LIVRÉ, et la dette n'est pas
+sur PCSX2 — elle est sur le MÉCANISME.** `fill_enforced` est par profil pendant
+que la politique est par mode : ce n'est pas un réglage qui manque, c'est un
+mécanisme qui ne sait pas exprimer la politique. PCSX2 en devient le premier cas
+BLOQUÉ, pas la cause. Choisir un des deux modes et livrer quand même serait la
+demi-vérité silencieuse que ce dépôt paie en boucle.
+
+**C'est désormais la dette D14**, écrite pour elle-même, avec les trois issues
+et celle qui est écartée d'office.
 
 #### Un piège propre à la PS Vita, mesuré et à écrire avant tout bloc
 
@@ -493,8 +521,9 @@ mauvais des deux endroits donne une clé ignorée en silence.
 - **Voir une image.** Aucun `fill` livré — ni ceux de RetroArch, ni celui du
   Dreamcast d'aujourd'hui — n'a jamais été vu agir sur un écran. C'est la seule
   preuve qui vaille, et elle est sur la console.
-- **L'arbitrage de l'en-tête effacé** (section 🔴 plus haut) **n'a toujours pas
-  été rendu**, et il n'a pas bougé depuis le 2026-08-29.
+- **L'arbitrage de l'en-tête effacé est RENDU** (2026-09-04, section 🔴 plus
+  haut) : oui, on l'accepte, et ses trois conditions sont remplies. Il ne reste
+  rien à faire de ce côté.
 
 ---
 
@@ -1818,14 +1847,29 @@ naîtra avec la première. » **Il est né.** `dolphin.toml`, troisième cible
 cette ligne, et `--explain` répondra **« non (la cible existe) »** sur une cible
 où une fusion de langue aura bel et bien lieu au prochain jeu.
 
-C'est le seul contrôle vérifiable à distance, et il ment désormais sur une
-cible livrée. **Ce n'est pas corrigé, et la raison est le périmètre :** le
-correctif est entièrement en C#, et **il n'existe aucun compilateur C# sur
-l'hôte** — ni `csc`, ni `mcs`, ni `mono`, ni `dotnet`, vérifié le 2026-09-04.
-Livrer du C# qu'on n'a pas vu compiler dans un fichier dont dépend le lancement
-de TOUS les jeux échange un rapport qui ment contre une console qui ne démarre
-plus. Le correctif est donc rangé avec les mesures de console, où il attend un
-compilateur.
+C'était le seul contrôle vérifiable à distance, et il mentait sur une cible
+livrée. **Un contrôle qui répond « non » à tort est pire que pas de contrôle,
+parce qu'on s'en sert.**
+
+**CORRIGÉ le 2026-09-04 — par un AVEU, pas par une simulation.**
+`amorcage_a_poser.<n>` consulte désormais la table de langues de l'entrée, et
+répond **« inconnu (…) »** quand la cible existe, ne reçoit aucune clé imposée,
+mais recevra une fusion de langue.
+
+Pourquoi un aveu et non une réponse : `FusionAPoser` sait comparer un fragment
+**imposé** à la cible, mais la langue dépend de celle du **lancement**, donc du
+registre de Steam lu au moment où le jeu part — ce que `--explain` ne fait pas,
+puisqu'il doit rester sans effet de bord et lisible en session 0. « non » serait
+faux ; « oui » le serait aussi les fois où la cible est déjà conforme.
+**« inconnu » est le seul des trois qui ne mente pas, et un aveu s'exploite
+quand un faux négatif ne s'exploite pas.**
+
+⚠ **CE CORRECTIF N'A PAS ÉTÉ COMPILÉ**, et il ne peut pas l'être ici : aucun
+compilateur C# sur l'hôte, revérifié le 2026-09-04. Il n'emploie aucune
+construction que ce fichier n'utilise déjà (`ContainsKey`, `Indice`), et
+l'équilibre des accolades et parenthèses hors chaînes et commentaires est
+inchangé. **Cela ne remplace pas une compilation :** elle reste due, avec le
+reste de la tâche 8 de D7.
 
 **Ce qui reste dû sur la console, et rien de tout cela n'est faisable d'ici :**
 
@@ -1874,11 +1918,26 @@ langues système. Le repli est alors la réponse JUSTE, pas une lacune. Un
 avertissement qui ne ferait pas cette différence crierait à tort — et une garde
 qui crie à tort est une garde qu'on finit par désarmer.
 
-**Ce n'est pas implémenté, délibérément :** c'est une évolution de la commande,
-donc une décision de portée, et `retro status` dit déjà la chose entrée par
-entrée. **Question au propriétaire :** `retro langue --langue malay` doit-elle
-dire « six entrées sur sept poseront leur repli » — et si oui, est-ce un
-avertissement qui change le code de retour, ou une simple note ?
+**ARBITRAGE RENDU LE 2026-09-04 : ni garde bloquante, ni silence — UN RAPPORT.
+Et aucun mécanisme neuf.**
+
+Le refus de la garde est confirmé, et pour la raison mesurée : le repli est
+**parfois la réponse juste**, et une garde qui crie à tort est une garde qu'on
+désarme. Mais le silence est faux aussi. **Le défaut n'est pas le repli : c'est
+que rien ne distingue « la Vita n'a pas de thaï » de « on a oublié le thaï ».**
+
+Ce n'est pas un mécanisme à construire : c'est **exactement ce que le témoin par
+cible et `--explain` doivent porter**, et ils sont déjà dus (voir plus haut).
+C'est là que ça se range, et voici la règle à tenir le jour où ils s'écrivent :
+
+> **Un repli qui est la bonne réponse doit quand même être ANNONCÉ, cible par
+> cible.** « Cet émulateur pose son repli parce que sa console n'a pas cette
+> langue » et « cet émulateur pose son repli parce que personne n'a relevé
+> celle-ci » appellent deux gestes différents, et se lisent tous les deux comme
+> un jeu en anglais.
+
+C'est le même raisonnement que `langue_absente` — celui qui a déjà servi à
+séparer un relevé dû d'une impossibilité mesurée, une marche plus haut.
 
 #### Deux fragilités que les tables apportent avec elles
 
@@ -2117,13 +2176,137 @@ RAPPORT, l'issue 1 change ce que la console POSE. Aucune des deux ne rend l'autr
 inutile, et choisir la seconde seule laisse un jeu partir dans le repli pendant
 que le rapport, lui, ne mentira plus.
 
-**Question au propriétaire, et elle est en une ligne :** un `langue.txt` touché
-à la main doit-il faire **dire la vérité au rapport** (issue 2, hôte, faisable
-tout de suite), ou faire **refuser la valeur au lanceur** (issue 1, console,
-avec les deux trous ci-dessus) — ou les deux, dans cet ordre ?
+### ⚖ ARBITRAGE RENDU LE 2026-09-04 — le RAPPORT d'abord, le lanceur plus tard
 
-**Rien n'est implémenté ici**, et l'écart reste sans coût tant qu'aucun jeu n'a
-été vu poser une langue.
+**L'issue 2 est FAITE. L'issue 1 est reportée derrière la compilation, et
+comme une décision SÉPARÉE.**
+
+Ce qui a tranché n'est pas une préférence entre deux goûts : c'est que **la
+mesure a détruit la justification de l'indulgence**. « Un fichier abîmé ne doit
+pas empêcher un jeu de se lancer » ne peut pas justifier la tolérance de
+`lire_langue`, puisque cette fonction n'a que deux appelants, tous deux de
+rapport, et que le chemin de lancement ne passe pas par Python. **Une indulgence
+dont le motif est mesuré faux n'est pas un choix de conception, c'est un
+reliquat.**
+
+#### Ce qui est fait
+
+- **`launcher.lire_langue` ne normalise plus.** Une valeur hors liste est rendue
+  telle quelle. Un fichier **absent** ou **vide** vaut toujours `auto` — c'est
+  la seule indulgence qui reste, et elle est d'une autre nature : elle ne
+  remplace aucune valeur, elle en constate l'absence.
+- **Le rapport NOMME la valeur inconnue**, et dit ce que le lanceur en fera : il
+  la prendra au mot, ne trouvera aucun fragment à ce nom, et chaque entrée
+  posera son repli. Sans ces lignes, la normalisation n'aurait pas été remplacée
+  par la vérité mais par le **silence** — `_decision_langue` rend `None` sur une
+  valeur hors liste, et la section perdait alors toute mention de la langue
+  demandée.
+- Les deux juges disent désormais la même chose. Vérifié de bout en bout sur un
+  `langue.txt` portant `frensh` : `retro status` nomme la valeur et annonce le
+  repli **sur chaque entrée**, ce qui est exactement ce que le lanceur fera.
+- Le test qui portait l'indulgence a été **retourné**, pas supprimé, et sa
+  docstring dit pourquoi — c'est la contrainte, pas son verdict, qui était en
+  cause.
+
+#### Ce qui est reporté, et ce n'est pas « en attente »
+
+**Le lanceur n'est PAS touché**, et c'est délibéré : c'est du C# que l'hôte ne
+sait pas compiler, et refuser une valeur au lancement, c'est risquer une console
+qui ne démarre plus. Le refus au lanceur est **une décision séparée**, à
+reprendre derrière la compilation — pas la suite automatique de celle-ci.
+
+#### 🔴 Et si l'issue 1 vient un jour, elle ne se fera PAS contre le plan
+
+C'est le second trou, et il faut qu'il soit **nommé**, sinon quelqu'un
+implémentera l'issue 1 dans sa forme naïve — « le lanceur valide contre ce que
+porte le plan » — qui est celle que cette dette proposait.
+
+**Le plan est PAR SYSTÈME.** Un profil sans amorçage — `cemu`, `flycast`,
+`ppsspp`, `xemu` — n'écrit **aucune** ligne `bootstrap_langue.*`, jamais.
+Valider contre le plan ferait donc juger **la même valeur de `langue.txt`**
+valide au lancement d'un jeu DuckStation et invalide au lancement d'un jeu Xbox.
+La console tiendrait deux avis sur un fichier unique, selon le jeu — et l'écart
+resterait entier exactement là où il est le moins visible.
+
+**La règle, pour le jour où ça se fera :** la validation se fera contre **la
+table du système concerné**, jamais contre le plan entier. Une entrée sans table
+ne valide rien — elle n'a rien à valider —, et cela ne doit pas se lire comme
+« cette valeur est refusée ».
+---
+
+## D14 — Le remplissage imposé est PAR PROFIL, la politique est PAR MODE
+
+**Constatée le 2026-09-04**, en relevant les sept émulateurs muets de D2. Ce
+n'est pas un réglage qui manque à un émulateur : c'est **un mécanisme qui ne
+sait pas exprimer la politique du dépôt**. PCSX2 en est le premier cas bloqué,
+pas la cause — et c'est la distinction qui fait de ceci une dette à part.
+
+### Le fait
+
+`retro/render.py` porte une politique explicite, et elle est **par mode** :
+
+| Mode | Remplissage | Pourquoi |
+|---|---|---|
+| `native` | `entier` | la trame de la console est ce que le mode natif existe pour préserver ; seul un multiple entier l'agrandit sans la rééchantillonner |
+| `full` | `ajuste` | la résolution interne est déjà montée à la session : il n'y a plus de trame à préserver |
+
+`fill_enforced`, lui, est **par profil** — sur le bloc `[system.render]`, jamais
+sur un mode. Et sa raison est bonne, elle est écrite dans
+`_lire_remplissage_impose` : « le fragment `enforced` est posé une fois par
+lancement, **AVANT** que le mode ne soit résolu. Le réglage vaut donc la même
+chose en natif et en full, et le déclarer par mode ferait croire à deux valeurs
+là où le fichier n'en porte qu'une. »
+
+**Les deux affirmations sont justes, et elles ne peuvent pas être vraies
+ensemble.** Un émulateur dont le remplissage ne vit que dans son fichier de
+réglages ne peut pas remplir `entier` en natif et `ajuste` en full : il n'a
+qu'une valeur, posée trop tôt.
+
+### Où ça se voit, et pourquoi ce n'est pas resté théorique
+
+**PCSX2 est le premier bloqué, et rien d'autre ne lui manque.** Relevé le
+2026-09-04 sur la révision 2.6.3 épinglée : il a la mise à l'échelle entière
+(`[EmuCore/GS] IntegerScaling`, booléen, défaut `false`), son fichier est un
+**INI** — le dialecte que la fusion connaît —, et il porte **déjà** une entrée
+`[[bootstrap]]` sur `inis\PCSX2.ini`. Aucune ligne de commande ne peut le
+poser : PCSX2 n'a **aucune** option de surcharge, et un argument inconnu y est
+une **erreur fatale** (`QtHost.cpp`, « Unknown parameter »). Le fichier est donc
+la seule voie, et `fill_enforced` le seul champ qui la déclare.
+
+Imposer `IntegerScaling = true` donnerait `entier` **aussi en mode full**, ce
+qui contredit la politique — et **un profil qui la contredit est refusé au
+chargement**, délibérément. La valeur n'est donc même pas livrable.
+
+**Trois émulateurs échappent à cette dette, et c'est mesuré** : Xbox, PS3 et
+Wii U n'ont **aucune** mise à l'échelle entière (voir le tableau de D2). Pour
+eux la réponse est `fill_absent`, et ce champ-là fonctionne très bien.
+
+### Les trois issues, et l'une est écartée
+
+1. **Accepter `entier` partout** pour un émulateur donné, et l'écrire comme un
+   écart assumé. Le mode `full` rendrait alors des bandes noires là où il
+   pourrait remplir — c'est-à-dire que le mode `full` cesserait d'être `full`.
+2. **Donner à l'amorçage un fragment PAR MODE.** C'est l'évolution honnête, et
+   elle n'est pas petite : le lanceur pose les clés imposées **avant** de
+   résoudre le mode (`Amorcer()` puis `Lancer()`), et l'inverser touche l'ordre
+   d'un fichier C# qu'aucun compilateur de l'hôte ne sait vérifier.
+3. ~~Déclarer `fill_absent`~~ — **écartée d'office** : ce serait déclarer absent
+   ce qu'on vient de relever, et c'est le seul des trois qui MENTE. C'est
+   exactement la demi-vérité silencieuse que ce dépôt paie en boucle.
+
+**Rien n'est fait, et PCSX2 n'est pas livré.** Livrer en choisissant un des deux
+modes sans le dire serait la faute que cette entrée existe pour empêcher.
+
+**Ce que ça coûte aujourd'hui :** un émulateur entièrement relevé, dont le
+réglage est connu, le dialecte connu, la cible déjà déclarée — et qui reste sans
+remplissage. Et le coût grandira : tout émulateur dont le remplissage ne vit que
+dans un fichier tombera ici.
+
+**Où ça se joue :** `retro/render.py` (`_ARBITRAGE`, la politique par mode),
+`retro/profiles.py` (`_lire_remplissage_impose`, `_refuser_remplissage_impose_sans_cle`),
+le champ `enforced` des `[[bootstrap]]`, et l'ordre d'`Amorcer()` dans
+`retro/data/launcher/retro-launch.cs`.
+
 ---
 
 ## Relevé — où Steam dit sa langue, et sous quels noms — 2026-08-30

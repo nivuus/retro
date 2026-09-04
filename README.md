@@ -243,7 +243,7 @@ nom du système.
 
 ### Ce qui manque, et qui est écrit quelque part
 
-**Treize** manques constatés sont consignés dans `docs/dettes.md`, chacun avec
+**Quatorze** manques constatés sont consignés dans `docs/dettes.md`, chacun avec
 ce qu'il coûte vu du canapé et où il se joue dans le code : aucune vibration
 nulle part, rien qui garantisse une image maximale sans déformation, ni capteur
 de mouvement ni manette PlayStation, la console qui tourne sur un paquet périmé
