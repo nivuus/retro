@@ -163,6 +163,21 @@ enforced = '''
 warnAdminPrivileges=false
 '''
 
+# LA LANGUE : aucune ici, et c'est mesuré.
+#
+# RELEVÉ le 2026-09-04 dans vita3k/gui-qt/include/gui-qt/gui_settings.h, qui
+# énumère TOUTES les clés que ce fichier peut porter — onze groupes,
+# `MainWindow`, `GameList`, `Logger`, `GameWindow`, `Trophy`, `Controls`,
+# `Settings`, `UserManagement`, `VitaThemes`, `Meta`. Aucune n'est une langue.
+#
+# Les deux langues de Vita3K vivent dans son config.yml, la seconde cible de
+# ce profil : `sys-lang` pour la console émulée — c'est celle que ce profil
+# pose — et `user-lang` pour son interface, qui n'est pas déclarée et dont la
+# raison est écrite là-bas.
+langue_absente = """gui_settings.h en énumère TOUTES les clés que ce \
+fichier peut porter, onze groupes, et aucune n'est une langue ; les deux \
+langues de Vita3K (sys-lang, user-lang) vivent dans son config.yml"""
+
 # LA SECONDE MODALE — le paquet de polices, et un fichier d'un AUTRE format.
 #
 # 🔴 LA PANNE, relevée le 2026-08-29 (dette D9) : Vita3K ouvre au lancement un
@@ -238,6 +253,85 @@ content = '''
 enforced = '''
 warn-missing-firmware: false
 '''
+
+# LA LANGUE SYSTÈME DE LA PS VITA — celle qu'un jeu interroge pour choisir la
+# sienne, et la seule des deux qui se voie depuis le canapé.
+#
+# RELEVÉE le 2026-09-04 dans vita3k/config/include/config/config.h :
+#
+#     code(int, "sys-lang", static_cast<int>(SCE_SYSTEM_PARAM_LANG_ENGLISH_US),
+#          sys_lang)
+#
+# ⚠ C'EST UN ENTIER, ET C'EST LE PIÈGE DE CE BLOC — le même que celui du cœur
+# melonDS de RetroArch : un entier faux n'est pas une valeur invalide, c'est
+# une AUTRE langue, parfaitement valide. Rien n'échoue, rien n'est journalisé,
+# et le jeu démarre simplement dans une langue que personne n'a demandée. Un
+# décalage d'un rang met le japonais là où l'anglais était attendu.
+#
+# LES ENTIERS VIENNENT DE vita3k/lang/src/lang.cpp,
+# `locale_tag_for_sys_lang(int sys_lang)`, dont le tableau `locale_tags` est
+# INDEXÉ PAR sys-lang. L'ordre y est celui de l'énumération Sony
+# SCE_SYSTEM_PARAM_LANG_*, et les étiquettes en commentaire ci-dessous sont
+# celles de ce tableau, recopiées rang par rang.
+#
+# CONFIRMÉ PAR UNE SECONDE SOURCE, INDÉPENDANTE, et c'est ce qui permet de
+# déclarer un entier sans l'avoir vu agir : RPCS3 sérialise le MÊME
+# vocabulaire Sony pour la PS3 (`fmt_class_string<CellSysutilLang>::format`,
+# Emu/Cell/Modules/cellSysutil.cpp) et son ordre est identique rang pour rang —
+# Japanese 0, English (US) 1, French 2, Spanish 3, German 4, Italian 5, Dutch
+# 6, Portuguese (Portugal) 7, Russian 8, Korean 9, Chinese (Traditional) 10,
+# Chinese (Simplified) 11, Finnish 12, Swedish 13, Danish 14, Norwegian 15,
+# Polish 16, Portuguese (Brazil) 17, English (UK) 18, Turkish 19. Deux projets
+# qui ne se copient pas et qui comptent pareil.
+#
+# `latam` PREND L'ESPAGNOL, rang 3, et c'est le seul choix que le matériel
+# permette : la PS Vita n'a qu'un espagnol. C'est la convention déjà tenue par
+# Dolphin pour la GameCube, et elle est écrite là-bas aussi.
+#
+# LE RANG 18 — English (UK) — N'EST DÉCLARÉ PAR AUCUNE LANGUE DE STEAM :
+# Steam ne distingue pas les deux anglais, et `english` prend le rang 1.
+#
+# LES LANGUES DE STEAM QUE LA PS VITA N'A PAS — arabe, bulgare, tchèque, grec,
+# hongrois, indonésien, malais, roumain, thaï, ukrainien, vietnamien — ne sont
+# PAS déclarées, et pour la raison inverse de celle de Dolphin : là-bas
+# l'interface de l'émulateur savait les afficher, donc chaque langue avait
+# quelque chose à poser. Ici il n'y a qu'un axe. Les déclarer toutes à
+# « sys-lang: 1 » écrirait vingt fois le repli sous vingt noms différents, et
+# le rapport dirait « pose english » là où la vérité est « cette console n'a
+# pas cette langue ». Elles prennent donc le repli, que « retro status » nomme
+# une par une.
+#
+# `user-lang` — LA LANGUE DE L'INTERFACE DE VITA3K — N'EST PAS DÉCLARÉE, et
+# c'est un refus, pas un oubli. Ses valeurs acceptées sont découvertes À
+# L'EXÉCUTION dans les ressources livrées (`ui_language_options`,
+# gui-qt/include/gui-qt/gui_language.h), donc elles sont une propriété de
+# L'ARCHIVE — comme les `.qm` de RPCS3. Or l'archive de Vita3K n'est épinglée
+# par AUCUNE empreinte au manifeste du projet : c'est l'étiquette roulante
+# `continuous`, qui se réécrit à chaque construction (dette D5). Il n'existe
+# donc aucun build fixe contre lequel relever ces valeurs, et une étiquette
+# recopiée serait ignorée en silence.
+[bootstrap.langue]
+repli = "english"
+japanese   = "sys-lang: 0"    # ja
+english    = "sys-lang: 1"    # en
+french     = "sys-lang: 2"    # fr
+spanish    = "sys-lang: 3"    # es
+latam      = "sys-lang: 3"    # es
+german     = "sys-lang: 4"    # de
+italian    = "sys-lang: 5"    # it
+dutch      = "sys-lang: 6"    # nl
+portuguese = "sys-lang: 7"    # pt-PT
+russian    = "sys-lang: 8"    # ru
+koreana    = "sys-lang: 9"    # ko
+tchinese   = "sys-lang: 10"    # zh-Hant
+schinese   = "sys-lang: 11"    # zh-Hans
+finnish    = "sys-lang: 12"    # fi
+swedish    = "sys-lang: 13"    # sv
+danish     = "sys-lang: 14"    # da
+norwegian  = "sys-lang: 15"    # no
+polish     = "sys-lang: 16"    # pl
+brazilian  = "sys-lang: 17"    # pt-BR
+turkish    = "sys-lang: 19"    # tr
 
 # Manette : « inconnu », et il ne peut rien y avoir d'autre aujourd'hui.
 # Vita3K ne s'installe pas depuis ce manifeste — son empreinte est vide —

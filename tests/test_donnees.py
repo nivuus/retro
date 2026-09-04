@@ -2308,3 +2308,40 @@ def test_les_deux_documents_qui_INVOQUENT_la_garde_des_deux_fragments():
         "la garde que ces deux documents invoquent n'existe pas : ils "
         "mentent tous les deux sur un garde-fou, et l'ordre de fusion "
         "décide seul du réglage")
+
+
+# --- LA GARDE DE D12 : chaque cible dit OÙ EN EST SA LANGUE ----------------
+#
+# Le modèle exact de la garde de vibration, et pour la raison inverse de celle
+# qui la rendait inutile hier : tant qu'AUCUNE entrée ne portait de table, la
+# réponse était « aucune, partout » et les deux silences se valaient. Les
+# premières tables relevées arment le piège que D12 annonce — une entrée sans
+# table devient indiscernable d'une entrée dont l'absence de langue a été
+# MESURÉE, et le rapport dit des deux la même phrase.
+#
+# LE DÉSARMEMENT EST STRUCTUREL, jamais nominatif : une entrée sort de cette
+# garde en déclarant une table OU en déclarant `langue_absente` avec sa
+# raison. Il n'existe aucune liste d'exemptions — c'est très exactement ce que
+# D10 reproche aux gardes qui en portent une.
+def test_chaque_cible_d_amorcage_dit_ou_en_est_sa_langue():
+    """Une cible qui ne déclare ni table ni aveu est un relevé qui reste dû,
+    et rien ne le dit : à l'écran, « cet émulateur n'a pas de réglage de
+    langue » et « personne n'a regardé » se lisent tous les deux comme un jeu
+    en anglais.
+
+    Ce test tombe le jour où quelqu'un ajoute un `[[bootstrap]]` sans se
+    poser la question de sa langue — c'est son seul objet.
+    """
+    muettes = []
+    for f in sorted(PROFILS.glob("*.toml")):
+        profil = profiles.load_profile(f)
+        for rang, amorcage in enumerate(profil.bootstraps, 1):
+            if amorcage.langues or amorcage.langue_absente:
+                continue
+            muettes.append(f"{f.name} [[bootstrap]] n°{rang} → "
+                           f"{amorcage.target}")
+    assert not muettes, (
+        "ces cibles d'amorçage ne disent pas où en est leur langue (dette "
+        "D12) — il leur manque SOIT une table « [bootstrap.langue] », SOIT "
+        "un « langue_absente » qui dise ce qui a été constaté et où :\n  "
+        + "\n  ".join(muettes))

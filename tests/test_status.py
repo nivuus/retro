@@ -2200,3 +2200,77 @@ def test_un_constat_d_impossibilite_n_appelle_aucun_releve(
     a_relever = [e.profile_id for e in etats
                  if not e.declared and not e.absente]
     assert a_relever == ["ppsspp"]
+
+
+def test_un_constat_d_impossibilite_ne_declenche_pas_la_phrase_des_muets(
+        profils_avec_langue_absente):
+    """La conséquence collective — « ses jeux resteront dans SA langue » —
+    est FAUSSE d'une entrée dont l'absence de langue est mesurée : Dolphin ne
+    pose aucune langue dans son fichier de manettes et pose la sienne dans
+    Dolphin.ini. La déclencher sur ces entrées ferait dire au rapport qu'un
+    émulateur ne suit pas la langue alors qu'il la suit, par une autre cible.
+
+    Elle doit donc ne parler QUE des entrées sans table ET sans aveu.
+    """
+    sans_muet = {k: v for k, v in profils_avec_langue_absente.items()
+                 if k != "ppsspp"}
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        profils=sans_muet, langue="french",
+        langue_temoin={"steam": "french", "langue": "french",
+                       "motif": "posée à la main"}))
+    section = _section_langue(texte)
+    assert "resteront dans SA langue" not in section
+    # Et elle revient dès qu'une entrée sans table est là — sans quoi ce test
+    # passerait aussi sur un rapport qui l'aurait perdue tout court.
+    avec_muet = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        profils=profils_avec_langue_absente, langue="french",
+        langue_temoin={"steam": "french", "langue": "french",
+                       "motif": "posée à la main"}))
+    assert "resteront dans SA langue" in _section_langue(avec_muet)
+
+
+# --- les profils SANS la moindre entrée d'amorçage -------------------------
+#
+# D12 le nomme, et c'est le trou le plus facile à manquer de toute la
+# section : « la section Langue de retro status parcourt les ENTRÉES
+# d'amorçage, pas les profils. Ces quatre-là n'y apparaissent donc pas du
+# tout — pas même une ligne "aucune table". Leur silence s'y lit comme une
+# absence de sujet, alors que c'est la même dette. »
+
+PROFIL_STATUS_SANS_AMORCAGE = """
+schema = 1
+id = "xemu"
+exe = 'xemu.exe'
+[[system]]
+id = "xbox"
+name = "Xbox"
+extensions = [".iso"]
+launch = '-dvd_path "{rom}"'
+"""
+
+
+def test_un_profil_sans_amorcage_apparait_dans_la_section_langue(tmp_path):
+    """Un profil sans la moindre entrée d'amorçage ne pose AUCUNE langue, et
+    c'est un fait aussi vrai que celui d'une entrée sans table. Le taire le
+    fait lire comme une absence de sujet.
+
+    La cause y est nommée, parce qu'elle diffère : il ne manque pas une
+    table, il manque le fichier de réglages où la poser.
+    """
+    fichier = tmp_path / "xemu-langue.toml"
+    fichier.write_text(PROFIL_STATUS_SANS_AMORCAGE, encoding="utf-8")
+    profils = {"xemu": profiles.load_profile(fichier)}
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("D:\\Emulation"),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        profils=profils, langue="french",
+        langue_temoin={"steam": "french", "langue": "french",
+                       "motif": "posée à la main"}))
+    section = _section_langue(texte)
+    assert "xemu" in section
+    assert "aucune entrée d'amorçage" in section
+    assert "resteront dans SA langue" in section

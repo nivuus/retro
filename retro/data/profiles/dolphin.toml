@@ -252,6 +252,19 @@ D-Pad/Right = `Pad E`
 Rumble/Motor = `Motor L` | `Motor R`
 """
 
+# LA LANGUE : il n'y en a AUCUNE ici, et c'est mesuré, pas supposé.
+#
+# RELEVÉ le 2026-09-04 dans Source/Core/Core/Config/MainSettings.cpp : les deux
+# seules clés de langue de Dolphin — MAIN_INTERFACE_LANGUAGE {Main, Interface,
+# LanguageCode} et MAIN_GC_LANGUAGE {Main, Core, SelectedLanguage} — vivent
+# TOUTES DEUX dans Dolphin.ini, la troisième cible de ce profil. Ce fichier-ci
+# ne porte que des liaisons de manette.
+#
+# L'écrire plutôt que de laisser le bloc absent est tout l'objet de
+# `langue_absente` : sans lui, cette cible se lit comme une table que personne
+# n'a relevée, alors que la question a été posée et que la réponse est non.
+langue_absente = """ce fichier ne porte que des liaisons de manette ; les deux clés de langue de Dolphin (Interface/LanguageCode et Core/SelectedLanguage, MainSettings.cpp) vivent dans Dolphin.ini, la troisième cible de ce profil"""
+
 [[bootstrap]]
 target = '%APPDATA%\Dolphin Emulator\Config\WiimoteNew.ini'
 content = """#
@@ -350,6 +363,19 @@ IR/Left = `Right X-`
 IR/Right = `Right X+`
 Rumble/Motor = `Motor L` | `Motor R`
 """
+
+# LA LANGUE : il n'y en a AUCUNE ici, et c'est mesuré, pas supposé.
+#
+# RELEVÉ le 2026-09-04 dans Source/Core/Core/Config/MainSettings.cpp : les deux
+# seules clés de langue de Dolphin — MAIN_INTERFACE_LANGUAGE {Main, Interface,
+# LanguageCode} et MAIN_GC_LANGUAGE {Main, Core, SelectedLanguage} — vivent
+# TOUTES DEUX dans Dolphin.ini, la troisième cible de ce profil. Ce fichier-ci
+# ne porte que des liaisons de manette.
+#
+# L'écrire plutôt que de laisser le bloc absent est tout l'objet de
+# `langue_absente` : sans lui, cette cible se lit comme une table que personne
+# n'a relevée, alors que la question a été posée et que la réponse est non.
+langue_absente = """ce fichier ne porte que des liaisons de manette ; les deux clés de langue de Dolphin (Interface/LanguageCode et Core/SelectedLanguage, MainSettings.cpp) vivent dans Dolphin.ini, la troisième cible de ce profil"""
 
 # --- LA LANGUE, ET C'EST LA SEULE ENTRÉE QUI PORTE LES DEUX AXES. ----------
 #

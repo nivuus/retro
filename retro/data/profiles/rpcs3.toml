@@ -67,7 +67,8 @@ target = '{install_dir}\GuiConfigs\CurrentSettings.ini'
 content = '''
 ; Écrit par « retro », qui distingue trois choses :
 ;   · ce qu'il IMPOSE et repose à CHAQUE lancement — les huit modales
-;     ci-dessous ; les recocher dans l'interface ne tiendrait pas ;
+;     ci-dessous, ET la langue de l'interface ; les recocher ou la changer
+;     dans l'interface de RPCS3 ne tiendrait pas ;
 ;   · ce qu'il a posé UNE FOIS, à la création de ce fichier, et ne retouche
 ;     plus jamais : vos réglages tiennent ;
 ;   · tout le reste, qui est à vous et qu'il ne lit même pas.
@@ -86,6 +87,81 @@ confirmationObsoleteCfg=false
 confirmationSameButtons=false
 confirmationRestart=false
 '''
+
+# LA LANGUE DE L'INTERFACE DE RPCS3.
+#
+# RELEVÉE le 2026-09-04, en DEUX temps parce qu'une seule source ne suffisait
+# pas — et c'est ce qui distingue cette table d'une recopie.
+#
+# LA CLÉ vient de la source, à la révision que le manifeste épingle — la
+# construction 0.0.42-19843, dont l'URL nomme le commit —,
+# rpcs3/rpcs3qt/gui_settings.h :
+#
+#     const gui_save loc_language = gui_save(localization, "language", "en");
+#
+# ⚠ LE NOM DE SECTION EST LA VALEUR DE LA CONSTANTE, PAS SON NOM. Le même
+# fichier écrit `const QString localization = "Localization";` — avec sa
+# majuscule — là où `main_window` vaut « main_window » en minuscules. Les huit
+# modales ci-dessus sont donc sous `[main_window]` et la langue sous
+# `[Localization]`, dans le MÊME fichier. Déduire l'un de l'autre donnerait une
+# section que QSettings n'ouvrirait jamais, et la clé ne serait pas lue.
+#
+# LES VALEURS NE SONT PAS DANS LA SOURCE, et c'est le fait qui a exigé le
+# second temps. `gui_application::GetAvailableLanguageCodes()` ne porte AUCUNE
+# liste : il ÉNUMÈRE `rpcs3_*.qm` dans le dossier de traductions de Qt et
+# taille le code entre le premier « _ » et le point. La liste des valeurs
+# acceptées est donc une propriété de L'ARCHIVE INSTALLÉE, pas du code.
+#
+# ELLES SONT DONC RELEVÉES SUR L'ARCHIVE ÉPINGLÉE ELLE-MÊME — téléchargée le
+# 2026-09-04 et comparée à l'empreinte que le manifeste porte pour elle, qui
+# n'est pas recopiée ici : deux exemplaires d'une empreinte, c'est un
+# exemplaire de trop à mettre à jour. Douze fichiers
+# `qt6/translations/rpcs3_*.qm`, soit
+#     ca_ES  de_DE  es_ES  fi_FI  fr_FR  hr_HR  it_IT
+#     pl_PL  pt_BR  pt_PT  sv_SE  zh_CN
+# Deux d'entre eux — `ca_ES` (catalan) et `hr_HR` (croate) — ne correspondent à
+# aucune langue de Steam et ne sont donc pas déclarés ici.
+#
+# ⚠ « en » N'EST PAS DANS CETTE LISTE, ET C'EST NORMAL. Aucun `rpcs3_en*.qm`
+# n'est livré : l'anglais est la langue des chaînes du binaire. La valeur
+# `en` est celle du défaut de `loc_language` ci-dessus, et celle que
+# `gui_application.cpp` pose lui-même quand le code configuré ne figure pas
+# parmi les fichiers trouvés — `QLocale(QLocale::English).bcp47Name()`.
+#
+# ⚠ ET C'EST LA FRAGILITÉ DE CETTE TABLE, écrite ici parce qu'elle ne se
+# verrait nulle part ailleurs : un code absent de l'archive ne produit AUCUNE
+# erreur. RPCS3 retombe sur l'anglais ET RÉÉCRIT `language=en` dans ce fichier
+# (`SetValue(gui::loc_language, m_language_code)`). Comme la console repose la
+# table à chaque lancement, la console et l'émulateur se contrediraient en
+# boucle, sans un mot : le fichier dirait `fr_FR`, l'interface serait en
+# anglais. Le jour où RPCS3 monte de version, cette table se re-relève sur la
+# NOUVELLE archive — la liste des `.qm` livrés n'est promise par personne.
+#
+# LES LANGUES DE STEAM ABSENTES DE L'ARCHIVE — arabe, bulgare, chinois
+# traditionnel, tchèque, danois, grec, hongrois, indonésien, japonais, coréen,
+# malais, norvégien, néerlandais, roumain, russe, espagnol d'Amérique latine,
+# thaï, turc, ukrainien, vietnamien — ne sont pas déclarées : elles prennent le
+# repli, et « retro status » les nomme une par une.
+#
+# CE BLOC NE POSE QUE L'INTERFACE. La langue SYSTÈME de la PS3 émulée — celle
+# qu'un jeu interroge — est `System: Language:` dans le config.yml de RPCS3,
+# et elle N'EST PAS POSABLE AUJOURD'HUI : c'est un YAML IMBRIQUÉ, et les deux
+# dialectes de fusion ne connaissent que l'INI à sections et le YAML PLAT
+# (retro/profiles.py, cles_yaml — « seul le PREMIER NIVEAU compte »). La
+# valeur, elle, est relevée et n'attend que le mécanisme : voir la dette D12.
+[bootstrap.langue]
+repli = "english"
+english    = "[Localization]\nlanguage=en"
+german     = "[Localization]\nlanguage=de_DE"
+spanish    = "[Localization]\nlanguage=es_ES"
+finnish    = "[Localization]\nlanguage=fi_FI"
+french     = "[Localization]\nlanguage=fr_FR"
+italian    = "[Localization]\nlanguage=it_IT"
+polish     = "[Localization]\nlanguage=pl_PL"
+brazilian  = "[Localization]\nlanguage=pt_BR"
+portuguese = "[Localization]\nlanguage=pt_PT"
+swedish    = "[Localization]\nlanguage=sv_SE"
+schinese   = "[Localization]\nlanguage=zh_CN"
 
 # AMORÇAGE — SECONDE CIBLE : la manette, et la cause n'était pas une mauvaise
 # liaison. C'était l'ABSENCE TOTALE de gestionnaire.
@@ -200,6 +276,19 @@ Player 1 Input:
   Handler: XInput
   Device: "XInput Pad #1"
 '''
+
+# LA LANGUE : aucune ici, et c'est mesuré.
+#
+# RELEVÉ le 2026-09-04 sur la révision que le manifeste épingle (la
+# construction 0.0.42-19843) : ce fichier est lu par
+# `cfg_player` (Emu/Io/pad_config.h), qui ne porte QUE des liaisons de
+# manette. Les deux langues de RPCS3 vivent ailleurs — celle de son interface
+# dans GuiConfigs\CurrentSettings.ini (première cible de ce profil), celle de
+# la PS3 émulée dans son config.yml, qui n'est cible d'aucun amorçage : voir
+# la dette D12 pour la raison, qui n'est pas un oubli.
+langue_absente = """ce fichier ne porte que le gestionnaire de manette \
+(cfg_player, Emu/Io/pad_config.h) ; la langue de l'interface vit dans \
+GuiConfigs\\CurrentSettings.ini et celle de la PS3 émulée dans config.yml"""
 
 # `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
 # l'identifiant lui-même : un identifiant n'est pas une propriété du

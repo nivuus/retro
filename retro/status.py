@@ -885,6 +885,19 @@ def etat_langues(profils: dict, voulue: str,
     """
     etats = []
     for pid in sorted(profils):
+        # AUCUNE ENTRÉE D'AMORÇAGE : le profil ne pose de langue NULLE PART, et
+        # cette section le taisait entièrement — elle parcourt les entrées, et
+        # un profil qui n'en a pas n'en produisait aucune ligne. Son silence se
+        # lisait alors comme une absence de sujet, alors que c'est le même
+        # défaut qu'une entrée sans table, une marche plus tôt : il ne manque
+        # pas une table, il manque le fichier de réglages où la poser.
+        if not profils[pid].bootstraps:
+            etats.append(ProfilLangue(
+                profile_id=pid, cible="", declared=False,
+                motif="aucune entrée d'amorçage : ce profil ne désigne aucun "
+                      "fichier de réglages, donc aucun endroit où poser une "
+                      "langue"))
+            continue
         for amorcage in profils[pid].bootstraps:
             declarees = tuple(nom for nom, _ in amorcage.langues)
             decision = langue_mod.appliquer(
@@ -1557,7 +1570,11 @@ def _lignes_langue(report: Report) -> list[str]:
                       "jeu" + _condition_langue(report) + " :")
     for e in report.langues:
         ou = f" ({e.cible})" if e.cible else ""
-        if not e.declared and e.absente:
+        if not e.declared and not e.cible and e.motif:
+            # Le profil entier, pas une cible : la cause diffère et le geste
+            # aussi — c'est un [[bootstrap]] qui manque, pas une table.
+            lignes.append(f"  · {e.profile_id} : {e.motif}")
+        elif not e.declared and e.absente:
             # MESURÉ : il n'y a rien à poser, et il n'y aura jamais rien. Le
             # dire autrement que « aucune table déclarée » est tout l'objet de
             # ce quatrième état : cette entrée-là est FINIE, et envoyer relever
@@ -1585,7 +1602,13 @@ def _lignes_langue(report: Report) -> list[str]:
     # La conséquence des entrées muettes, dite UNE fois — et dite, parce que
     # « aucune table déclarée » sans elle se lit comme un détail de profil,
     # alors que c'est la réponse à « pourquoi ce jeu est-il en anglais ».
-    if any(not e.declared for e in report.langues):
+    # NI LES ENTRÉES DONT L'ABSENCE EST MESURÉE. La phrase serait fausse
+    # d'elles : Dolphin ne pose aucune langue dans son fichier de manettes et
+    # pose la sienne dans Dolphin.ini — dire de lui « ses jeux resteront dans
+    # SA langue » accuserait un émulateur qui suit la langue, par une autre
+    # cible. Elle ne vaut que de ce qui ne pose RIEN, nulle part : une entrée
+    # sans table ni aveu, ou un profil sans la moindre entrée d'amorçage.
+    if any(not e.declared and not e.absente for e in report.langues):
         lignes.append("  un émulateur sans table pose ses propres défauts : "
                       "ses jeux resteront dans SA langue, quoi que la console "
                       "demande. Ce n'est pas « il la suit mal », c'est « il "
