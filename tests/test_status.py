@@ -535,7 +535,12 @@ def test_le_rapport_dit_ce_qui_est_amorce(profils_amorces_status):
     configuration a bien été posée sans ouvrir l'émulateur."""
     etats = status.etat_amorcage(
         profils_amorces_status,
-        {"duckstation": [("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini")]})
+        # LA FORME QUE `launcher.lire_amorcages` REND VRAIMENT — trois
+        # éléments depuis que le témoin porte la langue posée. Fabriquer ici
+        # une forme que le lecteur ne produit pas laissait passer un
+        # `ValueError` sur la seule voie réelle : celle de `retro status`.
+        {"duckstation": [("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini",
+                          "")]})
     assert [(e.profile_id, e.declare, e.date) for e in etats] == [
         ("duckstation", True, "2026-08-28 10:27:26")]
 
@@ -562,7 +567,7 @@ def test_la_section_amorcage_figure_dans_le_texte(profils_amorces_status):
         systems=[], bios_status=[], bios_root=pathlib.Path("G:\\bios"),
         profils=profils_amorces_status,
         amorcages={"duckstation": [("2026-08-28 10:27:26",
-                                    "C:\\Users\\A\\settings.ini")]},
+                                    "C:\\Users\\A\\settings.ini", "")]},
     )
     texte = status.format_report(rapport)
     assert "Amorçage" in texte and "2026-08-28 10:27:26" in texte
@@ -2274,3 +2279,19 @@ def test_un_profil_sans_amorcage_apparait_dans_la_section_langue(tmp_path):
     assert "xemu" in section
     assert "aucune entrée d'amorçage" in section
     assert "resteront dans SA langue" in section
+
+
+def test_le_rapport_lit_un_temoin_qui_porte_la_langue(profils_avec_langues):
+    """Le témoin a gagné une colonne, et `etat_amorcage` la dépliait en deux :
+    sur un témoin réel — celui que `launcher.lire_amorcages` rend —, le
+    rapport levait un `ValueError` au lieu de s'afficher.
+
+    Aucun test ne l'attrapait, parce que tous fabriquaient le témoin à la
+    main. Celui-ci prend la forme que le lecteur rend vraiment.
+    """
+    amorcages = {"duckstation": [
+        ("2026-09-04 21:03:11", "C:\\A\\settings.ini", "french")]}
+    etats = status.etat_amorcage(profils_avec_langues, amorcages)
+    duck = next(e for e in etats if e.profile_id == "duckstation")
+    assert duck.date == "2026-09-04 21:03:11"
+    assert duck.target == "C:\\A\\settings.ini"

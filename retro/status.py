@@ -151,6 +151,16 @@ class Amorcage:
     # ligne « la console y impose N clé(s) » disparaissait de la section
     # Amorçage, et deux juges disaient deux choses du même fichier.
     imposees: int = 0
+    # LA LANGUE RÉELLEMENT POSÉE sur CETTE cible, lue au témoin — la seule
+    # chose que l'hôte puisse savoir de ce qui a atteint le fichier. Le reste
+    # du rapport ne sait dire que ce qui SERA posé : il le recalcule depuis les
+    # profils, et sur un profil dont deux cibles ont des replis différents
+    # cette prévision ne dit rien de l'une des deux.
+    #
+    # VIDE VEUT DIRE « ON NE SAIT PAS », jamais « aucune langue » : un lanceur
+    # compilé avant cette colonne écrit trois champs, et le rapport ne doit pas
+    # transformer le silence d'un format en constat sur un fichier.
+    langue_posee: str = ""
 
 
 def _cible_lisible(target: str, profile_id: str, install_dirs: dict,
@@ -197,7 +207,12 @@ def etat_amorcage(profils: dict,
             etats.append(Amorcage(profile_id=pid, declare=False))
             continue
         for rang, amorcage in enumerate(profils[pid].bootstraps):
-            date, cible = poses[rang] if rang < len(poses) else ("", "")
+            # TROIS ÉLÉMENTS, et le troisième peut être vide. `lire_amorcages`
+            # rend désormais (date, cible, langue posée) : déplier en deux
+            # levait un ValueError sur un témoin RÉEL, et aucun test ne
+            # l'attrapait parce qu'ils fabriquaient tous le témoin à la main.
+            date, cible, langue_posee = (
+                poses[rang] if rang < len(poses) else ("", "", ""))
             etats.append(Amorcage(
                 # Amorçée, la cible est celle que le lanceur a RÉSOLUE et
                 # écrite au témoin ; pas encore amorcée, c'est celle que le
@@ -210,7 +225,8 @@ def etat_amorcage(profils: dict,
                 target=cible or _cible_lisible(
                     amorcage.target, pid, install_dirs or {},
                     emulation_root_windows),
-                imposees=_cles_imposees(amorcage)))
+                imposees=_cles_imposees(amorcage),
+                langue_posee=langue_posee))
     return etats
 
 

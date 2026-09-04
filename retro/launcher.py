@@ -411,13 +411,34 @@ def ordonner_reamorcage(emulation_root_local, profile_id: str) -> pathlib.Path:
 TEMOIN_BOOTSTRAP = "bootstrap.txt"
 
 
-def lire_amorcages(emulation_root_local) -> dict[str, list[tuple[str, str]]]:
-    """Ce que le lanceur a posé : profil → [(date, cible), …].
+def lire_amorcages(
+        emulation_root_local) -> dict[str, list[tuple[str, str, str]]]:
+    """Ce que le lanceur a posé : profil → [(date, cible, langue posée), …].
 
-    UNE LISTE par profil, parce que le témoin porte désormais une ligne par
-    CIBLE : un profil à deux cibles en écrit deux, et n'en garder qu'une ferait
-    disparaître la seconde du rapport sans que rien ne le dise. Le format de
-    ligne — profil \t date \t cible — n'a pas changé.
+    UNE LISTE par profil, parce que le témoin porte une ligne par CIBLE : un
+    profil à deux cibles en écrit deux, et n'en garder qu'une ferait
+    disparaître la seconde du rapport sans que rien ne le dise.
+
+    TROIS COLONNES OU QUATRE, et les deux se lisent. C'est une migration, pas
+    un élargissement de confort, et D12 en avait mesuré le coût avant de
+    l'ouvrir : tant que ce lecteur n'acceptait QUE trois colonnes, un lanceur
+    neuf écrivant la langue aurait fait ignorer la ligne ENTIÈRE, en silence —
+    le rapport aurait dit « pas encore amorcé » de toutes les cibles à la fois,
+    sur une console parfaitement amorcée. Les deux sens tiennent donc ici :
+
+      · trois colonnes — un lanceur d'AVANT la langue. La quatrième vaut "",
+        qui se lit « ce lanceur n'écrit pas la langue », JAMAIS « aucune langue
+        posée ». Le rapport ne doit pas accuser un binaire d'un silence qui est
+        celui de son format ;
+      · quatre colonnes — la langue réellement POSÉE sur cette cible-là. C'est
+        la seule chose que l'hôte puisse savoir de ce qui a atteint le fichier :
+        `retro status` sait recalculer ce qui SERA posé, jamais ce qui l'a ÉTÉ,
+        et sur un profil dont deux cibles ont des replis différents la
+        prévision ne dit rien de l'une des deux.
+
+    AU-DELÀ, la ligne est ignorée. Une cinquième colonne est le signe d'un
+    format qu'on ne connaît pas : en deviner le sens poserait au rapport une
+    valeur que personne n'a écrite.
 
     Une TRACE, pas une source de vérité : c'est la cible sur le disque de la
     console qui décide, et le lanceur ne consulte jamais ce fichier pour
@@ -429,12 +450,13 @@ def lire_amorcages(emulation_root_local) -> dict[str, list[tuple[str, str]]]:
         texte = fichier.read_text(encoding="utf-8")
     except OSError:
         return {}
-    amorces: dict[str, list[tuple[str, str]]] = {}
+    amorces: dict[str, list[tuple[str, str, str]]] = {}
     for ligne in texte.splitlines():
         parts = ligne.split("\t")
-        if len(parts) == 3 and parts[0].strip():
+        if len(parts) in (3, 4) and parts[0].strip():
+            langue = parts[3].strip() if len(parts) == 4 else ""
             amorces.setdefault(parts[0].strip(), []).append(
-                (parts[1].strip(), parts[2].strip()))
+                (parts[1].strip(), parts[2].strip(), langue))
     return amorces
 
 

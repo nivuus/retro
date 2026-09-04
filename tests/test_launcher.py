@@ -421,7 +421,8 @@ def test_le_temoin_d_amorcage_est_relu(tmp_path):
         "duckstation\t2026-08-28 10:27:26\tC:\\Users\\A\\settings.ini\n",
         encoding="utf-8")
     assert launcher.lire_amorcages(tmp_path) == {
-        "duckstation": [("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini")]}
+        "duckstation": [("2026-08-28 10:27:26", "C:\\Users\\A\\settings.ini",
+                         "")]}
 
 
 def test_un_temoin_absent_ne_fait_pas_echouer(tmp_path):
@@ -1322,3 +1323,44 @@ def test_les_deux_fusions_passent_par_LE_MEME_chemin():
         "et la langue doivent passer par la même méthode")
     assert src.count("FusionnerFragment(") == 3, (
         "attendu : la définition et DEUX appels — l'imposé, puis la langue")
+
+
+# --- le témoin par cible et sa QUATRIÈME colonne ---------------------------
+#
+# D12 mesure le coût exact de ce format et en fait une migration à part
+# entière : « lire_amorcages ne retient une ligne que si len(parts) == 3. Un
+# quatrième champ ferait donc IGNORER LA LIGNE ENTIÈRE, en silence, et le
+# rapport dirait "pas encore amorcé" de toutes les cibles à la fois — un
+# lanceur neuf écrivant un témoin qu'un retro ancien ne lit plus. »
+#
+# Les deux sens se tiennent ici, et c'est tout l'objet de ces trois tests : le
+# lecteur accepte les deux formes, et la colonne absente se lit comme
+# « ce lanceur n'écrit pas la langue », jamais comme « aucune langue posée ».
+
+def test_le_temoin_a_quatre_colonnes_porte_la_langue_POSEE(tmp_path):
+    """L'autre sens, et la raison d'être de la colonne : sur un profil à deux
+    cibles dont les replis diffèrent, rien de ce que la console a réellement
+    posé n'est observable depuis l'hôte. `retro status` sait dire ce qui SERA
+    posé — il le recalcule depuis les profils — jamais ce qui l'a ÉTÉ."""
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.TEMOIN_BOOTSTRAP).write_text(
+        "dolphin\t2026-09-04 21:03:11\tC:\\A\\Dolphin.ini\tfrench\n"
+        "dolphin\t2026-09-04 21:03:11\tC:\\A\\GCPadNew.ini\t\n",
+        encoding="utf-8")
+    assert launcher.lire_amorcages(tmp_path) == {"dolphin": [
+        ("2026-09-04 21:03:11", "C:\\A\\Dolphin.ini", "french"),
+        ("2026-09-04 21:03:11", "C:\\A\\GCPadNew.ini", ""),
+    ]}
+
+
+def test_une_ligne_de_temoin_a_cinq_colonnes_est_ignoree(tmp_path):
+    """La tolérance ne s'étend pas à l'infini : au-delà de la colonne qu'on
+    vient d'ouvrir, une ligne inattendue est le signe d'un format qu'on ne
+    connaît pas, et la deviner poserait une langue que personne n'a écrite."""
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.TEMOIN_BOOTSTRAP).write_text(
+        "dolphin\t2026-09-04 21:03:11\tC:\\A\\Dolphin.ini\tfrench\tautre\n",
+        encoding="utf-8")
+    assert launcher.lire_amorcages(tmp_path) == {}
