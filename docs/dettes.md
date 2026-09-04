@@ -1031,6 +1031,35 @@ d'un correctif qui « ne marche pas ».
 > **Plan écrit le 2026-08-29** — `docs/superpowers/plans/2026-08-29-d7-jeton-de-chemin-et-fusion.md` :
 > **EN COURS D'EXÉCUTION** — tâches 1 à 4 engagées le 2026-08-29 au soir ; le jeton retenu est `{install_dir}`, pas `{emulation_root}`.
 
+> **CORRIGÉ le 2026-09-04 — « tâches 1 à 4 » était PÉRIMÉ.** L'état du code a
+> été mesuré contre le plan plutôt que déduit de cette phrase, et **les sept
+> tâches de dépôt sont faites**, chacune avec ses tests. La tâche 7 en
+> particulier — celle que cette entrée ne mentionne nulle part — existe :
+> `install.configurations_effacees` et `install.format_configurations_effacees`
+> nomment, après chaque installation, les configurations que `retro install`
+> vient d'effacer avec le dossier, et `_cmd_install` les imprime. Ses trois
+> tests sont là. Vérification : tous les noms de test que le plan prescrit
+> existent dans `tests/`, à une exception près —
+> `test_le_rapport_nomme_les_deux_cibles_d_un_profil`, livré sous un meilleur
+> nom, `test_deux_cibles_non_amorcees_ne_donnent_pas_deux_lignes_identiques`.
+>
+> **CE QUI RESTE DE D7 EST LA TÂCHE 8, ET ELLE EST ENTIÈREMENT SUR LA CONSOLE.**
+> Rien n'en est faisable depuis l'hôte, et c'est la seule raison pour laquelle
+> cette dette reste ouverte :
+>
+> | | Mesure due |
+> |---|---|
+> | M1 | l'ordre `retro launcher` → `compiler.cmd` → `retro scan` |
+> | M2 | rouvrir le `CurrentSettings.ini` que RPCS3 a écrit après décochage, et recopier de là le groupe et la forme des valeurs |
+> | M3 | `--explain` à blanc sur un jeu de chaque profil touché — aucune ligne ne doit contenir `{` |
+> | M4 | l'auto-réparation Vita3K, et l'idempotence de la fusion, prouvées |
+> | M5 | la manette RPCS3 après une montée de version — **un bouton VU répondre**, un fichier posé ne prouve pas une manette |
+>
+> Et le blocage de fond n'a pas bougé : **aucun compilateur C# sur l'hôte**,
+> revérifié le 2026-09-04 (ni `csc`, ni `mcs`, ni `mono`, ni `dotnet`). La
+> boucle du lanceur, la levée de la garde, le témoin par cible et la sortie
+> `--explain` indicée n'ont jamais été compilés, encore moins exécutés.
+
 **Constatée le 2026-08-29**, sur **trois** émulateurs, pour deux raisons
 différentes — et c'est la répétition qui en fait une dette de mécanisme plutôt
 que trois notes de profil éparses.
@@ -1511,6 +1540,168 @@ dans `retro/status.py` (`_lignes_langue`), la sortie `--explain` et
 `InscrireTemoin` de `retro/data/launcher/retro-launch.cs`, et le format à trois
 colonnes de `retro/launcher.py` (`lire_amorcages`) que le témoin par cible
 devrait franchir.
+
+### Où en est D12 — 2026-09-04
+
+**Cette entrée était PÉRIMÉE quand elle a été relue.** Elle dit « aucun des dix
+profils livrés ne déclare de `[bootstrap.langue]` » ; quatre profils en
+portaient déjà, posés le 2026-08-30 au soir — DuckStation, RetroArch (deux
+entrées), PCSX2, Dolphin (une troisième cible ajoutée pour cela). Les trois
+commits qui les ont posées n'ont pas touché ce fichier. C'est la démonstration
+la plus courte de ce que dit l'en-tête de ce document : une dette qu'on fait
+avancer sans l'écrire est une dette qu'on redécouvre.
+
+#### Les tables : c'est FINI, et la garde qui le tient
+
+**Onze entrées d'amorçage, et les onze disent où en est leur langue.** Sept
+portent une table, quatre déclarent que la question a été posée et que la
+réponse est non. La distinction « deux cas, deux coûts » de cette dette est donc
+close — mais elle est close par les DEUX bouts, et le second n'existait pas :
+
+| Profil | Cible | Ce qu'elle dit de la langue |
+|---|---|---|
+| dolphin | `GCPadNew.ini` | aucune — mesuré : ce fichier ne porte que des liaisons |
+| dolphin | `WiimoteNew.ini` | aucune — mesuré, même raison |
+| dolphin | `Dolphin.ini` | table : interface + langue système GameCube |
+| duckstation | `settings.ini` | table : interface seule (la PS1 n'a pas de langue système) |
+| pcsx2 | `PCSX2.ini` | table |
+| retroarch | `retroarch.cfg` | table : langue de l'interface |
+| retroarch | `melonDS.opt` | table : langue du firmware que les JEUX lisent |
+| rpcs3 | `GuiConfigs\CurrentSettings.ini` | table : interface — **relevée sur l'archive**, voir plus bas |
+| rpcs3 | `Default.yml` | aucune — mesuré : `cfg_player` ne porte que la manette |
+| vita3k | `gui-configs\CurrentSettings.ini` | aucune — mesuré : `gui_settings.h` énumère onze groupes, aucune langue |
+| vita3k | `config.yml` | table : `sys-lang`, la langue système de la PS Vita |
+
+`test_chaque_cible_d_amorcage_dit_ou_en_est_sa_langue` (`tests/test_donnees.py`)
+tient cet état : elle a été vue ROUGE en nommant les six cibles muettes, et elle
+refuse qu'une douzième entrée se taise. **Elle n'a aucune liste d'exemptions** —
+une entrée en sort en déclarant une table OU un aveu, jamais en s'y inscrivant.
+C'est la leçon de D10, appliquée d'avance.
+
+#### Le pendant de `fill_absent` existe : `langue_absente`
+
+Nommé et non implémenté par cette dette, il l'est depuis le 2026-09-04
+(`retro/profiles.py`, `_lire_langue_absente`). Il porte une RAISON et jamais un
+booléen — même motif que `fill_absent` et que la `note` d'un `args` vide : un
+« non » sans son motif ne se distingue pas d'un « non » recopié sans avoir
+regardé. Trois refus l'encadrent, transposés un pour un de `fill` /
+`fill_absent` : les deux à la fois, un aveu vide, un aveu qui n'est pas du
+texte. **Ni l'un ni l'autre reste permis** — c'est l'état « personne n'a
+regardé », celui dont ce champ existe pour sortir, pas celui qu'il interdit.
+
+`retro status` rend une phrase distincte qui cite la raison. Le piège que cette
+dette annonçait — « le jour où huit entrées sur dix porteront leur table, les
+deux qui n'en auront pas seront indiscernables » — est donc désarmé le jour même
+où il s'armait.
+
+#### Ce que le rendu du rapport devait à ces tables, et qu'il ne payait pas
+
+Deux défauts sont nés avec les tables, et aucun des deux n'existait avant :
+
+1. **La phrase collective accusait à tort.** « un émulateur sans table pose ses
+   propres défauts : ses jeux resteront dans SA langue » se déclenchait sur
+   toute entrée sans table — donc sur le fichier de manettes de Dolphin, d'un
+   émulateur qui pose sa langue par une AUTRE cible. Elle ne parle plus que de
+   ce qui ne pose rien nulle part.
+2. **Les quatre profils sans amorçage étaient invisibles**, ce que cette dette
+   nommait déjà (« pas même une ligne "aucune table" »). `cemu`, `flycast`,
+   `ppsspp`, `xemu` ont désormais leur ligne, et elle dit la cause qui leur est
+   propre : il ne leur manque pas une table, il leur manque le fichier de
+   réglages où la poser.
+
+#### Le témoin par cible : la moitié hôte est faite, la moitié console reste due
+
+Cette dette chiffrait le blocage avant de l'ouvrir : `lire_amorcages` ne
+retenait une ligne qu'à `len(parts) == 3`, donc un quatrième champ aurait fait
+ignorer la ligne ENTIÈRE, en silence. **Ce n'est plus vrai.** Le lecteur accepte
+trois colonnes OU quatre ; la quatrième est la langue réellement POSÉE sur cette
+cible-là, et son absence se lit « ce lanceur n'écrit pas la langue », jamais
+« aucune langue posée ». Au-delà de quatre, la ligne est ignorée : deviner une
+cinquième colonne poserait au rapport une valeur que personne n'a écrite.
+
+**Le changement de forme a attrapé un défaut au passage**, et il vaut d'être
+noté parce qu'il était invisible depuis une suite verte : `status.etat_amorcage`
+dépliait le témoin en DEUX valeurs. Aucun test ne l'avait vu, parce que tous
+fabriquaient le témoin à la main dans une forme que le lecteur ne produit pas.
+Sur la seule voie réelle — `retro status` avec un vrai témoin — le rapport
+levait un `ValueError` au lieu de s'afficher.
+
+**Reste dû, et cela exige la console :** le lanceur C# n'écrit pas cette
+quatrième colonne. Le côté hôte l'accepte, donc le jour où il l'écrira rien ne
+cassera — c'était tout l'objet de faire cette moitié-ci d'abord.
+
+#### 🔴 Le mensonge d'`--explain` n'est plus hypothétique : il est NÉ
+
+Cette dette écrivait « Aujourd'hui il ne se produit pas, faute de table ; il
+naîtra avec la première. » **Il est né.** `dolphin.toml`, troisième cible
+(`Dolphin.ini`), déclare une table de langues et **aucune** clé `enforced` —
+`tests/test_donnees.py` l'exige même explicitement (`SANS_MANETTE`). Le plan
+écrit donc `bootstrap_enforced.3=` vide, `amorcage_a_poser.3` ne consulte que
+cette ligne, et `--explain` répondra **« non (la cible existe) »** sur une cible
+où une fusion de langue aura bel et bien lieu au prochain jeu.
+
+C'est le seul contrôle vérifiable à distance, et il ment désormais sur une
+cible livrée. **Ce n'est pas corrigé, et la raison est le périmètre :** le
+correctif est entièrement en C#, et **il n'existe aucun compilateur C# sur
+l'hôte** — ni `csc`, ni `mcs`, ni `mono`, ni `dotnet`, vérifié le 2026-09-04.
+Livrer du C# qu'on n'a pas vu compiler dans un fichier dont dépend le lancement
+de TOUS les jeux échange un rapport qui ment contre une console qui ne démarre
+plus. Le correctif est donc rangé avec les mesures de console, où il attend un
+compilateur.
+
+**Ce qui reste dû sur la console, et rien de tout cela n'est faisable d'ici :**
+
+- compiler `retro-launch.cs` — aucune ligne de ce fichier n'a jamais été
+  compilée, langue comprise ;
+- `--explain` : les lignes de langue (valeur lue chez Steam, langue retenue,
+  fragment fusionné) et la correction d'`amorcage_a_poser.<n>`, qui doit
+  compter la fusion de langue et non le seul `bootstrap_enforced.<n>` ;
+- `InscrireTemoin` : écrire la quatrième colonne, que l'hôte sait déjà lire ;
+- la double fusion — clés imposées PUIS langue, sur la même cible, au même
+  lancement ;
+- la lecture réelle du registre de Steam, et qu'une langue changée à chaud soit
+  reprise au jeu suivant ;
+- **et la seule preuve qui vaille pour chaque table posée : un jeu VU dans la
+  langue demandée.** Aucune des sept tables n'a été vue agir. Elles sont
+  relevées, pas mesurées — c'est la distinction que D3 a payée cher.
+
+#### Deux fragilités que les tables apportent avec elles
+
+- **RPCS3 : la liste des langues est une propriété de l'ARCHIVE, pas du code.**
+  `GetAvailableLanguageCodes()` énumère `rpcs3_*.qm` dans le dossier de
+  traductions ; les douze codes ont donc été relevés sur l'archive épinglée
+  elle-même, téléchargée et comparée à l'empreinte du manifeste. Un code absent
+  de l'archive ne produit **aucune erreur** : RPCS3 retombe sur l'anglais **et
+  réécrit `language=en`** dans le fichier. Comme la console repose la table à
+  chaque lancement, les deux se contrediraient en boucle, sans un mot. **Cette
+  table se re-relève à chaque montée de version de RPCS3.**
+- **Vita3K : `sys-lang` est un ENTIER.** Un entier faux n'est pas une valeur
+  invalide — c'est une AUTRE langue, parfaitement valide. C'est le piège déjà
+  écrit pour le cœur melonDS, et il est ici sur un axe que le propriétaire voit
+  depuis son canapé. Les rangs viennent de `locale_tag_for_sys_lang`
+  (`vita3k/lang/src/lang.cpp`), dont le tableau est indexé par `sys-lang`, et
+  une seconde source indépendante les confirme rang pour rang : RPCS3 sérialise
+  le même vocabulaire Sony pour la PS3
+  (`fmt_class_string<CellSysutilLang>::format`).
+
+#### Ce qui n'est PAS posable, et c'est mesuré
+
+**La langue système de la PS3 — celle qu'un jeu interroge.** Elle existe et elle
+est relevée : `System: Language:` dans le `config.yml` de RPCS3, vingt valeurs
+exactes lues dans `Emu/Cell/Modules/cellSysutil.cpp`, défaut `English (US)`
+(`Emu/system_config.h`). Elle n'est pas posable **parce que c'est un YAML
+IMBRIQUÉ** : les deux dialectes de fusion ne connaissent que l'INI à sections et
+le YAML **PLAT** (`retro/profiles.py`, `cles_yaml` — « seul le PREMIER NIVEAU
+compte »). Poser `Language:` au premier niveau du fichier écrirait une clé
+qu'aucun lecteur YAML ne rattacherait au nœud `System`, et RPCS3 continuerait en
+anglais sans un mot.
+
+Ce n'est donc pas un relevé qui manque, c'est un troisième dialecte — ou une
+profondeur ajoutée au second. **C'est une décision de conception, elle n'est pas
+prise ici**, et elle a un voisin : la langue d'interface de Vita3K
+(`user-lang`), qui n'est pas déclarée non plus mais pour une raison différente —
+ses valeurs se découvrent dans l'archive, et l'archive de Vita3K n'est épinglée
+par aucune empreinte (D5).
 ---
 
 ## D13 — Deux juges de la langue, et une seule indulgence sur deux
@@ -1623,6 +1814,101 @@ atomique d'`ecrire_langue`), `LangueChoisie()` et `FragmentDeLangue()` dans
 `retro/status.py` (`_lignes_temoin_langue`), et le test
 `test_un_fichier_illisible_retombe_sur_auto` de `tests/test_launcher.py`, qui
 est la contrainte à rouvrir si c'est Python qui cède.
+
+### Les deux issues, MESURÉES — 2026-09-04. L'arbitrage reste au propriétaire.
+
+Cette entrée posait deux issues sans les chiffrer. Elles le sont ici, et **rien
+n'est décidé** : le dépôt s'applique la règle de D7, ça se décide en revue.
+Trois faits ont été mesurés depuis, et l'un d'eux déplace le coût annoncé.
+
+#### 🔴 La contrainte que l'issue 2 devait « rouvrir » ne protège pas ce qu'elle dit
+
+`test_un_fichier_illisible_retombe_sur_auto` justifie l'indulgence de Python
+par : *« Un fichier abîmé ne doit pas empêcher un jeu de se lancer. »*
+
+**`lire_langue` ne peut empêcher aucun jeu de se lancer.** Mesuré le
+2026-09-04, ses appelants sont exactement deux, et les deux ne font que
+rapporter :
+
+| Appelant | Ce qu'il en fait |
+|---|---|
+| `retro/cli.py`, `_cmd_status` | passe la valeur à `build_report` |
+| `retro/cli.py`, `_cmd_langue` sans `--langue` | l'imprime |
+
+Le chemin de LANCEMENT ne passe pas par là : c'est le lanceur C# qui lit
+`langue.txt`, sur la console, et Python n'est pas dans la boucle. La phrase de
+cette docstring est vraie de `lire_mode` — dont la valeur part dans le plan —
+et a été héritée ici où elle ne l'est pas. **Le coût de l'issue 2 est donc plus
+petit que ce que cette dette annonçait :** la contrainte à rouvrir protège une
+propriété que la fonction n'a pas.
+
+Une propriété réelle demeure, et elle est plus étroite : `lire_langue` ne doit
+pas **lever**, sans quoi `retro status` s'interromprait. Rendre la valeur brute
+ne lève pas.
+
+#### Ce que coûte l'issue 1 — le lanceur valide contre le plan
+
+**Elle est entièrement en C#, donc elle n'est pas mesurable d'ici et pas
+livrable d'ici** : aucun compilateur C# sur l'hôte. C'est déjà un coût.
+
+Et elle a **deux trous**, dont un seul était nommé :
+
+1. *(nommé)* une entrée sans table n'écrit aucune ligne `bootstrap_langue.*`,
+   donc il n'y a rien contre quoi valider. Mesuré aujourd'hui : **quatre des
+   onze entrées** sont dans ce cas.
+2. *(non nommé, et il est pire)* le plan est **PAR SYSTÈME**. Les quatre profils
+   sans amorçage — `cemu`, `flycast`, `ppsspp`, `xemu` — n'écrivent **aucune**
+   ligne de langue, jamais. Valider contre le plan ferait donc juger la MÊME
+   valeur de `langue.txt` valide au lancement d'un jeu DuckStation et
+   invalidable au lancement d'un jeu Xbox. La console tiendrait deux avis sur
+   un fichier unique, selon le jeu — et l'écart resterait entier exactement là
+   où il est le moins visible.
+
+#### Ce que coûte l'issue 2 — Python cesse de normaliser
+
+Entièrement côté hôte, testable, sans console. Trois endroits :
+
+- `launcher.lire_langue` rend la valeur brute au lieu de la ramener à `auto`, et
+  sa docstring cesse de promettre une protection qu'elle n'exerce pas ;
+- `status._decision_langue` rend `None` sur une valeur hors liste, et
+  `_lignes_langue` n'écrit alors **plus rien** de la langue demandée : le
+  silence remplacerait la normalisation, ce qui n'est pas mieux. Il faut donc
+  nommer la valeur — `_motif_sans_langue` sait déjà écrire cette phrase-là,
+  mais seulement de la valeur de **Steam** ;
+- `_lignes_temoin_langue` : la phrase fausse que cette dette relève — « le
+  réglage a changé depuis, le prochain suivra la ligne ci-dessus » — doit être
+  gardée, sinon l'issue 2 la laisse intacte et ne corrige que la moitié visible.
+
+Trois tests à rouvrir (`test_un_fichier_illisible_retombe_sur_auto` et ses deux
+voisins), et le rendu de la section Langue à compléter.
+
+#### Une troisième voie, qui n'était pas dans la liste
+
+**Distinguer « illisible » de « lisible mais inconnu ».** Les deux tombent
+aujourd'hui sur `auto` par la même ligne, et ce ne sont pas les mêmes faits :
+un `OSError` veut dire « il n'y a pas de fichier », un `frensh` veut dire
+« quelqu'un — ou une écriture interrompue — a mis ça là, et c'est exactement ce
+que le lanceur va lire ». Le premier mérite `auto` sans commentaire ; le second
+mérite d'être nommé. C'est l'issue 2, resserrée sur le seul cas qui produit
+l'écart, et elle laisse `auto` intact partout où il est juste.
+
+#### Ce que la recommandation serait, et pourquoi elle ne tranche pas
+
+Sur ces mesures, l'issue 1 est plus chère qu'annoncé (C# non compilable ici,
+deux trous dont un qui fait tenir deux avis à la console) et l'issue 2 moins
+chère qu'annoncé (la contrainte invoquée ne protège pas ce qu'elle dit). Mais
+**les deux ne règlent pas la même chose** : l'issue 2 fait dire la vérité au
+RAPPORT, l'issue 1 change ce que la console POSE. Aucune des deux ne rend l'autre
+inutile, et choisir la seconde seule laisse un jeu partir dans le repli pendant
+que le rapport, lui, ne mentira plus.
+
+**Question au propriétaire, et elle est en une ligne :** un `langue.txt` touché
+à la main doit-il faire **dire la vérité au rapport** (issue 2, hôte, faisable
+tout de suite), ou faire **refuser la valeur au lanceur** (issue 1, console,
+avec les deux trous ci-dessus) — ou les deux, dans cet ordre ?
+
+**Rien n'est implémenté ici**, et l'écart reste sans coût tant qu'aucun jeu n'a
+été vu poser une langue.
 ---
 
 ## Relevé — où Steam dit sa langue, et sous quels noms — 2026-08-30
