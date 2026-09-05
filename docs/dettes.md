@@ -385,7 +385,10 @@ phrase est d'avant la clôture de D5, et la PS Vita s'y est ajoutée sans que
 personne ne recompte. Mesuré le 2026-09-04 : `cemu`/Wii U, `flycast`/Dreamcast,
 `pcsx2`/PS2, `ppsspp`/PSP, `rpcs3`/PS3, `vita3k`/PS Vita, `xemu`/Xbox.
 
-**Le Dreamcast en est sorti** (voir plus bas). Six restent.
+~~**Le Dreamcast en est sorti** (voir plus bas). Six restent.~~ —
+**PÉRIMÉ le 2026-09-05 : il en reste DEUX.** Le Dreamcast, puis PCSX2, xemu,
+RPCS3 et Cemu. Seuls PPSSPP et Vita3K restent muets, chacun pour une raison
+qui lui est propre — voir « Où en est D2 — 2026-09-05 », plus bas.
 
 #### Le relevé, fait une bonne fois — et il change la nature de la dette
 
@@ -458,7 +461,26 @@ c'est un fait de conception, pas une mesure :
 troisième axe ne se greffe pas avant les deux premiers ». Ce qui a changé, c'est
 que ce sous-projet n'a plus de relevé à faire : il a un tableau.
 
-#### 🟡 Un arbitrage que le relevé fait apparaître — PCSX2
+> **🔴 ET CE RAISONNEMENT A ÉTÉ RÉFUTÉ EN PARTIE, le 2026-09-05.** « Le
+> troisième axe ne se greffe pas avant les deux premiers » est FAUX quand les
+> deux premiers n'ont aucun véhicule : xemu, RPCS3 et Cemu ont reçu leur bloc
+> de rendu avec **deux modes vides** et leur `fill_absent`, et PCSX2 a reçu son
+> remplissage par mode sans qu'aucun de ses deux premiers axes ne bouge. Ce
+> qu'un mode vide ne peut pas porter, c'est un `fill` — pas un `fill_absent`,
+> ni un `fill_enforced`, qui vivent tous deux hors de la ligne de commande.
+> Le blocage réel n'était donc pas l'ordre des axes : c'était `fill_enforced`
+> par profil contre une politique par mode, c'est-à-dire D14.
+
+#### 🟡 Un arbitrage que le relevé fait apparaître — PCSX2 — **RENDU ET LIVRÉ**
+
+> **Cette section est conservée pour son raisonnement, mais son verdict a été
+> dépassé le 2026-09-05.** Elle énonce trois issues et conclut « PCSX2 n'est
+> pas livré ». Il y en avait une quatrième, que personne n'avait vue parce
+> qu'elle exigeait de vérifier une phrase que tout le monde croyait : **le
+> fragment imposé n'est PAS posé avant que le mode ne soit résolu.** L'issue 2
+> — « donner au mécanisme d'amorçage un fragment PAR MODE » — n'était donc pas
+> « une évolution réelle qui touche l'ordre d'`Amorcer()` » : elle ne touche
+> aucun ordre. Voir **D14**, qui porte la mesure et le mécanisme livré.
 
 **PCSX2 est le prochain candidat, et de loin.** Il a la mise à l'échelle entière
 (`[EmuCore/GS] IntegerScaling`, défaut `false`), son fichier est un **INI**
@@ -513,14 +535,95 @@ et la troisième un **tiret** (`resolution-multiplier`). Le fichier XML de
 réglages de Vita3K, lui, écrit les trois avec des tirets. Recopier depuis le
 mauvais des deux endroits donne une clé ignorée en silence.
 
+### Où en est D2 — 2026-09-05 : quatre des six systèmes muets sont livrés
+
+**Il en restait six sans aucun bloc de rendu. Il en reste DEUX.** Le relevé du
+2026-09-04 était le travail dur ; ce passage-ci n'a fait que le livrer, plus le
+mécanisme qui manquait à l'un d'eux.
+
+| Système | Ce qu'il a reçu | Ce qui reste |
+|---|---|---|
+| **PS2** (PCSX2) | `[system.render]` + `[bootstrap.render]` : `IntegerScaling` **par mode**, `true` en natif, `false` en full | 🔴 jamais vu à l'écran ; et son mode `full` ne monte pas sa résolution interne — voir D14 |
+| **Xbox** (xemu) | `fill_absent` sur les deux modes | 🔴 jamais vu à l'écran |
+| **PS3** (RPCS3) | `fill_absent` sur les deux modes | 🔴 jamais vu à l'écran |
+| **Wii U** (Cemu) | `fill_absent` sur les deux modes | 🔴 jamais vu à l'écran |
+| **PSP** (PPSSPP) | rien | **le fichier de réglages n'est pas localisé** — voir plus bas |
+| **PS Vita** (Vita3K) | rien | **délibérément** — voir plus bas |
+
+**Ce que le rapport dit désormais**, vérifié en LANÇANT `retro status` et non
+en le déduisant des tests : le problème « ne disent rien du remplissage de
+l'écran » a **disparu**, et « n'ont aucun mode de rendu déclaré » est passé de
+**sept systèmes à deux**.
+
+#### Les trois `fill_absent`, et d'où vient ce qu'ils affirment
+
+Xbox, PS3 et Wii U n'ont **aucune** mise à l'échelle entière : ce qu'ils ont
+est un **filtre**, qui retire le flou mais laisse des pixels de tailles
+inégales — et la lecture du calcul de rectangle de destination le confirme dans
+les trois cas (réels flottants, aucun `floor`, aucun `min(w/fbw, h/fbh)`).
+
+**La provenance est écrite dans les profils telle qu'elle est, et pas mieux :
+le relevé de D2 du 2026-09-04, NON rejoué le 2026-09-05.** Aucun arbre source
+d'émulateur ne vit sur l'hôte — vérifié —, donc ces trois `fill_absent`
+reposent sur un relevé daté, pas sur une lecture refaite. C'est exactement le
+statut que le `fill_absent` de Dolphin porte déjà, et c'est la seule chose
+honnête à écrire : les trois disent aussi, comme lui, que **personne n'a
+regardé une partie**.
+
+**Un nom de filtre n'est attribué à aucun des trois**, délibérément. Le relevé
+de D2 en cite trois — `Output Scaling Mode = Nearest`, `UpscaleFilter = 3`,
+`filtering = "nearest"` — sans dire lequel appartient à qui, et les
+redistribuer de mémoire serait très exactement la faute que ce dépôt paie en
+boucle : une valeur d'apparence juste que personne n'a vérifiée.
+
+#### Ce que ces trois blocs coûtent, et pourquoi c'est presque rien
+
+Chacun ajoute `{render}` à son gabarit de lancement et un `cost`. Le `cost` est
+**exigé** dès qu'un bloc de rendu existe, mais il est ici **sans effet
+observable**, et c'est écrit dans les trois profils : leurs deux modes passent
+exactement la même chose à l'émulateur — rien —, donc le mode que `auto`
+retient ne change aucune commande. Sa valeur ne décidera de quelque chose que
+le jour où l'un des deux modes aura des arguments.
+
+#### Les deux qui restent, et ce n'est pas le même manque
+
+- **PSP (PPSSPP) — DÛ, et la mesure est sur la console.** Il A la mise à
+  l'échelle entière (`[Graphics] DisplayIntegerScale`, défaut `False`), mais
+  son seul véhicule de ligne de commande — `--appendconfig=FICHIER` —
+  **RÉÉCRIT `ppsspp.ini`**, donc reprend au propriétaire ce qu'il croyait
+  transitoire. La voie qui reste est celle de PCSX2 : un `[[bootstrap]]` visant
+  son fichier de réglages, puis une table `[bootstrap.render]`. **Il n'a aucun
+  `[[bootstrap]]`**, parce que personne n'a jamais relevé OÙ vit son fichier de
+  réglages — c'est ce que D12 nomme déjà pour les quatre profils sans amorçage.
+  Ce n'est plus un manque de mécanisme : c'est un relevé, et il se fait sur la
+  machine.
+- **PS Vita (Vita3K) — pas écrit, et DÉLIBÉRÉMENT.** Cette dette l'écrivait
+  déjà : `fullscreen_hd_res_pixel_perfect` **n'est pas un interrupteur de mise
+  à l'échelle entière** — il ne s'engage qu'en plein écran ET si la résolution
+  est un multiple exact de 960×540. En 1920×1080 il agit ; en 2560×1440 **il ne
+  fait rien, et rien ne le dit**. Un profil qui déclarerait `fill = "entier"`
+  promettrait donc quelque chose que l'émulateur ne tient qu'à certaines
+  résolutions — et le mécanisme n'a pas de quoi exprimer « selon la
+  résolution ». S'y ajoute la raison déjà écrite : rien ne peut encore entrer
+  dans cet émulateur (D9).
+
 #### Ce qui reste dû, et ce qui exige la console
 
-- **Écrire les six blocs restants** : travail de dépôt, désormais sans inconnue
-  de valeur, mais qui demande d'abord l'arbitrage PCSX2 ci-dessus et, pour
-  quatre des six, un moyen de livraison que le mécanisme n'a pas.
+- ~~**Écrire les six blocs restants**~~ — **il en reste DEUX**, corrigé le
+  2026-09-05 (voir le tableau ci-dessus). L'arbitrage PCSX2 qu'appelait cette
+  ligne a été rendu : c'est D14, le mécanisme est livré et PCSX2 avec lui. Les
+  deux qui restent — PSP et PS Vita — ne demandent plus « un moyen de livraison
+  que le mécanisme n'a pas » : le PSP attend un relevé sur la machine, la PS
+  Vita attend D9 et un moyen d'exprimer « selon la résolution ».
 - **Voir une image.** Aucun `fill` livré — ni ceux de RetroArch, ni celui du
-  Dreamcast d'aujourd'hui — n'a jamais été vu agir sur un écran. C'est la seule
-  preuve qui vaille, et elle est sur la console.
+  Dreamcast, ni l'`IntegerScaling` de PCSX2 du 2026-09-05 — n'a jamais été vu
+  agir sur un écran. C'est la seule preuve qui vaille, et elle est sur la
+  console. **C'est le seul point de cette dette qui n'ait pas bougé depuis son
+  ouverture**, et il ne bougera pas d'ici.
+- **Compiler le lanceur.** Le remplissage par mode y a ajouté du C# que
+  personne n'a compilé (D14, D7 tâche 8). Un lanceur d'avant ignore ces lignes
+  **en silence** : PCSX2 n'aurait alors aucun remplissage pendant que `retro
+  status` en annonce deux.
 - **L'arbitrage de l'en-tête effacé est RENDU** (2026-09-04, section 🔴 plus
   haut) : oui, on l'accepte, et ses trois conditions sont remplies. Il ne reste
   rien à faire de ce côté.
@@ -1230,6 +1333,23 @@ d'un correctif qui « ne marche pas ».
 > revérifié le 2026-09-04 (ni `csc`, ni `mcs`, ni `mono`, ni `dotnet`). La
 > boucle du lanceur, la levée de la garde, le témoin par cible et la sortie
 > `--explain` indicée n'ont jamais été compilés, encore moins exécutés.
+>
+> **RE-RE-VÉRIFIÉ le 2026-09-05 — ni `csc`, ni `mcs`, ni `mono`, ni `dotnet`,
+> ni `msbuild`, ni `xbuild`.** Et **la tâche 8 a GROSSI ce jour-là** : D14 a
+> ajouté à `retro-launch.cs` un `modeDuLancement`, une méthode
+> `FragmentDeMode()`, une troisième fusion dans `AmorcerUne()` et deux lignes
+> de `--explain`. Rien de tout cela n'a été compilé. Les ajouts se bornent aux
+> constructions déjà présentes dans le fichier (`TryGetValue`, `ContainsKey`,
+> `Indice`, `if`/`else`, concaténation) et l'équilibre des accolades et
+> parenthèses hors chaînes et commentaires a été vérifié contre `HEAD` — c'est
+> le même filet, et la même insuffisance, que pour le correctif d'`--explain`
+> du 2026-09-04.
+>
+> **AUDIT DU CÔTÉ HÔTE, 2026-09-05 : il ne reste RIEN d'ici.** Les sept tâches
+> de dépôt sont faites et vérifiées une à une — la tâche 7 comprise
+> (`install.configurations_effacees` et `format_configurations_effacees`
+> existent, avec leurs trois tests). Les cinq mesures M1 à M5 sont sur la
+> console, sans exception, et aucune ne se contourne depuis l'hôte.
 
 **Constatée le 2026-08-29**, sur **trois** émulateurs, pour deux raisons
 différentes — et c'est la répétition qui en fait une dette de mécanisme plutôt
@@ -1505,10 +1625,21 @@ absent là-bas, pour une raison de plus que celle de D6 — et les deux causes
 produisent le même symptôme, un correctif qui « ne marche pas ». Elles se
 diagnostiqueront donc l'une pour l'autre.
 
-**Où ça se joue :** `retro/launcher.py` (`ecrire_plan`, `enforced_name`), le
-fusionneur de `retro/data/launcher/retro-launch.cs`, et le témoin que D6 est en
-train de construire — c'est probablement là que l'identité du fragment doit
-aller, à côté de celle du paquet.
+**Où ça se joue :** `retro/launcher.py` (`ecrire_plan`, `enforced_name`,
+`enforced_mode_name`), le fusionneur de `retro/data/launcher/retro-launch.cs`,
+et le témoin que D6 est en train de construire — c'est probablement là que
+l'identité du fragment doit aller, à côté de celle du paquet.
+
+**ÉLARGIE le 2026-09-05, sans rien changer à son raisonnement.** D14 dépose
+désormais **deux fragments de plus par entrée** qui en déclare — un par mode de
+rendu — et ils sont écrits par le même geste unique, `retro scan`. Tout ce que
+cette dette dit vaut donc pour eux à l'identique, avec une conséquence de plus
+qui lui est propre : changer le fragment `native` d'un profil, tout voir vert
+et ne pas re-scanner laisse la console poser l'ANCIEN remplissage **dans un
+seul des deux modes**, si bien que le défaut ne se manifeste qu'après un
+`retro mode`. `fragments_attendus` les couvre — c'est la définition unique
+qu'emploient l'écriture et le contrôle —, donc `retro status` sait déjà les
+comparer ; c'est le re-scan qui manque, comme avant.
 
 ---
 
@@ -1886,6 +2017,33 @@ reste de la tâche 8 de D7.
 - **et la seule preuve qui vaille pour chaque table posée : un jeu VU dans la
   langue demandée.** Aucune des sept tables n'a été vue agir. Elles sont
   relevées, pas mesurées — c'est la distinction que D3 a payée cher.
+
+**AUDIT DU CÔTÉ HÔTE, 2026-09-05 : il ne reste RIEN d'ici non plus.** Vérifié
+point par point plutôt que déduit de cette entrée : `lire_amorcages` accepte
+trois colonnes ou quatre (`retro/launcher.py`), `langue_absente` existe et
+porte sa raison, `_pose_de` apparie sur le dernier segment du chemin, et
+`amorcage_a_poser.<n>` rend son aveu « inconnu ». Tout le reste de la liste
+ci-dessus est du C# à compiler ou une mesure sur la machine.
+
+#### 🔴 Ce que D14 vient d'ajouter à cette dette, et qu'il faut payer d'avance
+
+**Une TROISIÈME chose atteint désormais chaque cible au même lancement** : les
+clés imposées, **le fragment du mode de rendu** (D14, 2026-09-05), puis la
+langue. Le témoin par cible en porte quatre colonnes au plus — `profil`,
+`date`, `cible`, `langue posée` — et `lire_amorcages` **ignore la ligne
+entière au-delà**, ce que cette dette a décidé en toutes lettres : « deviner
+une cinquième colonne poserait au rapport une valeur que personne n'a écrite ».
+
+Le jour où quelqu'un fera écrire au lanceur le **mode posé** en cinquième
+colonne, `retro status` dira donc **« pas encore amorcé » de toutes les cibles
+à la fois**, sur une console parfaitement amorcée — le symptôme exact que la
+migration 3→4 a coûté à cette dette, une colonne plus loin.
+
+**Ce n'est pas fait ici, et c'est délibéré :** décider ce que signifie la
+cinquième colonne est une décision, et elle appartient à qui écrira l'autre
+moitié. Mais la leçon de la migration précédente tient mot pour mot — **le
+lecteur d'abord, l'écrivain ensuite** —, et elle est écrite ici pour qu'on ne
+la redécouvre pas devant un rapport qui accuse une console saine.
 
 #### 🔴 Un silence NEUF, que les tables viennent de créer — à arbitrer
 
@@ -2355,6 +2513,15 @@ ne valide rien — elle n'a rien à valider —, et cela ne doit pas se lire com
 
 ## D14 — Le remplissage imposé est PAR PROFIL, la politique est PAR MODE
 
+> **MÉCANISME LIVRÉ, PCSX2 LIVRÉ — 2026-09-05.** Ce qui a débloqué cette dette
+> n'est pas une conception astucieuse : c'est une MESURE, qui a montré que sa
+> propre prémisse était fausse. Voir « 🔴 La contrainte n'existait pas »
+> ci-dessous, et lire ce qui suit en sachant que **les deux affirmations du
+> titre ne s'opposaient pas** — l'une des deux n'était pas un fait.
+>
+> **Ce qui reste dû, et cela exige la console :** aucun de ces réglages n'a
+> jamais été vu agir à l'écran, et le lanceur n'a jamais été compilé.
+
 **Constatée le 2026-09-04**, en relevant les sept émulateurs muets de D2. Ce
 n'est pas un réglage qui manque à un émulateur : c'est **un mécanisme qui ne
 sait pas exprimer la politique du dépôt**. PCSX2 en est le premier cas bloqué,
@@ -2369,64 +2536,205 @@ pas la cause — et c'est la distinction qui fait de ceci une dette à part.
 | `native` | `entier` | la trame de la console est ce que le mode natif existe pour préserver ; seul un multiple entier l'agrandit sans la rééchantillonner |
 | `full` | `ajuste` | la résolution interne est déjà montée à la session : il n'y a plus de trame à préserver |
 
-`fill_enforced`, lui, est **par profil** — sur le bloc `[system.render]`, jamais
-sur un mode. Et sa raison est bonne, elle est écrite dans
+`fill_enforced`, lui, était **par profil** — sur le bloc `[system.render]`,
+jamais sur un mode. Et sa raison avait l'air bonne, elle était écrite dans
 `_lire_remplissage_impose` : « le fragment `enforced` est posé une fois par
 lancement, **AVANT** que le mode ne soit résolu. Le réglage vaut donc la même
-chose en natif et en full, et le déclarer par mode ferait croire à deux valeurs
-là où le fichier n'en porte qu'une. »
+chose en natif et en full. »
 
-**Les deux affirmations sont justes, et elles ne peuvent pas être vraies
-ensemble.** Un émulateur dont le remplissage ne vit que dans son fichier de
-réglages ne peut pas remplir `entier` en natif et `ajuste` en full : il n'a
-qu'une valeur, posée trop tôt.
+### 🔴 LA CONTRAINTE N'EXISTAIT PAS — mesurée le 2026-09-05
 
-### Où ça se voit, et pourquoi ce n'est pas resté théorique
+**Cette phrase-là était FAUSSE, et elle était le seul obstacle.** Elle décrit
+l'ordre d'exécution du lanceur ; le lanceur dit l'inverse.
 
-**PCSX2 est le premier bloqué, et rien d'autre ne lui manque.** Relevé le
-2026-09-04 sur la révision 2.6.3 épinglée : il a la mise à l'échelle entière
-(`[EmuCore/GS] IntegerScaling`, booléen, défaut `false`), son fichier est un
-**INI** — le dialecte que la fusion connaît —, et il porte **déjà** une entrée
-`[[bootstrap]]` sur `inis\PCSX2.ini`. Aucune ligne de commande ne peut le
-poser : PCSX2 n'a **aucune** option de surcharge, et un argument inconnu y est
-une **erreur fatale** (`QtHost.cpp`, « Unknown parameter »). Le fichier est donc
-la seule voie, et `fill_enforced` le seul champ qui la déclare.
+| Ce qui se passe | Où, dans `retro/data/launcher/retro-launch.cs` |
+|---|---|
+| le mode effectif est résolu (`auto` compris) | `Lancer()`, **ligne 1257** — `string demande = ModeChoisi()`, puis `effectif` |
+| la configuration est posée | `Amorcer(p, profilCle)`, **ligne 1487** |
 
-Imposer `IntegerScaling = true` donnerait `entier` **aussi en mode full**, ce
-qui contredit la politique — et **un profil qui la contredit est refusé au
-chargement**, délibérément. La valeur n'est donc même pas livrable.
+**`Amorcer()` n'est pas appelé AVANT `Lancer()` : il est appelé DEPUIS
+`Lancer()`, deux cent trente lignes après que le mode est connu.** L'entrée de
+cette dette écrivait « le lanceur pose les clés imposées avant de résoudre le
+mode (`Amorcer()` puis `Lancer()`) » — c'était une lecture des noms, pas du
+code.
 
-**Trois émulateurs échappent à cette dette, et c'est mesuré** : Xbox, PS3 et
-Wii U n'ont **aucune** mise à l'échelle entière (voir le tableau de D2). Pour
-eux la réponse est `fill_absent`, et ce champ-là fonctionne très bien.
+**Et le dépôt avait déjà construit la preuve qu'il pouvait le faire :** la
+langue passe par exactement ce chemin. `langueDuLancement` est décidée dans
+`Lancer()`, une seule fois, et `AmorcerUne()` la relit pour choisir *son*
+fragment parmi ceux que `retro scan` a déposés. Le remplissage par mode n'est
+donc pas une évolution du mécanisme d'amorçage : c'est la **transposition d'un
+mécanisme déjà livré, déjà testé, déjà en production**.
 
-### Les trois issues, et l'une est écartée
+**Ce que ça dit de plus que la correction elle-même**, et qui vaut pour la
+suite : une contrainte écrite dans un commentaire n'est pas une mesure. Celle-ci
+a tenu une journée entière, elle a fait écarter l'issue 2 comme « une évolution
+réelle qui touche l'ordre d'`Amorcer()` », et elle a fait renoncer à livrer un
+émulateur entièrement relevé. Rien dans le dépôt ne la contredisait, parce que
+personne n'était allé lire les deux numéros de ligne.
 
-1. **Accepter `entier` partout** pour un émulateur donné, et l'écrire comme un
-   écart assumé. Le mode `full` rendrait alors des bandes noires là où il
-   pourrait remplir — c'est-à-dire que le mode `full` cesserait d'être `full`.
-2. **Donner à l'amorçage un fragment PAR MODE.** C'est l'évolution honnête, et
-   elle n'est pas petite : le lanceur pose les clés imposées **avant** de
-   résoudre le mode (`Amorcer()` puis `Lancer()`), et l'inverser touche l'ordre
-   d'un fichier C# qu'aucun compilateur de l'hôte ne sait vérifier.
-3. ~~Déclarer `fill_absent`~~ — **écartée d'office** : ce serait déclarer absent
-   ce qu'on vient de relever, et c'est le seul des trois qui MENTE. C'est
-   exactement la demi-vérité silencieuse que ce dépôt paie en boucle.
+### Ce qui est livré — 2026-09-05
 
-**Rien n'est fait, et PCSX2 n'est pas livré.** Livrer en choisissant un des deux
-modes sans le dire serait la faute que cette entrée existe pour empêcher.
+| Pièce | Où |
+|---|---|
+| `fill_enforced` / `fill_enforced_where` **sur un MODE**, et non plus seulement sur le profil | `retro/render.py` (`RenderMode`), `retro/profiles.py` (`_lire_remplissage_impose_du_mode`) |
+| **La politique s'y applique** : un mode qui la contredit est refusé au chargement, exactement comme pour `fill` | `_lire_remplissage_impose_du_mode`, dernier refus |
+| `[bootstrap.render]`, un fragment imposé **par mode de rendu**, sur le modèle exact de `[bootstrap.langue]` | `retro/profiles.py` (`_lire_par_mode`) |
+| Le plan : `bootstrap_enforced.<n>.<mode>`, une ligne par mode, replis déjà résolus par Python | `retro/launcher.py` (`enforced_mode_name`, `plan_systeme`) |
+| Le lanceur : `modeDuLancement`, `FragmentDeMode()`, la fusion, et la ligne `amorcage_impose_mode.<n>` de `--explain` | `retro/data/launcher/retro-launch.cs` — **JAMAIS COMPILÉ**, voir plus bas |
+| Le rapport : **deux** valeurs par système, chacune avec son « où » | `retro/status.py` |
 
-**Ce que ça coûte aujourd'hui :** un émulateur entièrement relevé, dont le
-réglage est connu, le dialecte connu, la cible déjà déclarée — et qui reste sans
-remplissage. Et le coût grandira : tout émulateur dont le remplissage ne vit que
-dans un fichier tombera ici.
+**LA GARDE MORD PLUS QU'AVANT, ET C'ÉTAIT LA CONDITION.** Le champ par profil
+**échappe** à la politique — une valeur unique ne peut pas satisfaire deux
+cases, et `resoudre_remplissage` le dit dans son motif. Le champ par mode, lui,
+y est **soumis**. Livrer PCSX2 n'a donc affaibli aucun refus : cela a mis sous
+la politique un axe qui en sortait.
 
-**Où ça se joue :** `retro/render.py` (`_ARBITRAGE`, la politique par mode),
-`retro/profiles.py` (`_lire_remplissage_impose`, `_refuser_remplissage_impose_sans_cle`),
-le champ `enforced` des `[[bootstrap]]`, et l'ordre d'`Amorcer()` dans
-`retro/data/launcher/retro-launch.cs`.
+#### La garde neuve, et pourquoi elle est le vrai apport
+
+**Les deux fragments d'un profil doivent poser EXACTEMENT les mêmes clés.**
+C'est le jumeau du refus « deux langues qui ne posent pas les mêmes clés », et
+il ferme la faute que ce mécanisme apporte avec lui : **la fusion n'écrit que
+les clés qu'un fragment apporte.** Une clé posée par le fragment `native` et
+absente du fragment `full` resterait donc à sa valeur native pendant tout le
+temps du mode full — une image de mode natif dans le mode full, sans qu'aucune
+erreur ne le dise. C'est exactement la panne muette que ce dépôt paie en
+boucle, et elle naissait avec la fonctionnalité.
+
+Une troisième fusion peut désormais atteindre la même cible au même lancement
+— imposé, mode, langue. Le refus de chevauchement entre les trois est donc
+posé dans les trois sens (`_valider_impose_contre_par_mode`) : sinon c'est
+l'ORDRE des fusions qui trancherait, un détail du lanceur que le profil
+n'écrit nulle part, et le symptôme serait « j'ai changé de mode et l'image n'a
+pas bougé ».
+
+**Les deux gardes neuves ont été vues ROUGES par mutation**, une par une :
+désarmée, chacune laisse la suite passer sur un profil qui ment. C'est la règle
+que ce dépôt vient d'inscrire — un contrôle dont on n'a pas vu la valeur non
+attendue n'est pas un contrôle.
+
+### PCSX2 est livré, et voici ce qu'il ne dit pas
+
+`pcsx2.toml` porte son `[system.render]` et sa table `[bootstrap.render]` :
+`[EmuCore/GS] IntegerScaling = true` en natif, `false` en full. Aucune des
+trois issues de cette dette n'a été prise — ni l'écart assumé, ni le
+`fill_absent` menteur, ni l'attente : la quatrième existait.
+
+**Deux réserves sont écrites dans le profil, et il faut les lire avant de le
+croire complet.**
+
+1. **Le fragment `full` pose le DÉFAUT de PCSX2, et ce n'est PAS le troisième
+   faux oracle.** `IntegerScaling = false` est bien le défaut — poser un défaut
+   ne MESURE rien, D2 l'a payé trois fois. Mais ici on ne mesure pas : on
+   **efface**. Sans cette ligne, le `true` du mode natif resterait dans
+   `PCSX2.ini` pendant tout le mode full. C'est une nécessité du mécanisme, et
+   la garde des « mêmes clés » l'exige d'ailleurs.
+
+2. **🔴 Le mode `full` de PCSX2 NE MONTE PAS sa résolution interne à la
+   session, et la politique le dit pourtant.** `upscale_multiplier` vit dans le
+   même fichier, mais la résolution interne du mode full doit suivre la
+   SESSION — c'est `{scale}`, que le lanceur substitue dans les **arguments**,
+   et qui n'existe pas dans un fragment imposé. Y graver un multiplicateur fixe
+   ramènerait la résolution figée à la synchronisation que `render.py` existe
+   pour éviter.
+
+   Conséquence, non maquillée : `ajuste` est la **valeur** juste, mais la
+   phrase de la politique qui la justifie — « la résolution interne est déjà
+   montée à la session » — **ne vaut pas de PCSX2**. Ce n'est pas une
+   régression : c'est exactement ce que PCSX2 fait aujourd'hui tout seul, et ce
+   bloc ne fait que le DÉCLARER ; le mode natif, lui, gagne pour de bon un
+   multiple entier là où il n'avait rien. Le rapport porte cette correction
+   **à côté de la phrase de politique**, parce que c'est là qu'on la lit.
+
+   **Ce trou n'est pas propre à PCSX2 :** tout émulateur dont les deux premiers
+   axes n'ont pas de véhicule tombera dedans. La réponse serait un `{scale}`
+   substitué dans les fragments imposés — c'est-à-dire une substitution
+   dépendante de la session dans un fichier déposé à la synchronisation, donc
+   un mécanisme de plus. **Ce n'est pas fait, et ce n'est pas décidé.**
+
+3. **🔴 Personne n'a vu cette image.** Ni `entier` en natif, ni `ajuste` en
+   full. C'est la même réserve que le bloc de rendu du Dreamcast, et rien ici
+   ne la remplace.
+
+### ⚖ CE QUE JE REMONTE, ET QUI N'EST PAS TRANCHÉ
+
+**Arbitrage A — le champ `fill_enforced` PAR PROFIL doit-il survivre ?**
+
+Il est conservé aujourd'hui, et c'est délibérément la décision la moins
+engageante. Mais sa justification d'origine est **mesurée fausse** (voir plus
+haut), et le dépôt a déjà rendu un arbitrage sur ce motif exact — D13 :
+« une indulgence dont le motif est mesuré faux n'est pas un choix de
+conception, c'est un reliquat ».
+
+| | Le garder | Le retirer |
+|---|---|---|
+| Profils livrés qui l'emploient | **zéro** — vérifié le 2026-09-05 | zéro |
+| Tests à reprendre | aucun | **8** (`tests/test_profiles.py`, `tests/test_render.py`, `tests/test_status.py`) |
+| Ce qu'il reste | la **seule** porte par laquelle un remplissage échappe à la politique sans être démenti | plus aucune : tout remplissage déclaré est confronté à la politique |
+| Ce qu'on perd | — | la faculté de déclarer « cet émulateur pose la même valeur dans les deux modes » sans le prouver. **Aucun cas connu.** |
+| Le risque | c'est le geste le PLUS COURT pour qui voudra éviter la politique, et il est invisible en revue — la leçon de D10, mot pour mot | il faut le rouvrir si un cas apparaît |
+
+**Ma lecture, et ce n'est pas une décision :** le retirer. Le garder, c'est
+laisser sur l'étagère l'outil exact avec lequel on referait la demi-vérité que
+D14 existe pour empêcher. Mais c'est un retrait d'API, il n'a rien d'urgent
+puisque personne ne l'emploie, et le dépôt s'applique la règle de D7 : ça se
+décide en revue.
+
+**Arbitrage B — `{scale}` dans un fragment imposé.** C'est le point 2
+ci-dessus. Sans lui, le mode `full` d'un émulateur sans véhicule de ligne de
+commande n'est `full` que de nom. Avec lui, un fichier déposé à la
+synchronisation porterait une valeur qui dépend de la session — ce que tout le
+reste du dépôt s'interdit. **Il y a une troisième voie non explorée** : que le
+lanceur substitue dans le FRAGMENT au moment de la fusion, comme il substitue
+déjà dans le gabarit de commande. Le coût est du C# que l'hôte ne compile pas.
+Rien n'est fait.
+
+### 🔴 Une conséquence de forme, à ne pas redécouvrir
+
+**Le témoin par cible ne peut pas porter le mode sans une migration.**
+`lire_amorcages` (`retro/launcher.py`) accepte trois colonnes **ou quatre**, et
+**ignore la ligne entière au-delà**. D12 l'écrit noir sur blanc, et c'est
+délibéré. Or il y a désormais une troisième chose qui atteint chaque cible.
+
+Le jour où quelqu'un fera écrire au lanceur une cinquième colonne — le mode
+posé —, `retro status` dira **« pas encore amorcé » de toutes les cibles à la
+fois**, sur une console parfaitement amorcée. C'est exactement le coût que D12
+a chiffré pour la quatrième colonne avant d'ouvrir la porte, et il faut le
+payer d'avance de la même façon : **le lecteur d'abord, l'écrivain ensuite.**
+Ce n'est pas fait ici, parce que décider ce que signifie la cinquième colonne
+est une décision, et qu'elle appartient à qui écrira l'autre moitié.
+
+### Où ça se joue
+
+`retro/render.py` (`_ARBITRAGE`, `_REMPLISSAGE_PAR_MODE`, `RenderMode`),
+`retro/profiles.py` (`_lire_remplissage_impose_du_mode`, `_lire_par_mode`,
+`_valider_impose_contre_par_mode`, `_refuser_remplissage_impose_sans_cle`),
+`retro/launcher.py` (`enforced_mode_name`, `fragments_attendus`,
+`plan_systeme`), `retro/status.py`, et `Amorcer()` /
+`FragmentDeMode()` dans `retro/data/launcher/retro-launch.cs`.
+
+### ⚠ Ce qui reste dû, et qui exige la console
+
+- **Compiler `retro-launch.cs`.** Rien de ce que D14 y a ajouté n'a été
+  compilé, et cela ne peut pas l'être ici : **aucun compilateur C# sur
+  l'hôte**, revérifié le 2026-09-05 (ni `csc`, ni `mcs`, ni `mono`, ni
+  `dotnet`, ni `msbuild`). Les ajouts n'emploient aucune construction que ce
+  fichier n'utilise déjà — `TryGetValue`, `ContainsKey`, `Indice`,
+  `if`/`else`, concaténation — et l'équilibre des accolades et parenthèses
+  hors chaînes et commentaires a été vérifié contre `HEAD`. **Cela ne remplace
+  pas une compilation.** C'est la tâche 8 de D7, et elle grossit.
+- **Voir une image.** `IntegerScaling` n'a jamais été vu agir. C'est la seule
+  preuve qui vaille.
+- **Et le piège de version que D12 a nommé, qui vaut ici à l'identique :** la
+  table par mode **AJOUTE** des lignes de plan, elle n'en renomme aucune. Un
+  lanceur d'avant ne les cherche donc jamais et ne pose **aucun** remplissage,
+  **sans qu'aucune erreur ne le dise** — pendant que `retro status` annonce
+  `entier` et `ajuste`. Seules la discipline d'ordre (`retro launcher`,
+  `compiler.cmd`, **puis** `retro scan`) et l'alerte « lanceur périmé » de
+  `retro status` l'évitent, et cette alerte compare le binaire à la SOURCE
+  déposée à côté, pas au plan.
 
 ---
+
 
 ## Relevé — où Steam dit sa langue, et sous quels noms — 2026-08-30
 
