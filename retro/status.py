@@ -877,7 +877,14 @@ def etat_rendu(profils: dict) -> list[SystemRender]:
                             fill_enforced_where=rendu.fill_enforced_where))
                         for n, m in ((render_mod.NATIVE, rendu.native),
                                      (render_mod.FULL, rendu.full)))),
-                remplissage_impose=bool(rendu.fill_enforced),
+                # PAR PROFIL **OU** PAR MODE — dette D14. Le second cas
+                # porte une valeur que la légende explique, mais son motif
+                # dit AUSSI où la clé est posée : c'est ce que la console
+                # reprend au propriétaire dans son propre fichier, à chaque
+                # lancement, et rien d'autre ne le lui dirait.
+                remplissage_impose=bool(rendu.fill_enforced
+                                        or rendu.native.fill_enforced
+                                        or rendu.full.fill_enforced),
             ))
     return sorted(etats, key=lambda e: e.system_name)
 
@@ -1401,11 +1408,21 @@ def _lignes_remplissage(remplissage: tuple[tuple[str, str, str], ...],
     un remplissage IMPOSÉ par l'amorçage.
 
     Ce dernier porte pourtant une valeur de l'axe, `entier` ou `ajuste` : sans
-    `impose`, il passerait pour un remplissage que la légende explique. Elle
-    ne l'explique pas — elle cite la politique PAR MODE, et un fragment imposé
-    est posé avant que le mode ne soit résolu, donc la même valeur sort des
-    deux modes. Taire le motif ferait lire une contradiction avec la légende
-    là où il n'y en a pas, et cacherait OÙ la clé est posée.
+    `impose`, il passerait pour un remplissage que la légende explique. Or
+    l'essentiel de ce cas-là n'est PAS dans la légende — c'est OÙ la clé est
+    posée, c'est-à-dire ce que la console reprend au propriétaire dans son
+    propre fichier de réglages, à chaque lancement. Rien d'autre ne le lui
+    dirait.
+
+    DEUX FORMES, depuis D14, et le motif les distingue lui-même :
+
+    · PAR PROFIL — une seule valeur pour les deux modes. Elle échappe à la
+      politique, faute de pouvoir satisfaire ses deux cases, et le motif le
+      dit. La déduplication ci-dessous en fait une seule ligne, les deux
+      modes portant la même phrase.
+    · PAR MODE — une valeur par mode, CONFRONTÉE à la politique au
+      chargement. Les deux motifs diffèrent alors — ils nomment deux clés,
+      ou deux valeurs — et les deux lignes sortent.
     """
     if not remplissage:
         return []

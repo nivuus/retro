@@ -239,10 +239,16 @@ def test_le_motif_d_un_remplissage_impose_dit_ou_il_est_pose():
 
 
 def test_un_remplissage_impose_vaut_la_meme_chose_dans_les_deux_modes():
-    """`enforced` est un fragment PAR PROFIL, posé une fois par lancement,
-    avant que le mode ne soit résolu. La politique — `entier` en natif,
-    `ajuste` en full — est donc hors de portée ici, et le rapport ne doit pas
-    faire croire qu'elle s'applique."""
+    """LA CONTRAINTE A CHANGÉ, PAS LE VERDICT — retourné le 2026-09-05 (D14).
+
+    Cette docstring disait « le fragment est posé avant que le mode ne soit
+    résolu », et c'était FAUX : `Amorcer()` est appelé depuis `Lancer()`, une
+    fois le mode connu. Ce champ-ci reste néanmoins à valeur unique, parce
+    qu'il est ce que le profil AFFIRME — « cet émulateur pose la même chose
+    dans les deux modes » — et non ce que le mécanisme impose. La politique
+    reste donc hors de sa portée, et le rapport ne doit pas faire croire
+    qu'elle s'applique. Un remplissage imposé PAR MODE, lui, y est soumis :
+    voir les tests de D14 en fin de fichier."""
     vide = render.RenderMode(args="", note="rien en ligne de commande")
     ou = "[Display] Scaling = X — relevé le 2026-01-01"
     deux = {render.resoudre_remplissage(m, vide, fill_enforced=render.ENTIER,
@@ -265,3 +271,70 @@ def test_une_mesure_d_absence_l_emporte_sur_un_remplissage_impose():
     )
     assert choix.remplissage == render.NON_REGLABLE
     assert "aucune clé de cet axe" in choix.motif
+
+
+# --- le remplissage imposé PAR MODE — dette D14 --------------------------
+#
+# Le fait qui a rendu ceci possible, et il a été MESURÉ dans le lanceur plutôt
+# que supposé : `Amorcer()` est appelé DEPUIS `Lancer()`, à la ligne 1487,
+# quand le mode effectif est résolu à la ligne 1257. Le fragment imposé est
+# donc posé APRÈS que le mode est connu, et non avant — ce que ce module a
+# longtemps affirmé, et qui était faux.
+#
+# Un remplissage imposé par mode est donc soumis à la POLITIQUE, comme un
+# `fill` : c'est la garde qui mord ici, et non une exemption de plus.
+
+def test_un_mode_peut_porter_son_propre_remplissage_impose():
+    """PCSX2 : rien en ligne de commande, mais un fragment imposé PAR MODE.
+    Le mode natif impose la mise à l'échelle entière dans PCSX2.ini."""
+    choix = render.resoudre_remplissage(
+        render.NATIVE,
+        render.RenderMode(
+            args="", note="rien en ligne de commande",
+            fill_enforced=render.ENTIER,
+            fill_enforced_where="[EmuCore/GS] IntegerScaling = true — relevé"),
+    )
+    assert choix.remplissage == render.ENTIER
+
+
+def test_le_remplissage_impose_par_mode_suit_la_politique_mode_par_mode():
+    """Les DEUX modes, et ils ne disent pas la même chose. C'est très
+    exactement ce que le champ par profil ne savait pas exprimer."""
+    natif = render.resoudre_remplissage(
+        render.NATIVE,
+        render.RenderMode(args="", note="rien",
+                          fill_enforced=render.ENTIER,
+                          fill_enforced_where="[A] B = true — relevé"))
+    plein = render.resoudre_remplissage(
+        render.FULL,
+        render.RenderMode(args="", note="rien",
+                          fill_enforced=render.AJUSTE,
+                          fill_enforced_where="[A] B = false — relevé"))
+    assert (natif.remplissage, plein.remplissage) == (render.ENTIER,
+                                                      render.AJUSTE)
+
+
+def test_le_motif_d_un_remplissage_impose_par_mode_dit_ou_ET_cite_la_politique():
+    """Deux choses à la fois, et aucune ne remplace l'autre : OÙ la clé est
+    posée — c'est ce que la console reprend au propriétaire dans SON fichier —
+    et POURQUOI cette valeur-là, qui est la politique du mode."""
+    choix = render.resoudre_remplissage(
+        render.NATIVE,
+        render.RenderMode(args="", note="rien",
+                          fill_enforced=render.ENTIER,
+                          fill_enforced_where="[EmuCore/GS] IntegerScaling"))
+    assert "[EmuCore/GS] IntegerScaling" in choix.motif
+    assert "amorçage" in choix.motif
+    assert render.motif_remplissage(render.NATIVE) in choix.motif
+
+
+def test_une_mesure_d_absence_l_emporte_sur_un_remplissage_impose_par_mode():
+    """Le même ordre que pour le champ par profil : `fill_absent` est une
+    MESURE, et elle l'emporte sur toute déclaration."""
+    choix = render.resoudre_remplissage(
+        render.FULL,
+        render.RenderMode(args="", note="rien",
+                          fill_absent="aucune clé de cet axe",
+                          fill_enforced=render.AJUSTE,
+                          fill_enforced_where="[A] B"))
+    assert choix.remplissage == render.NON_REGLABLE

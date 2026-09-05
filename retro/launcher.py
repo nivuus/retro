@@ -160,6 +160,24 @@ def enforced_name(profile_id: str, index: int, target: str) -> str:
     return f"{profile_id}.{IMPOSE}.{index}{_suffixe(target)}"
 
 
+def enforced_mode_name(profile_id: str, index: int, mode: str,
+                       target: str) -> str:
+    """Le nom du fragment imposé D'UN MODE DE RENDU — dette D14.
+
+    Le rang ET le mode, pour deux raisons distinctes, exactement comme
+    `langue_name` : sans le rang, les deux cibles d'un même profil se
+    disputeraient un fichier ; sans le mode, les fragments s'écraseraient
+    l'un l'autre et la console poserait le dernier écrit, quel que soit le
+    mode retenu au lancement.
+
+    Et il se distingue de `enforced_name` par ce même segment : les clés
+    imposées quel que soit le mode et celles qui dépendent du mode vivent
+    dans la même entrée, sur la même cible, et se poseraient l'une à la
+    place de l'autre si elles partageaient un nom.
+    """
+    return f"{profile_id}.{IMPOSE}.{index}.{mode}{_suffixe(target)}"
+
+
 def bootstrap_name(profile_id: str, index: int, target: str) -> str:
     """Le nom du fichier d'amorçage déposé à côté des plans.
 
@@ -208,6 +226,16 @@ def fragments_attendus(profile_id: str, index: int,
         # au loup à chaque passage sur un fragment tout neuf.
         fragments.append((enforced_name(profile_id, index, amorcage.target),
                           amorcage.enforced + "\n"))
+    # Un fichier par MODE de rendu déclaré, quand l'entrée en porte. Même
+    # forme et même raison que les fragments de langue : le lanceur en
+    # choisira UN, celui du mode qu'il vient de résoudre, et les deux restent
+    # sur le disque — changer de mode ne demande donc aucune resynchronisation.
+    for nom, texte in amorcage.enforced_render:
+        # Le saut de ligne final fait partie du fichier déposé : le contrôle
+        # compare à l'octet près.
+        fragments.append((enforced_mode_name(profile_id, index, nom,
+                                             amorcage.target),
+                          texte.strip() + "\n"))
     # Un fichier par langue déclarée. Le lanceur en choisira UN, désigné par
     # le plan ; les autres restent sur le disque, prêts pour le jour où la
     # langue de Steam changera — c'est ce qui rend le changement de langue
@@ -347,6 +375,25 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
             # vient de poser.
             f"bootstrap_enforced.{rang}={impose}",
         ]
+        # LE FRAGMENT IMPOSÉ PAR MODE DE RENDU — dette D14, et c'est la
+        # transposition exacte des lignes de langue ci-dessous.
+        #
+        # Le lanceur résout le mode effectif AVANT d'amorcer — mesuré :
+        # `Amorcer()` est appelé depuis `Lancer()`, 230 lignes après que le
+        # mode est connu. Il lui suffit donc de lire la ligne de son mode ; il
+        # ne rejoue aucune décision et ne peut pas en prendre une autre.
+        #
+        # `auto` n'a AUCUNE ligne, et n'en veut pas : il n'est jamais le mode
+        # EFFECTIF — le lanceur le résout en `native` ou `full` avant
+        # d'arriver ici, exactement comme `retro status` le fait de son côté.
+        #
+        # Une entrée SANS table n'écrit AUCUNE ligne, sur le modèle de
+        # `bootstrap_count=0` : des lignes vides feraient boucler le lanceur
+        # sur du rien.
+        for nom, _ in amorcage.enforced_render:
+            lignes.append(
+                f"bootstrap_enforced.{rang}.{nom}={plan_dir}\\"
+                f"{enforced_mode_name(profile_id, rang, nom, amorcage.target)}")
         # LA LANGUE : une ligne par langue de Steam, replis DÉJÀ RÉSOLUS.
         #
         # C'est la transposition exacte des lignes `auto_<classe>` du rendu, et

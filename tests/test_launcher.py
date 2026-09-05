@@ -1377,13 +1377,19 @@ def test_un_temoin_de_langue_qui_ne_s_ecrit_pas_LE_DIT():
 
 def test_les_deux_fusions_passent_par_LE_MEME_chemin():
     """Deux copies du bloc de fusion divergeraient : le jour où la première
-    gagnerait une sauvegarde, la seconde poserait la langue sans."""
+    gagnerait une sauvegarde, la seconde poserait la langue sans.
+
+    ELLES SONT TROIS DEPUIS D14 — imposé, mode de rendu, langue — et le
+    raisonnement en sort renforcé, pas affaibli : trois copies divergeraient
+    trois fois, et personne ne saurait laquelle a touché le fichier du
+    propriétaire."""
     src = _source_du_lanceur()
     assert src.count("EcrireAtomique(cible, fusionne, bomCible)") == 1, (
-        "le fichier fusionné est écrit à deux endroits : les clés imposées "
-        "et la langue doivent passer par la même méthode")
-    assert src.count("FusionnerFragment(") == 3, (
-        "attendu : la définition et DEUX appels — l'imposé, puis la langue")
+        "le fichier fusionné est écrit à deux endroits : les clés imposées, "
+        "le mode et la langue doivent passer par la même méthode")
+    assert src.count("FusionnerFragment(") == 4, (
+        "attendu : la définition et TROIS appels — l'imposé, le mode, puis "
+        "la langue")
 
 
 # --- le témoin par cible et sa QUATRIÈME colonne ---------------------------
@@ -1425,3 +1431,152 @@ def test_une_ligne_de_temoin_a_cinq_colonnes_est_ignoree(tmp_path):
         "dolphin\t2026-09-04 21:03:11\tC:\\A\\Dolphin.ini\tfrench\tautre\n",
         encoding="utf-8")
     assert launcher.lire_amorcages(tmp_path) == {}
+
+
+# --- D14 : le fragment imposé PAR MODE ------------------------------------
+#
+# Un fichier de plus par entrée, un par mode déclaré, et une ligne de plan
+# indicée par (rang, mode). C'est la transposition exacte de la langue, et
+# pour la raison mesurée dans le lanceur : `Amorcer()` est appelé DEPUIS
+# `Lancer()`, une fois le mode effectif résolu — le fragment de ce mode-là est
+# donc choisissable, comme celui de la langue du lancement.
+
+PROFIL_PAR_MODE = PROFIL_IMPOSE + """
+[bootstrap.render]
+native = '''
+[EmuCore/GS]
+IntegerScaling = true
+'''
+full = '''
+[EmuCore/GS]
+IntegerScaling = false
+'''
+"""
+
+
+@pytest.fixture
+def profils_par_mode(tmp_path):
+    p = tmp_path / "duckstation-par-mode.toml"
+    p.write_text(PROFIL_PAR_MODE, encoding="utf-8")
+    return {"duckstation": profiles.load_profile(p)}
+
+
+def test_le_plan_porte_un_fichier_impose_par_mode(profils_par_mode):
+    """Une ligne par mode, indicée comme le reste. Le lanceur lit celle du
+    mode qu'il vient de résoudre — il ne choisit rien."""
+    profil = profils_par_mode["duckstation"]
+    l = lignes(launcher.plan_systeme(
+        "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
+        "D:\\E\\_launcher\\systems", bootstraps=profil.bootstraps))
+    assert l["bootstrap_enforced.1.native"] == (
+        "D:\\E\\_launcher\\systems\\duckstation.impose.1.native.ini")
+    assert l["bootstrap_enforced.1.full"] == (
+        "D:\\E\\_launcher\\systems\\duckstation.impose.1.full.ini")
+    # Et la ligne SANS mode reste, distincte : ce sont les clés que la console
+    # impose quel que soit le mode.
+    assert l["bootstrap_enforced.1"] == (
+        "D:\\E\\_launcher\\systems\\duckstation.impose.1.ini")
+
+
+def test_une_entree_sans_table_de_modes_n_ecrit_aucune_ligne_de_mode(
+        profils_imposes):
+    """Sur le modèle de `bootstrap_count=0` et de la langue : écrire des
+    lignes vides ferait boucler le lanceur sur du rien."""
+    profil = profils_imposes["duckstation"]
+    l = lignes(launcher.plan_systeme(
+        "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
+        "D:\\E\\_launcher\\systems", bootstraps=profil.bootstraps))
+    assert "bootstrap_enforced.1.native" not in l
+    assert "bootstrap_enforced.1.full" not in l
+
+
+def test_les_fragments_par_mode_sont_deposes(tmp_path, profils_par_mode):
+    launcher.ecrire_plan(tmp_path, "D:\\E", profils_par_mode,
+                         {"duckstation": "DS"})
+    dossier = launcher.local_dir(tmp_path) / launcher.PLAN
+    natif = dossier / "duckstation.impose.1.native.ini"
+    plein = dossier / "duckstation.impose.1.full.ini"
+    assert "IntegerScaling = true" in natif.read_text(encoding="utf-8")
+    assert "IntegerScaling = false" in plein.read_text(encoding="utf-8")
+
+
+def test_les_fragments_attendus_portent_ceux_des_modes(profils_par_mode):
+    """UNE seule définition de ce qu'une entrée dépose : le contrôle de
+    `retro status` compare exactement ce que l'écriture produit."""
+    amorcage = profils_par_mode["duckstation"].bootstraps[0]
+    noms = dict(launcher.fragments_attendus("duckstation", 1, amorcage))
+    assert set(noms) == {"duckstation.bootstrap.1.ini",
+                         "duckstation.impose.1.ini",
+                         "duckstation.impose.1.native.ini",
+                         "duckstation.impose.1.full.ini"}
+
+
+def test_le_fragment_d_un_mode_ne_se_confond_pas_avec_celui_des_cles_imposees():
+    """Sans le nom du mode, les trois fragments d'une même entrée se
+    disputeraient un fichier, et l'un serait posé à la place de l'autre."""
+    sans_mode = launcher.enforced_name("duckstation", 1, "x.ini")
+    natif = launcher.enforced_mode_name("duckstation", 1, "native", "x.ini")
+    plein = launcher.enforced_mode_name("duckstation", 1, "full", "x.ini")
+    assert len({sans_mode, natif, plein}) == 3
+
+
+# --- D14, côté lanceur : la source, faute de compilateur ------------------
+#
+# ⚠ RIEN DE CE QUI SUIT N'A ÉTÉ COMPILÉ. Il n'existe aucun compilateur C# sur
+# l'hôte — ni `csc`, ni `mcs`, ni `mono`, ni `dotnet` —, revérifié le
+# 2026-09-05. Ces tests exigent que la source LISE les bonnes clés et fusionne
+# dans le bon ordre ; ils ne prouvent pas qu'elle compile, encore moins
+# qu'elle tourne. C'est la tâche 8 de D7, et elle reste due.
+
+def test_le_lanceur_cherche_la_ligne_du_fragment_de_mode():
+    """Sans cette clé, le lanceur ne trouverait aucun fragment de mode et
+    n'en poserait aucun — en silence, comme un plan d'avant D14."""
+    src = _source_du_lanceur()
+    assert "bootstrap_enforced." in src
+    assert "FragmentDeMode(" in src
+
+
+def test_le_mode_du_lancement_est_decide_AVANT_l_amorcage():
+    """LE FAIT QUI REND D14 POSSIBLE, et il s'épingle ici parce qu'il a été
+    cru faux pendant tout ce temps : `Amorcer()` est appelé DEPUIS
+    `Lancer()`, une fois le mode effectif résolu. Le jour où quelqu'un
+    remonterait l'appel d'`Amorcer()` au-dessus de la résolution du mode, le
+    fragment par mode deviendrait indécidable — et il serait posé au hasard,
+    sans un mot."""
+    src = _source_du_lanceur()
+    resolution = src.index("string effectif = demande")
+    amorcage = src.index("Amorcer(p, profilCle)")
+    assert resolution < amorcage, (
+        "le mode est résolu APRÈS l'amorçage : le fragment par mode ne "
+        "pourrait plus être choisi, et D14 serait fausse")
+
+
+def test_le_fragment_de_mode_est_fusionne_APRES_les_cles_imposees():
+    """Trois fusions peuvent atteindre la même cible au même lancement. Leur
+    ordre est sans effet sur le résultat — les gardes du profil refusent
+    qu'elles partagent une clé — mais il est FIXÉ, pour que le journal se
+    lise et que deux exécutions rendent le même fichier à l'octet près."""
+    src = _source_du_lanceur()
+    impose = src.index("FusionnerFragment(cible, impose")
+    mode = src.index("FusionnerFragment(cible, fragmentMode")
+    langue = src.index("FusionnerFragment(cible, fragmentLangue")
+    assert impose < mode < langue
+
+
+def test_le_lanceur_lit_le_fragment_du_mode_EFFECTIF_et_non_du_demande():
+    """`auto` n'a aucun fragment — il n'est jamais le mode effectif. Lire le
+    mode DEMANDÉ ferait chercher « bootstrap_enforced.1.auto », que le plan
+    n'écrit jamais, et aucune clé ne serait posée : le mode automatique
+    perdrait son remplissage sans un mot, sur la console où il est le
+    défaut."""
+    src = _source_du_lanceur()
+    assert "modeDuLancement = effectif" in src, (
+        "le lanceur ne mémorise pas le mode EFFECTIF pour l'amorçage")
+
+
+def test_explain_dit_si_une_cible_recoit_un_fragment_de_mode():
+    """`--explain` est le seul contrôle lisible à distance, sans lancer de
+    jeu. Une cible qui reçoit une fusion de mode et dont il ne dirait rien
+    referait le mensonge que la langue a déjà coûté."""
+    src = _source_du_lanceur()
+    assert "amorcage_impose_mode." in src
