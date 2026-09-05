@@ -599,8 +599,36 @@ folders    = ["WiiU", "Nintendo Wii U"]
 # .elf est écarté : Cemu l'accepte, mais c'est un format de développement qui
 # n'a rien à faire dans un dossier de jeux.
 extensions = [".wud", ".wux", ".wua", ".wuhb", ".iso", ".rpx"]
-launch     = '-f -g "{rom}"'
+launch     = '-f {render} -g "{rom}"'
 # Aucun BIOS : la Wii U n'en a pas d'équivalent dumpable, et Cemu démarre les
 # jeux sans rien d'autre. Les clés de titre que réclament certains formats
 # chiffrés ne sont pas des BIOS et ne se vérifient pas par empreinte.
 bios       = []
+
+# --- LE RENDU (dette D2) : LE TROISIÈME AXE EST ABSENT, ET C'EST MESURÉ ---
+#
+# Ce bloc ne pilote RIEN, et c'est très exactement ce qu'il dit. Il
+# existe pour que `retro status` cesse de compter ce système parmi ceux
+# dont personne n'a regardé le remplissage : la question a été posée, et
+# la réponse est non. Les deux états ne s'appellent pas le même geste —
+# l'un rouvre une enquête, l'autre la clôt.
+# Wii U : « medium » est un ARBITRAGE et non une mesure — personne n'a
+# chronométré une partie sur cette machine. Il est ici SANS EFFET OBSERVABLE,
+# et c'est ce qui le rend bon marché : les deux modes de ce système passent
+# exactement la même chose à l'émulateur — rien —, donc le mode que `auto`
+# retient ne change aucune commande. Le champ est exigé dès qu'un bloc de
+# rendu existe ; sa valeur ne décidera de quelque chose que le jour où l'un
+# des deux modes aura des arguments.
+cost       = "medium"
+[system.render]
+# native_height et max_scale ne sont PAS déclarés : ils ne sont exigés que par
+# {scale}, et aucun des deux modes ne l'emploie.
+[system.render.native]
+args = ""
+note = "Cemu 2.6 n'expose AUCUN réglage de rendu en ligne de commande — aucun, relevé le 2026-09-04. Et sa résolution interne n'est même pas une clé de configuration : c'est un GRAPHIC PACK, c'est-à-dire un fichier déposé dans son arborescence et activé dans son interface. Rien de cet axe ne se pose d'ici."
+crt_absent = "Cemu 2.6 n'embarque aucun shader CRT : ses effets passent par les mêmes graphic packs. NON VÉRIFIÉ : ce qu'il rend de lui-même."
+fill_absent = "Cemu 2.6 n'expose AUCUN réglage de mise à l'échelle entière. Relevé le 2026-09-04 dans son arbre source à la révision que le manifeste épingle, et cherché exhaustivement — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh » : ZÉRO occurrence. Ce qu'il a sur cet axe est un FILTRE, qui retire le flou mais laisse des pixels de tailles inégales, et la lecture de son calcul de rectangle de destination le confirme plutôt que de le supposer : réels flottants, aucun `floor`, aucun `min(w/fbw, h/fbh)`. C'est le pendant exact de ce que Dolphin déclare déjà. PROVENANCE : le relevé de la dette D2 du 2026-09-04, non rejoué ici — aucun arbre source d'émulateur ne vit sur l'hôte. NON VÉRIFIÉ : ce que Cemu 2.6 fait de lui-même sur cet axe — personne n'a regardé une partie."
+[system.render.full]
+args = ""
+note = "même raison qu'en mode natif : rien à passer sur la ligne de commande."
+fill_absent = "Cemu 2.6 n'expose AUCUN réglage de mise à l'échelle entière. Relevé le 2026-09-04 dans son arbre source à la révision que le manifeste épingle, et cherché exhaustivement — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh » : ZÉRO occurrence. Ce qu'il a sur cet axe est un FILTRE, qui retire le flou mais laisse des pixels de tailles inégales, et la lecture de son calcul de rectangle de destination le confirme plutôt que de le supposer : réels flottants, aucun `floor`, aucun `min(w/fbw, h/fbh)`. C'est le pendant exact de ce que Dolphin déclare déjà. PROVENANCE : le relevé de la dette D2 du 2026-09-04, non rejoué ici — aucun arbre source d'émulateur ne vit sur l'hôte. NON VÉRIFIÉ : ce que Cemu 2.6 fait de lui-même sur cet axe — personne n'a regardé une partie."

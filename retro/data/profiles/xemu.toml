@@ -99,7 +99,7 @@ id         = "xbox"
 name       = "Xbox"
 folders    = ["Microsoft Xbox", "Xbox Classic", "Xbox Original"]
 extensions = [".iso", ".xiso"]
-launch     = '-full-screen -dvd_path "{rom}"'
+launch     = '-full-screen {render} -dvd_path "{rom}"'
 # xemu EXIGE une ROM de démarrage MCPX, un BIOS flash et une image de disque
 # dur, tous trois dumpés d'une vraie console. Rien n'est déclaré ici : xemu
 # désigne ces trois fichiers par des CHEMINS que le propriétaire choisit dans
@@ -107,3 +107,31 @@ launch     = '-full-screen -dvd_path "{rom}"'
 # citable n'a pu être vérifiée pour eux. Déclarer un couple (nom, md5)
 # approximatif ferait accuser de corruption un fichier parfaitement valide.
 bios       = []
+
+# --- LE RENDU (dette D2) : LE TROISIÈME AXE EST ABSENT, ET C'EST MESURÉ ---
+#
+# Ce bloc ne pilote RIEN, et c'est très exactement ce qu'il dit. Il
+# existe pour que `retro status` cesse de compter ce système parmi ceux
+# dont personne n'a regardé le remplissage : la question a été posée, et
+# la réponse est non. Les deux états ne s'appellent pas le même geste —
+# l'un rouvre une enquête, l'autre la clôt.
+# Xbox : « medium » est un ARBITRAGE et non une mesure — personne n'a
+# chronométré une partie sur cette machine. Il est ici SANS EFFET OBSERVABLE,
+# et c'est ce qui le rend bon marché : les deux modes de ce système passent
+# exactement la même chose à l'émulateur — rien —, donc le mode que `auto`
+# retient ne change aucune commande. Le champ est exigé dès qu'un bloc de
+# rendu existe ; sa valeur ne décidera de quelque chose que le jour où l'un
+# des deux modes aura des arguments.
+cost       = "medium"
+[system.render]
+# native_height et max_scale ne sont PAS déclarés : ils ne sont exigés que par
+# {scale}, et aucun des deux modes ne l'emploie.
+[system.render.native]
+args = ""
+note = "xemu 0.8.136 n'expose aucun réglage de rendu en ligne de commande utilisable ici : son seul levier est -config_path, qui désigne un AUTRE fichier de réglages — et xemu réécrit ce fichier à la sortie, donc s'en servir reviendrait à faire écrire à l'émulateur, sur le disque, ce que la console croyait transitoire. Son rendu se règle dans son xemu.toml, dont l'emplacement n'a jamais été relevé : c'est pourquoi ce profil n'a toujours aucun bloc [[bootstrap]]."
+crt_absent = "xemu 0.8.136 n'embarque aucun shader CRT choisissable en ligne de commande. NON VÉRIFIÉ : ce qu'il rend de lui-même."
+fill_absent = "xemu 0.8.136 n'expose AUCUN réglage de mise à l'échelle entière. Relevé le 2026-09-04 dans son arbre source à la révision que le manifeste épingle, et cherché exhaustivement — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh » : ZÉRO occurrence. Ce qu'il a sur cet axe est un FILTRE, qui retire le flou mais laisse des pixels de tailles inégales, et la lecture de son calcul de rectangle de destination le confirme plutôt que de le supposer : réels flottants, aucun `floor`, aucun `min(w/fbw, h/fbh)`. C'est le pendant exact de ce que Dolphin déclare déjà. PROVENANCE : le relevé de la dette D2 du 2026-09-04, non rejoué ici — aucun arbre source d'émulateur ne vit sur l'hôte. NON VÉRIFIÉ : ce que xemu 0.8.136 fait de lui-même sur cet axe — personne n'a regardé une partie."
+[system.render.full]
+args = ""
+note = "même raison qu'en mode natif : rien à passer sur la ligne de commande."
+fill_absent = "xemu 0.8.136 n'expose AUCUN réglage de mise à l'échelle entière. Relevé le 2026-09-04 dans son arbre source à la révision que le manifeste épingle, et cherché exhaustivement — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh » : ZÉRO occurrence. Ce qu'il a sur cet axe est un FILTRE, qui retire le flou mais laisse des pixels de tailles inégales, et la lecture de son calcul de rectangle de destination le confirme plutôt que de le supposer : réels flottants, aucun `floor`, aucun `min(w/fbw, h/fbh)`. C'est le pendant exact de ce que Dolphin déclare déjà. PROVENANCE : le relevé de la dette D2 du 2026-09-04, non rejoué ici — aucun arbre source d'émulateur ne vit sur l'hôte. NON VÉRIFIÉ : ce que xemu 0.8.136 fait de lui-même sur cet axe — personne n'a regardé une partie."
