@@ -2587,3 +2587,25 @@ def test_une_table_par_mode_qui_n_est_pas_du_texte_est_refusee(tmp_path):
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             table='[bootstrap.render]\nnative = 1\nfull = 2\n')))
     assert "p.toml" in str(e.value)
+
+
+def test_un_remplissage_par_mode_pose_par_le_fragment_SANS_MODE_est_refuse(
+        tmp_path):
+    """LA FAUTE LA PLUS PLAUSIBLE DE TOUT CE MÉCANISME, et elle est muette :
+    déclarer `fill_enforced` sur le mode natif, et poser la clé dans le champ
+    `enforced` — celui qui vaut pour LES DEUX modes.
+
+    Le profil se chargerait, `retro status` annoncerait `entier` en natif et
+    `ajuste` en full, et la machine recevrait `entier` DANS LES DEUX. La garde
+    de cohérence cherche la clé dans le fragment DU MODE, jamais dans l'union
+    de tout ce que le profil impose — c'est ce qui la rend étroite, et c'est
+    ce qui la rend utile."""
+    with pytest.raises(profiles.ProfileError,
+                       match=r"\[EmuCore/GS\] IntegerScaling") as e:
+        # « table » vaut un espace : truthy, donc le gabarit ne fabrique pas
+        # sa table par défaut, et le profil n'en porte AUCUNE.
+        profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
+            table=" ", enforced='enforced = """\n' + _PAR_MODE_NATIF + '\n"""\n'
+        ).replace('fill_enforced = "ajuste"\n'
+                  f'fill_enforced_where = "{_OU_FULL}"', "")))
+    assert "native" in str(e.value)
