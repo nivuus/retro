@@ -202,75 +202,22 @@ def test_le_remplissage_explique_toujours_sa_valeur(mode_declare):
     assert choix.motif.strip()
 
 
-# --- le remplissage IMPOSÉ PAR L'AMORÇAGE -------------------------------
+# --- le remplissage IMPOSÉ PAR L'AMORÇAGE : LE CHAMP PAR PROFIL EST PARTI --
 #
-# Le chaînon qui manquait au modèle : un émulateur dont les deux modes ne
-# passent rien — DuckStation — rendait NON_REGLABLE, et le rapport disait
-# « rien à régler » sur un émulateur dont la console règle pourtant le
-# cadrage. Le réglage n'est pas dans `args` : il est dans le fragment
-# `enforced`, posé avant que le mode ne soit résolu.
-
-def test_un_remplissage_impose_par_l_amorcage_se_declare_sur_un_mode_vide():
-    """Le cas que le modèle ne savait pas décrire. Un mode qui ne passe rien
-    a QUAND MÊME un remplissage si l'amorçage le pose dans le fichier de
-    réglages de l'émulateur."""
-    choix = render.resoudre_remplissage(
-        render.FULL,
-        render.RenderMode(args="", note="rien en ligne de commande"),
-        fill_enforced=render.ENTIER,
-        fill_enforced_where="[Display] Scaling = X — relevé le 2026-01-01",
-    )
-    assert choix.remplissage == render.ENTIER
-
-
-def test_le_motif_d_un_remplissage_impose_dit_ou_il_est_pose():
-    """Trois choses que le propriétaire ne peut pas deviner : que le réglage
-    vient de l'amorçage, OÙ il est posé, et qu'il vaut la même chose dans les
-    deux modes parce que cet émulateur ne règle rien en ligne de commande."""
-    choix = render.resoudre_remplissage(
-        render.NATIVE,
-        render.RenderMode(args="", note="rien en ligne de commande"),
-        fill_enforced=render.ENTIER,
-        fill_enforced_where="[Display] Scaling = X — relevé le 2026-01-01",
-    )
-    assert "[Display] Scaling" in choix.motif
-    assert "amorçage" in choix.motif
-    assert "deux modes" in choix.motif.lower()
-
-
-def test_un_remplissage_impose_vaut_la_meme_chose_dans_les_deux_modes():
-    """LA CONTRAINTE A CHANGÉ, PAS LE VERDICT — retourné le 2026-09-05 (D14).
-
-    Cette docstring disait « le fragment est posé avant que le mode ne soit
-    résolu », et c'était FAUX : `Amorcer()` est appelé depuis `Lancer()`, une
-    fois le mode connu. Ce champ-ci reste néanmoins à valeur unique, parce
-    qu'il est ce que le profil AFFIRME — « cet émulateur pose la même chose
-    dans les deux modes » — et non ce que le mécanisme impose. La politique
-    reste donc hors de sa portée, et le rapport ne doit pas faire croire
-    qu'elle s'applique. Un remplissage imposé PAR MODE, lui, y est soumis :
-    voir les tests de D14 en fin de fichier."""
-    vide = render.RenderMode(args="", note="rien en ligne de commande")
-    ou = "[Display] Scaling = X — relevé le 2026-01-01"
-    deux = {render.resoudre_remplissage(m, vide, fill_enforced=render.ENTIER,
-                                        fill_enforced_where=ou).remplissage
-            for m in render.MODES_DECLARES}
-    assert deux == {render.ENTIER}
-
-
-def test_une_mesure_d_absence_l_emporte_sur_un_remplissage_impose():
-    """L'ordre des cas. `fill_absent` est une MESURE — « il n'y a rien à
-    régler sur cet axe » — et elle l'emporte sur une déclaration. L'inverse
-    ferait annoncer un remplissage sur un émulateur dont on a constaté qu'il
-    n'en a pas."""
-    choix = render.resoudre_remplissage(
-        render.FULL,
-        render.RenderMode(args="", note="rien en ligne de commande",
-                          fill_absent="aucune clé de cet axe"),
-        fill_enforced=render.ENTIER,
-        fill_enforced_where="[Display] Scaling = X — relevé le 2026-01-01",
-    )
-    assert choix.remplissage == render.NON_REGLABLE
-    assert "aucune clé de cet axe" in choix.motif
+# Quatre tests vivaient ici, et ils décrivaient un champ `Render.fill_enforced`
+# portant UNE valeur pour les deux modes. Il a été RETIRÉ le 2026-09-05 (D14),
+# et ces tests avec lui — ce n'est pas une couverture perdue : chacune de leurs
+# propriétés a son équivalent PAR MODE dans la section suivante, à une près.
+#
+# L'exception est celle qui disait le champ tout entier :
+# « un remplissage imposé vaut la même chose dans les DEUX modes ». C'était sa
+# raison d'être, et cette raison — « le fragment est posé avant que le mode ne
+# soit résolu » — a été mesurée fausse. Une propriété dont le motif est faux ne
+# se transpose pas : elle s'en va.
+#
+# Ce qui reste garanti, et qui comptait vraiment : `fill_absent` l'emporte
+# toujours sur un remplissage imposé (c'est une MESURE contre une
+# déclaration), et le motif dit toujours OÙ la clé est posée.
 
 
 # --- le remplissage imposé PAR MODE — dette D14 --------------------------

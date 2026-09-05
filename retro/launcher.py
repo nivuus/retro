@@ -505,7 +505,9 @@ def lire_amorcages(
         et sur un profil dont deux cibles ont des replis différents la
         prévision ne dit rien de l'une des deux.
 
-    AU-DELÀ, la ligne est ignorée. Une cinquième colonne est le signe d'un
+    ~~AU-DELÀ, la ligne est ignorée.~~ **CETTE DÉCISION A ÉTÉ RETOURNÉE le
+    2026-09-05**, et son raisonnement est conservé plus bas parce qu'il reste
+    juste sur un point et faux sur l'autre. Une cinquième colonne est le signe d'un
     format qu'on ne connaît pas : en deviner le sens poserait au rapport une
     valeur que personne n'a écrite.
 
@@ -522,8 +524,10 @@ def lire_amorcages(
     amorces: dict[str, list[tuple[str, str, str]]] = {}
     for ligne in texte.splitlines():
         parts = ligne.split("\t")
-        if len(parts) in (3, 4) and parts[0].strip():
-            langue = parts[3].strip() if len(parts) == 4 else ""
+        # TROIS COLONNES OU PLUS. La tolérance est ouverte vers le HAUT, et
+        # seulement vers le haut — voir la docstring.
+        if len(parts) >= 3 and parts[0].strip():
+            langue = parts[3].strip() if len(parts) >= 4 else ""
             amorces.setdefault(parts[0].strip(), []).append(
                 (parts[1].strip(), parts[2].strip(), langue))
     return amorces

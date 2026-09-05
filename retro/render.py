@@ -111,9 +111,11 @@ class RenderMode:
     # exactement comme il y a déjà un fragment par langue.
     #
     # CONSÉQUENCE, ET C'EST CE QUI COMPTE : ce champ est SOUMIS À LA
-    # POLITIQUE, comme `fill`. Le champ par profil (`Render.fill_enforced`,
-    # plus bas) y échappe ; celui-ci non. La garde de `profiles` refuse un
-    # mode qui la contredit, et c'est ce qui rend PCSX2 livrable sans mentir.
+    # POLITIQUE, comme `fill`. La garde de `profiles` refuse un mode qui la
+    # contredit, et c'est ce qui rend PCSX2 livrable sans mentir. Un champ
+    # jumeau vivait sur le `Render` — une valeur pour les deux modes, qui
+    # échappait à cette confrontation ; il a été RETIRÉ le 2026-09-05, et la
+    # note qui dit pourquoi est là-bas.
     fill_enforced: str = ""
     fill_enforced_where: str = ""
 
@@ -128,39 +130,20 @@ class Render:
     # alors : sans elles, {scale} ne serait pas calculable.
     native_height: int = 0
     max_scale: int = 0
-    # Le REMPLISSAGE QUE L'AMORÇAGE IMPOSE, quand l'émulateur n'en expose
-    # aucun en ligne de commande et que la console le pose dans son fichier
-    # de réglages — le fragment `enforced` du bloc [[bootstrap]].
+    # LE REMPLISSAGE IMPOSÉ PAR PROFIL A ÉTÉ RETIRÉ — 2026-09-05, dette D14.
     #
-    # ICI, sur le Render, et non sur un mode : c'est UNE SEULE valeur, la même
-    # en natif et en full.
+    # Il vivait ici : `fill_enforced` / `fill_enforced_where`, UNE valeur pour
+    # les deux modes. Sa justification était que le fragment imposé est posé
+    # avant que le mode ne soit résolu — MESURÉE FAUSSE : `Amorcer()` est
+    # appelé DEPUIS `Lancer()` (retro-launch.cs:1487), quand le mode effectif
+    # l'est ligne 1257.
     #
-    # 🔴 SA JUSTIFICATION D'ORIGINE ÉTAIT FAUSSE, et elle a été mesurée telle
-    # le 2026-09-05 (dette D14). Elle disait : « `enforced` est un fragment
-    # posé une fois par lancement, AVANT que le mode ne soit résolu ». Le
-    # lanceur dit l'inverse : `Amorcer()` est appelé DEPUIS `Lancer()`, à la
-    # ligne 1487 de retro-launch.cs, quand le mode effectif est résolu à la
-    # ligne 1257 — 230 lignes plus haut. Rien n'a jamais empêché un fragment
-    # par mode, et c'est ce que `RenderMode.fill_enforced` fait désormais.
-    #
-    # CE QUI RESTE DE CE CHAMP-CI est donc une ASSERTION du profil, et non une
-    # contrainte du mécanisme : « cet émulateur pose la MÊME valeur dans les
-    # deux modes ». Elle échappe à la politique — `_REMPLISSAGE_PAR_MODE` dit
-    # ce qu'un mode DEVRAIT produire, et une valeur unique ne peut pas
-    # satisfaire les deux cases. C'est la seule porte par laquelle un
-    # remplissage sort de la politique sans être démenti, et elle attend un
-    # arbitrage : la retirer coûte zéro profil livré (aucun ne l'emploie), la
-    # garder laisse le geste le plus court à qui voudra éviter la politique.
-    # Voir D14 dans docs/dettes.md.
-    #
-    # `fill_enforced_where` n'est pas un commentaire libre : il COMMENCE par
-    # le couple « [Section] Clé » qui porte le réglage, et une garde vérifie
-    # après construction que ce couple figure réellement dans le fragment
-    # `enforced` du profil. Sans elle, un profil annoncerait un remplissage
-    # que rien ne pose — et une valeur fausse se comporte exactement comme
-    # l'absence de valeur.
-    fill_enforced: str = ""
-    fill_enforced_where: str = ""
+    # CE N'EST PAS UN MANQUE À COMBLER, et cette note existe pour empêcher
+    # qu'on le comble. Le remplissage imposé se déclare sur un MODE
+    # (`RenderMode.fill_enforced`), où la politique le confronte. Le remettre
+    # ici rouvrirait la seule porte par laquelle un remplissage échappait à
+    # cette confrontation — c'est-à-dire l'outil exact avec lequel refaire la
+    # demi-vérité silencieuse que D14 existe pour empêcher.
 
 
 @dataclasses.dataclass(frozen=True)
@@ -381,9 +364,10 @@ _MOTIF_PAR_MODE = {
 # posé par `enforced` était INDÉCLARABLE — `resoudre_remplissage` rendait
 # NON_REGLABLE dès qu'un mode ne passe rien, et `_lire_remplissage` refuse un
 # `fill` sur un tel mode. Ce sont `fill_enforced` / `fill_enforced_where`, sur
-# le Render — donc pour LES DEUX MODES — qui le décrivent désormais : voir
-# leur commentaire sur `Render`, et le cas correspondant dans
-# `resoudre_remplissage`.
+# le MODE — un fragment imposé par mode de rendu — qui le décrivent désormais :
+# voir leur commentaire sur `RenderMode`, et le cas correspondant dans
+# `resoudre_remplissage`. (Ils ont d'abord vécu sur le `Render`, pour les deux
+# modes à la fois ; c'est le retrait daté du 2026-09-05.)
 
 
 def remplissage_attendu(mode: str) -> str:
@@ -418,9 +402,7 @@ class ChoixRemplissage:
     motif: str
 
 
-def resoudre_remplissage(mode_nom: str, mode: RenderMode,
-                         fill_enforced: str = "",
-                         fill_enforced_where: str = "") -> ChoixRemplissage:
+def resoudre_remplissage(mode_nom: str, mode: RenderMode) -> ChoixRemplissage:
     """Ce que ce mode fait RÉELLEMENT du troisième axe, et ce qu'on en dit.
 
     Cinq états, dans cet ordre, parce qu'ils se recouvrent :
@@ -429,10 +411,10 @@ def resoudre_remplissage(mode_nom: str, mode: RenderMode,
       C'est une MESURE, et elle l'emporte sur toute déclaration : l'inverse
       annoncerait un remplissage sur un émulateur dont on a constaté qu'il
       n'en a pas ;
-    - IMPOSÉ PAR L'AMORÇAGE : la console pose le réglage dans le fichier de
-      l'émulateur, pas sur sa ligne de commande. Ce cas passe AVANT celui du
-      mode vide — sinon DuckStation, dont les deux modes ne passent rien,
-      resterait « rien à régler » alors que la console règle son cadrage ;
+    - IMPOSÉ PAR L'AMORÇAGE, POUR CE MODE : la console pose le réglage dans le
+      fichier de l'émulateur, pas sur sa ligne de commande. Ce cas passe AVANT
+      celui du mode vide — sinon PCSX2, dont les deux modes ne passent rien,
+      resterait « rien à régler » alors que la console règle son remplissage ;
     - un mode qui ne passe RIEN — ni argument ni fichier de réglages — n'a
       aucun axe à régler, celui-ci compris. Sa `note` dit déjà pourquoi, et
       c'est le cas de DuckStation : le déduire ici évite de redemander à son
@@ -443,10 +425,11 @@ def resoudre_remplissage(mode_nom: str, mode: RenderMode,
       les confondre ferait rouvrir l'enquête à chaque passage, ou pire,
       attendre un effet qui ne viendra jamais.
 
-    `fill_enforced` et `fill_enforced_where` viennent du `Render`, donc des
-    DEUX modes à la fois — voir leur commentaire là-bas. Le motif le dit,
-    parce que le propriétaire ne peut pas le deviner : il lirait deux fois la
-    même valeur et croirait la politique appliquée.
+    Le remplissage imposé est celui DU MODE, et il est confronté à la
+    politique comme un `fill` : son motif porte donc les deux choses que le
+    propriétaire ne peut pas deviner — OÙ la clé est posée, c'est-à-dire ce
+    que la console lui reprend dans son propre fichier, et POURQUOI cette
+    valeur-là.
     """
     if mode.fill_absent:
         return ChoixRemplissage(
@@ -465,16 +448,6 @@ def resoudre_remplissage(mode_nom: str, mode: RenderMode,
             f"de réglages de l'émulateur — {mode.fill_enforced_where}. Une "
             f"valeur par mode, et c'est bien celle que la politique retient "
             f"pour {mode_nom} : {motif_remplissage(mode_nom)}")
-    if fill_enforced:
-        return ChoixRemplissage(
-            fill_enforced,
-            f"{fill_enforced} : imposé par l'amorçage, dans le fichier de "
-            f"réglages de l'émulateur — {fill_enforced_where}. La même valeur "
-            "dans les DEUX modes : c'est ce que ce profil AFFIRME de son "
-            "émulateur, et non une contrainte du mécanisme — un fragment "
-            "imposé PAR MODE existe (voir le remplissage imposé d'un mode). "
-            "La politique par mode est donc hors de portée de cette "
-            "déclaration-ci, et non contredite.")
     if not mode.args.strip() and not mode.config.strip():
         return ChoixRemplissage(
             NON_REGLABLE,

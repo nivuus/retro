@@ -478,8 +478,11 @@ def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
 # qui seul connaît la session. {render_config} l'est à l'écriture du plan : le
 # chemin d'un fichier ne dépend pas de la résolution.
 _VARIABLES = ("width", "height", "scale", "render_config")
-_CLES_RENDER = ("native", "full", "native_height", "max_scale",
-                "fill_enforced", "fill_enforced_where")
+# `fill_enforced` / `fill_enforced_where` N'Y SONT PLUS — retirés le
+# 2026-09-05 (D14). Ils vivaient ici, au niveau du bloc, avec UNE valeur pour
+# les deux modes. Un profil qui les redéclarerait ici est refusé par un message
+# qui NOMME leur remplaçant : voir `_refuser_remplissage_impose_retire`.
+_CLES_RENDER = ("native", "full", "native_height", "max_scale")
 # Le préfixe qu'un `fill_enforced_where` doit porter : « [Section] Clé ».
 # Ce n'est pas une convention de rédaction — c'est ce que la garde de
 # cohérence analyse pour aller chercher la clé dans le fragment imposé.
@@ -726,12 +729,45 @@ def _lire_remplissage_impose_du_mode(path, sid, nom: str, brut, fill: str,
     return impose, impose_ou
 
 
+# LES CHAMPS RETIRÉS, ET CE QU'ON RÉPOND À QUI LES ÉCRIT — 2026-09-05, D14.
+#
+# « clé inconnue : fill_enforced » serait vrai et inutile : l'auteur du profil
+# a un besoin réel — imposer un remplissage dans le fichier de l'émulateur —
+# et il vient d'écrire le champ qui servait à ça. Lui dire seulement que la clé
+# n'existe pas l'enverrait chercher une faute de frappe. On lui dit donc OÙ le
+# champ est parti et POURQUOI, sinon il le réintroduira en croyant combler un
+# manque — ce que la dette D10 décrit comme le geste le plus court et le moins
+# visible.
+_RETIRES_DU_RENDER = ("fill_enforced", "fill_enforced_where")
+
+
+def _refuser_remplissage_impose_retire(path, sid, brut) -> None:
+    ecrits = [c for c in _RETIRES_DU_RENDER if c in brut]
+    if not ecrits:
+        return
+    raise ProfileError(
+        f"{path} [{sid}] : 'render' déclare {', '.join(ecrits)}, qui a été "
+        "RETIRÉ du bloc [system.render] le 2026-09-05. Ce n'est pas une clé "
+        "mal orthographiée, et le besoin qu'elle servait existe toujours : le "
+        "remplissage imposé se déclare désormais SUR UN MODE — "
+        "'render.native.fill_enforced' et 'render.full.fill_enforced' — avec "
+        "le fragment correspondant dans la table [bootstrap.render] de "
+        "l'entrée d'amorçage qui vise le fichier de réglages.\n\n"
+        "Pourquoi il est parti : il portait UNE valeur pour les deux modes, "
+        "au motif — mesuré FAUX — que le fragment imposé est posé avant que "
+        "le mode ne soit résolu. Il était de ce fait le seul endroit d'où un "
+        "remplissage échappait à la politique par mode sans être démenti. Le "
+        "champ par mode, lui, y est confronté au chargement."
+    )
+
+
 def _lire_render(path, sid, brut, launch: str) -> Render:
     if not isinstance(brut, dict):
         raise ProfileError(
             f"{path} [{sid}] : 'render' doit être une table "
             "([system.render.native] / [system.render.full])."
         )
+    _refuser_remplissage_impose_retire(path, sid, brut)
     inconnues = sorted(k for k in brut if k not in _CLES_RENDER)
     if inconnues:
         raise ProfileError(
@@ -779,87 +815,9 @@ def _lire_render(path, sid, brut, launch: str) -> Render:
                 "la console, bornée par l'échelle maximale : sans ces deux "
                 "nombres, elle n'est pas calculable."
             )
-    impose, impose_ou = _lire_remplissage_impose(path, sid, brut, modes)
     return Render(native=modes[render_mod.NATIVE], full=modes[render_mod.FULL],
                   native_height=brut.get("native_height", 0),
-                  max_scale=brut.get("max_scale", 0),
-                  fill_enforced=impose, fill_enforced_where=impose_ou)
-
-
-def _lire_remplissage_impose(path, sid, brut,
-                             modes: dict) -> tuple[str, str]:
-    """Le remplissage que l'AMORÇAGE impose, et où il est posé.
-
-    Sur le bloc [system.render] et non sur un mode : le fragment `enforced`
-    est posé une fois par lancement, AVANT que le mode ne soit résolu. Le
-    réglage vaut donc la même chose en natif et en full, et le déclarer par
-    mode ferait croire à deux valeurs là où le fichier n'en porte qu'une.
-
-    Quatre refus. Chacun laisserait un profil se charger, `retro status`
-    annoncer un remplissage, et RIEN n'être posé sur la machine — la faute
-    exacte que la dette D2 combat, et qui ne produit aucun message.
-
-    Le cinquième refus n'est pas ici : la clé nommée existe-t-elle vraiment
-    dans le fragment imposé ? Cela demande le profil entier, donc ses
-    [[bootstrap]] — voir `_refuser_remplissage_impose_sans_cle`.
-    """
-    impose = brut.get("fill_enforced", "")
-    impose_ou = brut.get("fill_enforced_where", "")
-    for champ, valeur in (("fill_enforced", impose),
-                          ("fill_enforced_where", impose_ou)):
-        if not isinstance(valeur, str):
-            raise ProfileError(
-                f"{path} [{sid}] : 'render.{champ}' doit être du texte."
-            )
-    impose, impose_ou = impose.strip(), impose_ou.strip()
-    if bool(impose) != bool(impose_ou):
-        raise ProfileError(
-            f"{path} [{sid}] : 'render' déclare "
-            + ("'fill_enforced' sans 'fill_enforced_where'"
-               if impose else
-               "'fill_enforced_where' sans 'fill_enforced'")
-            + ". Les deux vont ensemble : le premier est le remplissage que "
-            "la console impose, le second dit OÙ il est posé — et son couple "
-            "« [Section] Clé » est ce qui permet de vérifier que quelque "
-            "chose le pose réellement. Un remplissage sans son adresse ne "
-            "serait vérifiable par personne ; une adresse sans remplissage "
-            "décrirait un réglage que rien ne déclare."
-        )
-    if not impose:
-        return "", ""
-    if impose not in render_mod.REMPLISSAGES:
-        raise ProfileError(
-            f"{path} [{sid}] : 'render.fill_enforced' vaut {impose!r} — "
-            f"remplissage inconnu. Les remplissages sont "
-            f"{', '.join(render_mod.REMPLISSAGES)} : ce sont les deux seules "
-            "façons d'agrandir une image SANS la déformer. Une valeur "
-            "inconnue serait imprimée telle quelle par le rapport, comme si "
-            "elle voulait dire quelque chose."
-        )
-    if not _PREFIXE_OU.match(impose_ou):
-        raise ProfileError(
-            f"{path} [{sid}] : 'render.fill_enforced_where' doit COMMENCER "
-            "par le couple « [Section] Clé » qui porte le réglage, puis dire "
-            f"sa valeur et d'où elle vient — reçu {impose_ou!r}. Le préfixe "
-            "n'est pas décoratif : c'est lui qu'une garde analyse pour "
-            "vérifier que cette clé figure bien dans le fragment que la "
-            "console impose. Sans lui, le profil pourrait annoncer un "
-            "remplissage que rien ne pose, et rien ne le dirait."
-        )
-    deja = [nom for nom, m in modes.items()
-            if m.fill or m.fill_absent or m.fill_enforced]
-    if deja:
-        raise ProfileError(
-            f"{path} [{sid}] : 'render.fill_enforced' coexiste avec le "
-            f"remplissage déclaré par le mode {', '.join(sorted(deja))}. Le "
-            "même axe serait décidé à deux endroits, et rien dans le profil "
-            "ne dirait lequel gagne. Choisir : réglé par les arguments du "
-            "mode ('fill'), constaté absent ('fill_absent'), imposé par "
-            "l'amorçage pour LES DEUX modes à la fois (ce champ-ci, qui "
-            "échappe à la politique), ou imposé par l'amorçage MODE PAR MODE "
-            "('render.<mode>.fill_enforced', qui y est soumis)."
-        )
-    return impose, impose_ou
+                  max_scale=brut.get("max_scale", 0))
 
 
 def _lire_bootstraps(path: pathlib.Path, brut) -> tuple[Bootstrap, ...]:
@@ -2112,23 +2070,28 @@ def load_profile(path: pathlib.Path) -> Profile:
 
 def _refuser_remplissage_impose_sans_cle(path: pathlib.Path,
                                          profil: Profile) -> None:
-    """La clé nommée par `fill_enforced_where` est-elle RÉELLEMENT imposée ?
+    """La clé nommée par `fill_enforced_where` est-elle RÉELLEMENT imposée,
+    DANS LE FRAGMENT DE SON MODE ?
 
     Un profil peut annoncer « la console impose le remplissage, dans
-    [Display] Scaling » et n'avoir cette clé dans AUCUN de ses fragments
-    `enforced`. Rien ne le dirait : le profil se charge, `retro status`
-    imprime le remplissage, et la machine ne reçoit jamais la clé. C'est
-    exactement la faute de la dette D2 — un réglage qui a l'air posé et qui
-    ne fait rien.
+    [EmuCore/GS] IntegerScaling » et n'avoir cette clé dans AUCUN fragment de
+    ce mode-là. Rien ne le dirait : le profil se charge, `retro status`
+    imprime le remplissage, et la machine ne reçoit jamais la clé quand ce
+    mode s'applique. C'est exactement la faute de la dette D2 — un réglage qui
+    a l'air posé et qui ne fait rien.
 
     TOUS les [[bootstrap]] comptent, pas seulement le premier : RPCS3 en a
     deux, et exiger que la clé soit dans l'un plutôt que l'autre serait
     arbitraire. C'est la présence qui est vérifiée, jamais la VALEUR : ce que
     la clé vaut est une mesure, pas une déclaration, et la comparer ici
     ferait croire cette garde plus forte qu'elle n'est.
+
+    ET ELLE NE REGARDE PAS `enforced`, DÉLIBÉRÉMENT. C'est ce qui la rend
+    étroite, et c'est ce qui la rend utile : poser la clé dans le champ qui
+    vaut pour LES DEUX modes ferait annoncer `entier` en natif et `ajuste` en
+    full pendant que la machine reçoit la même valeur des deux côtés. C'est la
+    faute la plus plausible de tout ce mécanisme.
     """
-    imposees = {couple for b in profil.bootstraps
-                for couple in cles_ini(b.enforced)}
     # PAR MODE, la garde est PLUS ÉTROITE, et elle doit l'être — dette D14 :
     # la clé annoncée par le mode natif doit figurer dans le fragment `native`
     # de [bootstrap.render], jamais dans celui de l'autre mode. Se contenter
@@ -2165,22 +2128,6 @@ def _refuser_remplissage_impose_sans_cle(path: pathlib.Path,
                 "[bootstrap.render], ou retirer "
                 f"'render.{nom}.fill_enforced'."
             )
-        if not rendu.fill_enforced_where:
-            continue
-        trouve = _PREFIXE_OU.match(rendu.fill_enforced_where)
-        section, cle = trouve.group(1).strip(), trouve.group(2)
-        if (section, cle) in imposees:
-            continue
-        raise ProfileError(
-            f"{path} [{systeme.id}] : 'render.fill_enforced_where' annonce le "
-            f"remplissage posé en [{section}] {cle}, mais aucun [[bootstrap]] "
-            "de ce profil n'impose cette clé. Le profil se chargerait, "
-            "`retro status` imprimerait un remplissage, et la clé n'arriverait "
-            "JAMAIS sur la machine — un réglage qui a l'air posé et qui ne "
-            "fait rien. Ajouter la clé au fragment 'enforced' du bloc "
-            "[[bootstrap]] qui vise le fichier de réglages de cet émulateur, "
-            "ou retirer 'fill_enforced'."
-        )
 
 
 def _charger_source(directory: pathlib.Path,

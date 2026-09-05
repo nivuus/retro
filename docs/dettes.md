@@ -1350,6 +1350,33 @@ d'un correctif qui « ne marche pas ».
 > (`install.configurations_effacees` et `format_configurations_effacees`
 > existent, avec leurs trois tests). Les cinq mesures M1 à M5 sont sur la
 > console, sans exception, et aucune ne se contourne depuis l'hôte.
+>
+> **UNE SIXIÈME PIÈCE REJOINT LA TÂCHE 8 — `{scale}` DANS UN FRAGMENT
+> IMPOSÉ.** Elle n'est pas une mesure, c'est du code, et elle est rangée ici
+> parce qu'elle atterrira dans **la même compilation** que le reste.
+>
+> Le fait : le remplissage imposé par mode (D14) sait poser une clé dans le
+> fichier de réglages d'un émulateur, mais **pas une valeur qui dépende de la
+> session**. Les jetons `{width}`, `{height}` et `{scale}` sont substitués par
+> le lanceur dans le GABARIT DE COMMANDE ; un fragment imposé, lui, est déposé
+> tel quel par `retro scan`.
+>
+> Ce que ça coûte, et ce n'est pas un cas particulier : **tout émulateur dont
+> les deux premiers axes n'ont aucun véhicule de ligne de commande a un mode
+> `full` qui n'est `full` que de nom.** Il ajuste une trame à 1x au lieu d'une
+> trame montée à la session. PCSX2 est le premier — c'est écrit dans son profil
+> et imprimé par `retro status`, à côté de la phrase de politique que ce cas
+> contredit —, PPSSPP viendra ensuite.
+>
+> **Le piège à ne PAS tomber dedans, et il est tentant :** graver un
+> multiplicateur fixe dans le fragment. Ce serait la résolution figée à la
+> synchronisation, que `retro/render.py` existe pour empêcher — le flux Apollo
+> change de résolution selon le client qui se connecte.
+>
+> **La forme juste est connue** : que le lanceur substitue les jetons DANS LE
+> FRAGMENT au moment de la fusion, comme il le fait déjà dans le gabarit. Elle
+> n'est pas écrite, et ce n'est pas un oubli : c'est du C# que cet hôte ne sait
+> ni compiler ni vérifier.
 
 **Constatée le 2026-08-29**, sur **trois** émulateurs, pour deux raisons
 différentes — et c'est la répétition qui en fait une dette de mécanisme plutôt
@@ -2034,16 +2061,38 @@ langue. Le témoin par cible en porte quatre colonnes au plus — `profil`,
 entière au-delà**, ce que cette dette a décidé en toutes lettres : « deviner
 une cinquième colonne poserait au rapport une valeur que personne n'a écrite ».
 
-Le jour où quelqu'un fera écrire au lanceur le **mode posé** en cinquième
-colonne, `retro status` dira donc **« pas encore amorcé » de toutes les cibles
+Le jour où quelqu'un ferait écrire au lanceur le **mode posé** en cinquième
+colonne, `retro status` aurait dit **« pas encore amorcé » de toutes les cibles
 à la fois**, sur une console parfaitement amorcée — le symptôme exact que la
 migration 3→4 a coûté à cette dette, une colonne plus loin.
 
-**Ce n'est pas fait ici, et c'est délibéré :** décider ce que signifie la
-cinquième colonne est une décision, et elle appartient à qui écrira l'autre
-moitié. Mais la leçon de la migration précédente tient mot pour mot — **le
-lecteur d'abord, l'écrivain ensuite** —, et elle est écrite ici pour qu'on ne
-la redécouvre pas devant un rapport qui accuse une console saine.
+#### ⚖ LA MOITIÉ HÔTE EST PAYÉE — 2026-09-05
+
+**`lire_amorcages` accepte désormais trois colonnes OU PLUS.** Au-delà de la
+quatrième, les colonnes sont **ignorées** ; la ligne, elle, est **gardée**.
+
+**Ce que la décision d'origine confondait :** refuser de deviner le sens d'une
+colonne inconnue, et jeter la ligne entière pour autant. La première moitié du
+raisonnement était juste et elle tient toujours — rien n'interprète la
+cinquième colonne. La seconde était le prix, et il est trop cher : cette dette
+l'a déjà chiffré une fois.
+
+**L'asymétrie qui a tranché le MOMENT**, et elle vaudra encore la prochaine
+fois : **le lecteur est du Python d'hôte, livrable aujourd'hui ; l'écrivain est
+du C# que cet hôte ne sait pas compiler.** Payer d'abord la moitié qui se paie
+d'ici ne coûte rien, n'engage aucune sémantique, et désamorce une mine qui
+aurait explosé en silence — c'est littéralement ce que la migration 3→4 a
+enseigné, appliqué une colonne plus loin.
+
+La tolérance est ouverte **vers le haut seulement** : une ligne à moins de
+trois colonnes n'a pas de cible, donc rien à rapporter, et lui en inventer une
+poserait au rapport un chemin que personne n'a écrit. Un second test le tient —
+sans lui, la tolérance neuve aurait pu s'écrire « ≠ 4 » et tout accepter.
+
+**LE SENS DE LA CINQUIÈME COLONNE RESTE À DÉCIDER**, et il appartient à qui
+écrira l'autre moitié. Le test qui portait la décision inverse a été
+**retourné, pas supprimé**, et sa docstring dit pourquoi — c'était la
+contrainte qui était en cause, pas son verdict. Même geste qu'en D13.
 
 #### 🔴 Un silence NEUF, que les tables viennent de créer — à arbitrer
 
@@ -2655,38 +2704,71 @@ croire complet.**
    full. C'est la même réserve que le bloc de rendu du Dreamcast, et rien ici
    ne la remplace.
 
-### ⚖ CE QUE JE REMONTE, ET QUI N'EST PAS TRANCHÉ
+### ⚖ LES TROIS ARBITRAGES — RENDUS LE 2026-09-05
 
-**Arbitrage A — le champ `fill_enforced` PAR PROFIL doit-il survivre ?**
+#### 1. Le champ `fill_enforced` PAR PROFIL est RETIRÉ
 
-Il est conservé aujourd'hui, et c'est délibérément la décision la moins
-engageante. Mais sa justification d'origine est **mesurée fausse** (voir plus
-haut), et le dépôt a déjà rendu un arbitrage sur ce motif exact — D13 :
-« une indulgence dont le motif est mesuré faux n'est pas un choix de
-conception, c'est un reliquat ».
+**Décision rendue, et appliquée le jour même.** Il vivait sur
+`[system.render]` et portait UNE valeur pour les deux modes. Trois raisons, et
+elles vont toutes dans le même sens :
 
-| | Le garder | Le retirer |
-|---|---|---|
-| Profils livrés qui l'emploient | **zéro** — vérifié le 2026-09-05 | zéro |
-| Tests à reprendre | aucun | **8** (`tests/test_profiles.py`, `tests/test_render.py`, `tests/test_status.py`) |
-| Ce qu'il reste | la **seule** porte par laquelle un remplissage échappe à la politique sans être démenti | plus aucune : tout remplissage déclaré est confronté à la politique |
-| Ce qu'on perd | — | la faculté de déclarer « cet émulateur pose la même valeur dans les deux modes » sans le prouver. **Aucun cas connu.** |
-| Le risque | c'est le geste le PLUS COURT pour qui voudra éviter la politique, et il est invisible en revue — la leçon de D10, mot pour mot | il faut le rouvrir si un cas apparaît |
+- **Sa justification est mesurée fausse** — « le fragment imposé est posé avant
+  que le mode ne soit résolu ». C'est *exactement* le motif sur lequel **D13** a
+  été tranchée deux jours plus tôt : *« une indulgence dont le motif est mesuré
+  faux n'est pas un choix de conception, c'est un reliquat »*. Trancher
+  autrement ici aurait été incohérent avec le dépôt lui-même.
+- **Le coût de migration est nul** : zéro profil livré l'employait. Huit tests
+  repris, pas une bascule.
+- **Il était la seule porte par laquelle un remplissage échappait à la
+  politique**, et c'était le geste le plus court et le moins visible pour qui
+  voudrait l'éviter. C'est **D10** mot pour mot : un garde-fou qui n'est pas
+  gelé se désarme sans bruit. *Une porte dérobée que personne n'emprunte reste
+  une porte dérobée.*
 
-**Ma lecture, et ce n'est pas une décision :** le retirer. Le garder, c'est
-laisser sur l'étagère l'outil exact avec lequel on referait la demi-vérité que
-D14 existe pour empêcher. Mais c'est un retrait d'API, il n'a rien d'urgent
-puisque personne ne l'emploie, et le dépôt s'applique la règle de D7 : ça se
-décide en revue.
+**POURQUOI IL A EXISTÉ, ET POURQUOI IL PART — à lire avant de le
+réintroduire.** Il a été créé le 2026-08-29 pour un besoin RÉEL, qui n'a pas
+disparu : un émulateur qui n'expose aucun réglage de rendu en ligne de commande
+— DuckStation, PCSX2 — ne peut recevoir son remplissage que par son fichier. Ce
+besoin est aujourd'hui servi par `render.<mode>.fill_enforced` et la table
+`[bootstrap.render]`, **qui font la même chose en mieux** : une valeur par
+mode, et confrontée à la politique.
 
-**Arbitrage B — `{scale}` dans un fragment imposé.** C'est le point 2
-ci-dessus. Sans lui, le mode `full` d'un émulateur sans véhicule de ligne de
-commande n'est `full` que de nom. Avec lui, un fichier déposé à la
-synchronisation porterait une valeur qui dépend de la session — ce que tout le
-reste du dépôt s'interdit. **Il y a une troisième voie non explorée** : que le
-lanceur substitue dans le FRAGMENT au moment de la fusion, comme il substitue
-déjà dans le gabarit de commande. Le coût est du C# que l'hôte ne compile pas.
-Rien n'est fait.
+**Le retrait est gardé par un refus qui NOMME son remplaçant**
+(`_refuser_remplissage_impose_retire`, `retro/profiles.py`), et pas par un
+« clé inconnue ». La différence n'est pas cosmétique : dans six mois, quelqu'un
+aura un émulateur sans option de ligne de commande et écrira `fill_enforced`
+sur `[system.render]` — c'est le nom qui vient. « Clé inconnue » l'enverrait
+chercher une faute de frappe, puis rouvrir le champ en croyant combler un
+manque. Le refus dit donc OÙ le champ est parti et POURQUOI. Le test qui le
+tient a été **vu rouge par mutation**.
+
+#### 2. `{scale}` dans un fragment imposé — NON CONSTRUIT, et nommé comme dette
+
+**Décision rendue : on ne construit pas la troisième voie ici.** `ajuste` reste
+la valeur de PCSX2 en mode full — elle est juste —, **mais sa raison n'est pas
+celle qu'on lui prête**, et c'est écrit dans le profil ET imprimé par le
+rapport, à côté de la phrase de politique qu'elle corrige.
+
+Sans cette phrase, quelqu'un « corrigera » un jour en posant un
+`upscale_multiplier` fixe dans le fragment imposé — et **figera la résolution à
+la synchronisation**, ce que `render.py` existe précisément pour empêcher.
+
+**LA VRAIE RÉPONSE, ET ELLE EST RANGÉE AVEC LA TÂCHE 8 DE D7** : que le lanceur
+substitue `{scale}` **dans le FRAGMENT au moment de la fusion**, comme il
+substitue déjà dans le gabarit de commande. C'est du C# que cet hôte ne sait ni
+compiler ni vérifier, et cela atterrira dans la même compilation que le reste —
+d'où le rangement.
+
+**Ce n'est pas un cas PCSX2, c'est une dette de mécanisme : tout émulateur dont
+les deux premiers axes n'ont aucun véhicule de ligne de commande tombera là.**
+Le mode `full` n'y est alors `full` que de nom — il ajuste une trame à 1x au
+lieu d'une trame montée à la session. PPSSPP y viendra le jour où son fichier
+de réglages sera localisé.
+
+#### 3. La cinquième colonne du témoin — LE LECTEUR EST TOLÉRANT, le SENS reste à décider
+
+**Décision rendue, et la moitié qui se paie d'ici est payée.** Voir D12, section
+« Ce que D14 vient d'ajouter à cette dette ».
 
 ### 🔴 Une conséquence de forme, à ne pas redécouvrir
 
@@ -2695,13 +2777,23 @@ Rien n'est fait.
 **ignore la ligne entière au-delà**. D12 l'écrit noir sur blanc, et c'est
 délibéré. Or il y a désormais une troisième chose qui atteint chaque cible.
 
-Le jour où quelqu'un fera écrire au lanceur une cinquième colonne — le mode
-posé —, `retro status` dira **« pas encore amorcé » de toutes les cibles à la
-fois**, sur une console parfaitement amorcée. C'est exactement le coût que D12
-a chiffré pour la quatrième colonne avant d'ouvrir la porte, et il faut le
-payer d'avance de la même façon : **le lecteur d'abord, l'écrivain ensuite.**
-Ce n'est pas fait ici, parce que décider ce que signifie la cinquième colonne
-est une décision, et qu'elle appartient à qui écrira l'autre moitié.
+~~Le jour où quelqu'un fera écrire au lanceur une cinquième colonne, `retro
+status` dira « pas encore amorcé » de toutes les cibles à la fois.~~ —
+**DÉSAMORCÉ le 2026-09-05.** `lire_amorcages` accepte désormais **trois
+colonnes ou plus** : au-delà de la quatrième, les colonnes sont **ignorées** et
+la ligne est **gardée**.
+
+**Refuser de deviner et jeter la ligne sont deux choses différentes**, et la
+première n'exigeait pas la seconde — c'est ce que la décision d'origine
+confondait. L'asymétrie qui a tranché le moment : le lecteur est du Python
+d'hôte, livrable aujourd'hui ; l'écrivain est du C# que cet hôte ne compile
+pas. **Le lecteur d'abord, l'écrivain ensuite**, littéralement comme pour la
+quatrième colonne.
+
+**Le SENS de la cinquième colonne reste à décider**, et il appartient à qui
+écrira l'autre moitié : rien ne l'interprète ici. La tolérance est en outre
+ouverte **vers le haut seulement** — une ligne à moins de trois colonnes n'a
+pas de cible et reste ignorée, ce qu'un second test tient.
 
 ### Où ça se joue
 

@@ -871,19 +871,15 @@ def etat_rendu(profils: dict) -> list[SystemRender]:
                 remplissage=tuple(
                     (nom, choix.remplissage, choix.motif)
                     for nom, choix in (
-                        (n, render_mod.resoudre_remplissage(
-                            n, m,
-                            fill_enforced=rendu.fill_enforced,
-                            fill_enforced_where=rendu.fill_enforced_where))
+                        (n, render_mod.resoudre_remplissage(n, m))
                         for n, m in ((render_mod.NATIVE, rendu.native),
                                      (render_mod.FULL, rendu.full)))),
-                # PAR PROFIL **OU** PAR MODE — dette D14. Le second cas
-                # porte une valeur que la légende explique, mais son motif
-                # dit AUSSI où la clé est posée : c'est ce que la console
-                # reprend au propriétaire dans son propre fichier, à chaque
-                # lancement, et rien d'autre ne le lui dirait.
-                remplissage_impose=bool(rendu.fill_enforced
-                                        or rendu.native.fill_enforced
+                # PAR MODE — dette D14. La valeur est de celles que la
+                # légende explique, mais son motif dit AUSSI où la clé est
+                # posée : c'est ce que la console reprend au propriétaire dans
+                # son propre fichier, à chaque lancement, et rien d'autre ne
+                # le lui dirait.
+                remplissage_impose=bool(rendu.native.fill_enforced
                                         or rendu.full.fill_enforced),
             ))
     return sorted(etats, key=lambda e: e.system_name)

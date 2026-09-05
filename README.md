@@ -452,6 +452,13 @@ rien ne le dirait. `fill_enforced_where` commence par le couple
 — sans quoi le rapport annoncerait un remplissage qui n'arrive jamais sur la
 machine.
 
+**Ce qu'un fragment ne peut PAS porter :** `{width}`, `{height}` et `{scale}`
+n'y sont pas substitués — ils le sont au lancement, dans la ligne de commande,
+et un fragment est déposé tel quel à la synchronisation. Un émulateur dont la
+résolution interne ne se règle que par fichier a donc un mode `full` qui
+n'élève pas cette résolution. Y graver un multiplicateur fixe serait pire :
+c'est la résolution figée à la synchro que ce mécanisme existe pour éviter.
+
 Trois variables sont disponibles, substituées **au lancement** : `{width}` et
 `{height}`, la résolution de la session en cours, et `{scale}`, combien de fois
 la résolution d'origine y tient.

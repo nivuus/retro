@@ -1421,15 +1421,53 @@ def test_le_temoin_a_quatre_colonnes_porte_la_langue_POSEE(tmp_path):
     ]}
 
 
-def test_une_ligne_de_temoin_a_cinq_colonnes_est_ignoree(tmp_path):
-    """La tolérance ne s'étend pas à l'infini : au-delà de la colonne qu'on
-    vient d'ouvrir, une ligne inattendue est le signe d'un format qu'on ne
-    connaît pas, et la deviner poserait une langue que personne n'a écrite."""
+def test_une_colonne_de_temoin_INCONNUE_est_ignoree_SANS_jeter_la_ligne(
+        tmp_path):
+    """CE TEST A ÉTÉ RETOURNÉ le 2026-09-05, pas supprimé — c'est la
+    CONTRAINTE qui était en cause, pas son verdict.
+
+    Il exigeait l'inverse : « au-delà de la colonne qu'on vient d'ouvrir, une
+    ligne inattendue est le signe d'un format qu'on ne connaît pas, et la
+    deviner poserait une langue que personne n'a écrite ». Le raisonnement
+    était juste sur le SENS d'une colonne inconnue — on ne le devine
+    toujours pas, et cette ligne-ci ne devine rien — et faux sur le PRIX de
+    jeter la ligne.
+
+    Ce prix, D12 l'a déjà payé une fois pour la quatrième colonne : une ligne
+    jetée fait dire au rapport « pas encore amorcé » de la cible, donc de
+    TOUTES les cibles si le lanceur écrit toujours la même forme — sur une
+    console parfaitement amorcée. Et depuis D14, une TROISIÈME chose atteint
+    chaque cible : le fragment du mode de rendu. La cinquième colonne viendra.
+
+    L'asymétrie qui tranche : le lecteur est du Python d'hôte, livrable
+    aujourd'hui ; l'écrivain est du C# que cet hôte ne compile pas. Rendre le
+    lecteur tolérant MAINTENANT ne coûte rien, n'engage aucune sémantique, et
+    désamorce une mine qui exploserait en silence.
+
+    Ce que cette tolérance N'EST PAS : une décision sur ce que la cinquième
+    colonne signifie. Elle est IGNORÉE, pas interprétée. Le sens appartient à
+    qui écrira l'autre moitié.
+    """
     dossier = tmp_path / launcher.DIR
     dossier.mkdir(parents=True)
     (dossier / launcher.TEMOIN_BOOTSTRAP).write_text(
-        "dolphin\t2026-09-04 21:03:11\tC:\\A\\Dolphin.ini\tfrench\tautre\n",
+        "dolphin\t2026-09-04 21:03:11\tC:\\A\\Dolphin.ini\tfrench\tnative\n",
         encoding="utf-8")
+    assert launcher.lire_amorcages(tmp_path) == {"dolphin": [
+        ("2026-09-04 21:03:11", "C:\\A\\Dolphin.ini", "french"),
+    ]}
+
+
+def test_une_ligne_de_temoin_TRONQUEE_est_toujours_ignoree(tmp_path):
+    """La tolérance est ouverte VERS LE HAUT seulement, et c'est le sens qui
+    compte : une ligne à moins de trois colonnes n'a pas de cible, donc rien
+    à rapporter — inventer la sienne poserait au rapport un chemin que
+    personne n'a écrit. Sans ce test, la tolérance neuve aurait pu être
+    écrite « len(parts) != 4 » et tout accepter."""
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.TEMOIN_BOOTSTRAP).write_text(
+        "dolphin\t2026-09-04 21:03:11\n", encoding="utf-8")
     assert launcher.lire_amorcages(tmp_path) == {}
 
 
