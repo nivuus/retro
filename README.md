@@ -421,6 +421,37 @@ cite. Un profil qui la contredit est refusé au chargement : la contradiction
 ne se verrait sinon que sur l'écran, sur une image floue qu'on croirait
 normale.
 
+**Quand le remplissage ne vit PAS sur la ligne de commande.** Beaucoup
+d'émulateurs n'exposent aucun réglage de rendu en argument — PCSX2 va jusqu'à
+faire d'un argument inconnu une erreur fatale. Le remplissage se pose alors
+dans leur fichier de réglages, par mode, et la politique s'y applique
+exactement pareil :
+
+```toml
+[[bootstrap]]
+target = '%USERPROFILE%\Documents\PCSX2\inis\PCSX2.ini'
+content = """…"""
+[bootstrap.render]                       # un fragment PAR MODE de rendu
+native = "[EmuCore/GS]\nIntegerScaling = true"
+full   = "[EmuCore/GS]\nIntegerScaling = false"
+
+[system.render.native]
+args = ""
+note = "PCSX2 n'expose aucun réglage de rendu en ligne de commande"
+fill_enforced       = "entier"           # confronté à la politique, comme `fill`
+fill_enforced_where = "[EmuCore/GS] IntegerScaling = true — …"
+```
+
+Le fragment du mode retenu est fusionné au lancement, à côté des clés imposées
+et de la langue — il **modifie sans écraser**, et ne touche qu'aux clés qu'il
+apporte. **Les deux modes doivent donc poser exactement les mêmes clés**, et
+c'est refusé au chargement sinon : une clé posée en natif et absente du
+fragment `full` resterait à sa valeur native pendant tout le mode `full`, et
+rien ne le dirait. `fill_enforced_where` commence par le couple
+`[Section] Clé`, parce qu'une garde vérifie que ce fragment-là le pose vraiment
+— sans quoi le rapport annoncerait un remplissage qui n'arrive jamais sur la
+machine.
+
 Trois variables sont disponibles, substituées **au lancement** : `{width}` et
 `{height}`, la résolution de la session en cours, et `{scale}`, combien de fois
 la résolution d'origine y tient.
