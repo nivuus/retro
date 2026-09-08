@@ -6,7 +6,7 @@ name = "retro"
 dynamic = ["version"]
 description = "Fait remonter une bibliothèque de jeux rétro dans Steam"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "PolyForm-Noncommercial-1.0.0" }
 dependencies = [
     "vdf>=3.4",
     "requests>=2.31",
