@@ -1102,8 +1102,7 @@ def test_les_liaisons_de_duckstation_portent_la_forme_qu_il_a_ecrite():
     )
     # [Pad2] is the opposite case, and it is measured: the second port
     # defaults to None, so without `Type` it is configured and unplugged.
-    port2 = [l.split("=", 1)[1].strip() for l in b.enforced.splitlines()
-             if l.split("=", 1)[0].strip() == "Type"]
+    port2 = _valeurs_de_section(b.enforced, "Pad2", {"Type"})
     assert port2 == ["AnalogController"], (
         "duckstation.toml: [Pad2] must declare Type = AnalogController — "
         f"got {port2}. DEFAULT_CONTROLLER_2_TYPE is None.")

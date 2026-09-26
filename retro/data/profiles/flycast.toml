@@ -32,9 +32,17 @@ exe = 'flycast.exe'
 #    maple port A..D — but a port whose device is None reads nothing: three
 #    players would be assigned and deaf. The same trap as Dolphin's
 #    SIDevice1..3.
-#    ⚠ A `maple_sdl_joystick_<id>` key left in [input] (SaveMaplePorts,
-#    core/input/gamepad_device.cpp) overrides the automatic assignment; the
-#    merge never deletes keys, so such a key must be removed by hand.
+#    ⚠ `maple_sdl_joystick_<id>` keys in [input] override the automatic
+#    assignment (GamepadDevice::Register). They are NOT stale by nature:
+#    SaveSettings -> SaveMaplePorts rewrites the key of every connected pad
+#    at each save, with this session's port, and <id> is the SDL instance
+#    id of the session — so the saved value is the automatic one, a fixed
+#    point. It departs from it only after a port was reassigned by hand in
+#    Flycast's UI, which is the owner's choice. The merge never deletes
+#    keys: to undo such a choice, remove those keys. They are NOT imposed
+#    here either: which instance id a pad gets depends on the SDL backend
+#    that detects it, not on its XInput slot, and writing 0..3 would be an
+#    assumption. None existed on the console on 2026-09-26.
 #
 # 2. THE LANGUAGE, see [bootstrap.langue] below.
 #
