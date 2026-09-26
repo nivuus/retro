@@ -1467,10 +1467,19 @@ def test_rpcs3_impose_ses_modales():
 #   - « Device » CITÉ, parce qu'en YAML « # » ouvre un commentaire :
 #     `XInput Pad #1` non quoté devient `XInput Pad`, qui ne désigne rien. Le
 #     nom vient de xinput_pad_handler.cpp, `m_name_string = "XInput Pad #"`.
-RPCS3_MANETTE = (
-    "Player 1 Input:",
-    "Handler: XInput",
-    'Device: "XInput Pad #1"',
+#
+# FOUR PLAYERS since 2026-09-26, read at the pinned revision (6567a5a2):
+# seven `cfg_player` all defaulting to `pad_handler::null` in
+# Emu/Io/pad_config.h, and four pads "XInput Pad #1" to "#4" in
+# xinput_pad_handler.cpp (`XUSER_MAX_COUNT`, `std::to_string(i + 1)`). Player
+# N targets XInput index N-1, which only holds because Apollo pins four
+# identical Xbox 360 pads.
+RPCS3_MANETTE = tuple(
+    ligne
+    for n in range(1, 5)
+    for ligne in (f"Player {n} Input:",
+                  "Handler: XInput",
+                  f'Device: "XInput Pad #{n}"')
 )
 
 
@@ -1762,7 +1771,7 @@ def test_le_recensement_des_valeurs_figees_par_le_type_de_pad_ne_bouge_pas():
     # de sortie (supprimer le fichier, puis relancer un jeu) — sans quoi la
     # bascule de D4 échouerait en silence, `si-absent` ne réécrivant jamais.
     posees = [l.strip() for l in porteuses if not l.lstrip().startswith("#")]
-    assert posees == ['Device: "XInput Pad #1"'], (
+    assert posees == [f'Device: "XInput Pad #{n}"' for n in range(1, 5)], (
         "rpcs3.toml pose « XInput Pad #1 » ailleurs que dans le fragment de "
         f"son [[bootstrap]], ou sous une autre forme — reçu {posees}. Cette "
         "valeur dépend du gestionnaire, donc du type de pad : posée hors de "

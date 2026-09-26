@@ -196,11 +196,25 @@ schinese   = "[Localization]\nlanguage=zh_CN"
 # son dossier — le joueur 1 n'a aucun gestionnaire. Pas une mappe fausse : pas
 # de manette du tout.
 #
-# TROIS LIGNES SUFFISENT, là où DuckStation a exigé vingt-sept liaisons :
-# xinput_pad_handler::init_config() renseigne les vingt-quatre `.def` puis
-# appelle from_default(). RPCS3 pose donc lui-même toute la mappe dès que le
-# gestionnaire est choisi. Le fichier fait 61 octets, et le propriétaire a
-# confirmé que les contrôles répondent.
+# THREE LINES PER PLAYER ARE ENOUGH, where DuckStation needed twenty-seven
+# bindings: xinput_pad_handler::init_config() fills the twenty-four `.def`
+# then calls from_default(), so RPCS3 builds the whole map itself once the
+# handler is chosen. The owner confirmed that player 1's controls respond.
+#
+# FOUR PLAYERS, added on 2026-09-26, and four only. Read in the source at the
+# revision the manifest pins (6567a5a2):
+#   - Emu/Io/pad_config.h declares seven `cfg_player`, "Player 1 Input" to
+#     "Player 7 Input", all defaulting to `pad_handler::null` — a player
+#     missing from this file has NO controller at all, exactly player 1's
+#     failure before this file existed;
+#   - xinput_pad_handler.cpp sets `m_max_devices = XUSER_MAX_COUNT` (four)
+#     and names each pad `m_name_string + std::to_string(i + 1)`: "XInput
+#     Pad #1" to "#4", the XInput user index plus one. A fifth player would
+#     have no device to name.
+# The order holds for the same reason as Dolphin's: Apollo pins four
+# identical Xbox 360 pads (the "installer" repository), and the XInput index
+# depends on no device name. Players 2 to 4 are POSED, never SEEN
+# responding — see `mapping_where` below.
 #
 # ⚠ DEUX PIÈGES DE FORME, et chacun aurait donné un réglage d'apparence posé
 # qui ne fait rien :
@@ -275,6 +289,15 @@ content = '''
 Player 1 Input:
   Handler: XInput
   Device: "XInput Pad #1"
+Player 2 Input:
+  Handler: XInput
+  Device: "XInput Pad #2"
+Player 3 Input:
+  Handler: XInput
+  Device: "XInput Pad #3"
+Player 4 Input:
+  Handler: XInput
+  Device: "XInput Pad #4"
 '''
 
 # LA LANGUE : aucune ici, et c'est mesuré.
@@ -305,6 +328,13 @@ GuiConfigs\\CurrentSettings.ini et celle de la PS3 émulée dans config.yml"""
 # `retro status` une manette muette sur un émulateur dont un bouton a été VU
 # répondre, et « inconnu » effacerait la mesure.
 #
+# ⚠ "releve" HOLDS FOR PLAYER 1 ONLY. Players 2 to 4 (2026-09-26) would be
+# "pose"; the field carries one value per profile, and downgrading the whole
+# profile would erase the only measurement there is. The reservation is
+# therefore written in `mapping_where`, which `retro status` prints verbatim.
+# Once a multiplayer game has been seen, drop the reservation; if one player
+# does not respond, that player's block is the suspect.
+#
 # Vibration : aucun réglage de rumble n'est posé ici, et ce n'est pas un
 # oubli. La manette ne vibre NULLE PART — ni dans cet émulateur, ni dans les
 # jeux Steam, ni depuis le client Moonlight — et aucun des trois maillons n'a
@@ -325,7 +355,7 @@ GuiConfigs\\CurrentSettings.ini et celle de la PS3 émulée dans config.yml"""
 steam_input = "required"
 mode        = "xinput"
 mapping       = "releve"
-mapping_where = 'config\input_configs\global\Default.yml, sous le dossier d installation de RPCS3, section « Player 1 Input » — posé par le second bloc [[bootstrap]] de ce profil'
+mapping_where = 'config\input_configs\global\Default.yml, sous le dossier d installation de RPCS3, sections « Player 1 Input » à « Player 4 Input » — posé par le second bloc [[bootstrap]] de ce profil ; seul le joueur 1 a été VU répondre, les joueurs 2 à 4 sont posés et jamais essayés'
 rumble        = "inconnu"
 
 # SOUS QUEL PAD ce releve a ete fait. Mesure le 2026-08-29 : Apollo annonce
