@@ -20,14 +20,72 @@ schema = 1
 id  = "ppsspp"
 exe = 'PPSSPPWindows64.exe'
 
-# Amorçage : pas de bloc [[bootstrap]]. Ce que PPSSPP doit recevoir pour
-# lancer un jeu au lieu de son assistant de première configuration reste À
-# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
-# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
-# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
-# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
-# « cet émulateur se débrouille » : voir
-# docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
+# BOOTSTRAP — the language only, added on 2026-09-26. Nothing else is
+# imposed: no first-run wizard has been seen blocking a game here.
+#
+# THE FILE: <exe>\memstick\PSP\SYSTEM\ppsspp.ini. Windows/main.cpp
+# (InitMemstickDirectory) keeps the memory stick next to the executable
+# unless an installed.txt sits there, which the pinned zip does not ship —
+# and the console's own file was found at exactly that path.
+#
+# TWO KEYS, read at v1.20.4 (fa50bb1) in Core/Config.cpp:
+#   - [General] Language (generalSettings) is the interface, named after the
+#     translation files the archive ships in assets\lang — the table below
+#     was listed on the pinned install itself. Two codes are not ISO: Czech
+#     is cz_CZ and Greek gr_EL, exactly as the files are named;
+#   - [SystemParam] GameLanguage (systemParamSettings) is what games read.
+#     -1 is "Auto": GetPSPLanguage() derives it from [General] Language
+#     through assets\langregion.ini [SystemLanguage] (fr_FR = FRENCH). It
+#     is IMPOSED at -1 so that one table drives both; a fixed value would
+#     win over the console's language. The old [SystemParam] Language key
+#     is no longer read at this version.
+# ⚠ GameLanguage is PER_GAME: a <GAMEID>_config.ini still overrides it.
+[[bootstrap]]
+target = '{install_dir}\memstick\PSP\SYSTEM\ppsspp.ini'
+content = """
+; Écrit par « retro ». Ce fichier porte TROIS sortes de réglages : ce que la
+; console IMPOSE et repose à chaque lancement (la langue), ce qu'elle a posé
+; UNE FOIS et ne retouche plus — rien, pour PPSSPP —, et tout le reste, qui
+; vous appartient : PPSSPP le réécrit lui-même, et ces commentaires avec.
+"""
+enforced = """
+[SystemParam]
+GameLanguage = -1
+"""
+
+[bootstrap.langue]
+repli = "english"
+arabic     = "[General]\nLanguage = ar_AE"
+brazilian  = "[General]\nLanguage = pt_BR"
+bulgarian  = "[General]\nLanguage = bg_BG"
+czech      = "[General]\nLanguage = cz_CZ"
+danish     = "[General]\nLanguage = da_DK"
+dutch      = "[General]\nLanguage = nl_NL"
+english    = "[General]\nLanguage = en_US"
+finnish    = "[General]\nLanguage = fi_FI"
+french     = "[General]\nLanguage = fr_FR"
+german     = "[General]\nLanguage = de_DE"
+greek      = "[General]\nLanguage = gr_EL"
+hungarian  = "[General]\nLanguage = hu_HU"
+indonesian = "[General]\nLanguage = id_ID"
+italian    = "[General]\nLanguage = it_IT"
+japanese   = "[General]\nLanguage = ja_JP"
+koreana    = "[General]\nLanguage = ko_KR"
+latam      = "[General]\nLanguage = es_LA"
+malay      = "[General]\nLanguage = ms_MY"
+norwegian  = "[General]\nLanguage = no_NO"
+polish     = "[General]\nLanguage = pl_PL"
+portuguese = "[General]\nLanguage = pt_PT"
+romanian   = "[General]\nLanguage = ro_RO"
+russian    = "[General]\nLanguage = ru_RU"
+schinese   = "[General]\nLanguage = zh_CN"
+spanish    = "[General]\nLanguage = es_ES"
+swedish    = "[General]\nLanguage = sv_SE"
+tchinese   = "[General]\nLanguage = zh_TW"
+thai       = "[General]\nLanguage = th_TH"
+turkish    = "[General]\nLanguage = tr_TR"
+ukrainian  = "[General]\nLanguage = uk_UA"
+vietnamese = "[General]\nLanguage = vi_VN"
 
 # `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
 # l'identifiant lui-même : un identifiant n'est pas une propriété du
