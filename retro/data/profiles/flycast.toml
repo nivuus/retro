@@ -20,18 +20,66 @@ schema = 1
 id  = "flycast"
 exe = 'flycast.exe'
 
-# Amorçage : pas de bloc [[bootstrap]]. Ce que Flycast doit recevoir pour
-# lancer un jeu au lieu de son assistant de première configuration reste À
-# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
-# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
-# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
-# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
-# « cet émulateur se débrouille » : voir
-# docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
-# Le chemin des BIOS en fera partie : « retro status --bios » vérifie le
-# dossier que le propriétaire a choisi pendant que l'émulateur cherche dans
-# le sien, et sans ce réglage le rapport annonce « BIOS présent » alors que
-# l'émulateur ne les voit pas — le pire des états, un rapport qui ment.
+# BOOTSTRAP — emu.cfg, next to flycast.exe. Added on 2026-09-26 for two
+# things only, both read in the source at v2.7 (5aa091fd), neither seen
+# acting yet:
+#
+# 1. THE THREE OTHER DREAMCAST PORTS. core/cfg/option.cpp declares
+#    `device1` = MDT_SegaController but `device2`..`device4` = MDT_None, in
+#    section "input", loaded as integers (MDT_SegaController = 0,
+#    MDT_None = 10 in core/hw/maple/maple_cfg.h). Gamepads DO get a port on
+#    their own — sdl_open_joystick() (core/sdl/sdl.cpp) gives SDL index 0..3
+#    maple port A..D — but a port whose device is None reads nothing: three
+#    players would be assigned and deaf. The same trap as Dolphin's
+#    SIDevice1..3.
+#    ⚠ A `maple_sdl_joystick_<id>` key left in [input] (SaveMaplePorts,
+#    core/input/gamepad_device.cpp) overrides the automatic assignment; the
+#    merge never deletes keys, so such a key must be removed by hand.
+#
+# 2. THE LANGUAGE, see [bootstrap.langue] below.
+#
+# emu.cfg lives next to the executable (setupPath, core/windows/winmain.cpp:
+# set_user_config_dir on the exe folder), so `{install_dir}` — and an
+# upgrade, which wipes that folder, simply gets it re-posed.
+[[bootstrap]]
+target = '{install_dir}\emu.cfg'
+content = """
+; Écrit par « retro ». Ce fichier porte TROIS sortes de réglages : ce que la
+; console IMPOSE et repose à chaque lancement (les prises 2 à 4 et la langue),
+; ce qu'elle a posé UNE FOIS et ne retouche plus — rien, pour Flycast —, et
+; tout le reste, qui vous appartient : Flycast le réécrit lui-même, et ces
+; commentaires avec.
+"""
+enforced = """
+[input]
+device2 = 0
+device3 = 0
+device4 = 0
+"""
+
+# THE LANGUAGE, read at v2.7: `Dreamcast.Language` (core/cfg/option.cpp,
+# section "config", default 1) is the Dreamcast system language games read —
+# 0 Japanese, 1 English, 2 German, 3 French, 4 Spanish, 5 Italian (the
+# labels of core/ui/settings_general.cpp, in index order). nvmem.cpp
+# (fixUpDCFlash) writes it into the flash only when it is <= 5, hence no 6.
+# `UILanguage` is the interface: "", en, fr, hu, ja, pt_BR, sv
+# (UILanguages[], same file). Every other Steam language falls back to
+# English, the Dreamcast having none of them.
+# ⚠ Region is auto-corrected from the disc's IP.BIN (core/emulator.cpp), and
+# many NTSC-U discs only carry English: French shows on PAL discs.
+# ⚠ A per-game section overrides both, and -config is then ignored.
+[bootstrap.langue]
+repli     = "english"
+english   = "[config]\nDreamcast.Language = 1\nUILanguage = en"
+french    = "[config]\nDreamcast.Language = 3\nUILanguage = fr"
+german    = "[config]\nDreamcast.Language = 2\nUILanguage = en"
+spanish   = "[config]\nDreamcast.Language = 4\nUILanguage = en"
+latam     = "[config]\nDreamcast.Language = 4\nUILanguage = en"
+italian   = "[config]\nDreamcast.Language = 5\nUILanguage = en"
+japanese  = "[config]\nDreamcast.Language = 0\nUILanguage = ja"
+hungarian = "[config]\nDreamcast.Language = 1\nUILanguage = hu"
+brazilian = "[config]\nDreamcast.Language = 1\nUILanguage = pt_BR"
+swedish   = "[config]\nDreamcast.Language = 1\nUILanguage = sv"
 
 # `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
 # l'identifiant lui-même : un identifiant n'est pas une propriété du
