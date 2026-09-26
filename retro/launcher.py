@@ -42,6 +42,9 @@ from retro import render as render_mod
 DIR = "_launcher"
 EXE = "retro-launch.exe"
 SOURCE = "retro-launch.cs"
+# The YAML half of the merge, compiled with SOURCE into the same binary.
+SOURCE_YAML = "retro-yaml.cs"
+SOURCES_CS = (SOURCE, SOURCE_YAML)
 PLAN = "systems"
 MODE = "mode.txt"
 LANGUE_FICHIER = "langue.txt"
@@ -580,7 +583,9 @@ def lanceur_perime(emulation_root_local) -> bool:
     """
     dossier = local_dir(emulation_root_local)
     try:
-        return (dossier / SOURCE).stat().st_mtime > (dossier / EXE).stat().st_mtime
+        binaire = (dossier / EXE).stat().st_mtime
+        return any((dossier / nom).stat().st_mtime > binaire
+                   for nom in SOURCES_CS)
     except OSError:
         return False
 
@@ -801,7 +806,7 @@ def deposer_source(emulation_root_local) -> list[pathlib.Path]:
     dossier = local_dir(emulation_root_local)
     dossier.mkdir(parents=True, exist_ok=True)
     deposes = []
-    for nom in (SOURCE, "compiler.cmd"):
+    for nom in (*SOURCES_CS, "compiler.cmd"):
         origine = SOURCES / nom
         if not origine.is_file():
             raise FileNotFoundError(

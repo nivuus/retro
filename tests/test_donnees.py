@@ -12,7 +12,7 @@ import tomllib
 
 import pytest
 
-from retro import cli, install, manifest, profiles
+from retro import cli, install, launcher, manifest, profiles
 
 RACINE = pathlib.Path(__file__).parent.parent
 
@@ -959,7 +959,13 @@ def test_aucun_profil_livre_ne_pose_de_liaison_de_manette():
                     "dire. Les exceptions de RPCS3 et de Vita3K sont nommées ; "
                     "une troisième doit l'être aussi, ou le garde ne garde "
                     "plus rien.")
-                if f.stem == "rpcs3":
+                if f.stem == "rpcs3" and b.target.endswith("config.yml"):
+                    # The system-language target (2026-09-26) poses a header
+                    # only; its one key comes from the language table.
+                    assert actives == [], (
+                        f"{f.name} : {b.target} pose des lignes actives "
+                        f"une fois pour toutes — {actives}")
+                elif f.stem == "rpcs3":
                     # Son contenu est gelé ligne à ligne : toute liaison qu'on
                     # y glisserait se verrait ici.
                     assert tuple(actives) == RPCS3_MANETTE, (
@@ -2017,14 +2023,20 @@ def test_le_lanceur_ne_pose_aucune_marque_de_ligne_dans_un_yaml():
         "n'est pas posée dans un YAML — un lecteur futur la remettrait, et "
         "chaque lancement déposerait une sauvegarde de plus"
     )
-    # Chaque pose de la marque est gardée : une seule oubliée écrirait un
-    # « ; » au milieu d'un YAML, que le lecteur de l'émulateur refuserait.
-    nues = [n + 1 for n, l in enumerate(source.splitlines())
-            if ".Add(MARQUE_FUSION)" in l and "!yaml" not in l]
-    assert nues == [], (
-        "ces poses de MARQUE_FUSION ne sont pas gardées par « !yaml » : "
-        f"lignes {nues}"
-    )
+    # The guarantee is STRUCTURAL since the two-level YAML merge: a YAML
+    # target leaves Fusionner for retro-yaml.cs before the first pose of the
+    # marker, and retro-yaml.cs does not know the marker at all. A single
+    # pose reached by a YAML target would write a "; " the emulator's reader
+    # rejects.
+    fusion = source[source.index("static string Fusionner("):]
+    delegation = fusion.index("if (yaml) return FusionYaml.Fusionner(")
+    assert delegation < fusion.index(".Add(MARQUE_FUSION)"), (
+        "retro-launch.cs: a MARQUE_FUSION pose is reachable before YAML "
+        "targets are handed to retro-yaml.cs")
+    yaml_cs = (launcher.SOURCES / launcher.SOURCE_YAML).read_text(
+        encoding="utf-8-sig")
+    assert "MARQUE_FUSION" not in yaml_cs, (
+        "retro-yaml.cs poses the INI marker, which is not a YAML comment")
 
 
 def test_la_fusion_ne_juge_pas_sa_conformite_sur_ses_propres_marques():

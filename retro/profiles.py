@@ -16,6 +16,8 @@ import re
 import tomllib
 
 from retro import langue as langue_mod
+from retro.dialectes import (  # noqa: F401 — re-exported
+    _INI, _YAML, cles_de, cles_ini, cles_yaml, lignes_yaml)
 from retro import render as render_mod
 from retro.render import Render, RenderMode
 
@@ -1031,56 +1033,6 @@ def _lire_langue_absente(path: pathlib.Path, brut, langues) -> str:
     return brut.strip()
 
 
-def cles_ini(fragment: str) -> list[tuple[str, str]]:
-    """Les couples (section, clé) d'un fragment INI, dans l'ordre.
-
-    Rendue publique : `retro status` compte ce que la console impose, et
-    recompter ailleurs ferait deux analyseurs qui divergeraient au premier
-    format inhabituel.
-
-    Les commentaires n'y sont PAS des clés. Une ligne « ; Scaling = ... » ne
-    doit pas passer pour le réglage qu'elle explique — c'est la même règle que
-    dans la fusion du lanceur, et l'y contredire ferait dire au rapport qu'une
-    clé est imposée alors qu'elle ne l'est pas.
-    """
-    section, cles = "", []
-    for ligne in fragment.splitlines():
-        nu = ligne.strip()
-        if not nu or nu[0] in ";#":
-            continue
-        if nu.startswith("[") and nu.endswith("]"):
-            section = nu[1:-1].strip()
-        elif "=" in nu:
-            cles.append((section, nu.split("=", 1)[0].strip()))
-    return cles
-
-
-# Les extensions dont le contenu est un YAML PLAT. Vita3K est le seul cas
-# livré : son config.yml est une map de scalaires au premier niveau, plus
-# quelques séquences (CONFIG_VECTOR, vita3k/config/include/config/config.h).
-#
-# Pourquoi un second dialecte, alors que D7 a conclu que « la fusion n'a pas
-# besoin d'apprendre le YAML » : le Default.yml de RPCS3 est posé par le
-# régime « si-absent », qui copie des octets et ne lit jamais le contenu. Le
-# config.yml de Vita3K, lui, est créé par l'émulateur au premier lancement
-# (init_config -> serialize_config, vita3k/config/src/config.cpp) : « si-absent »
-# ne se déclencherait donc JAMAIS, et le seul régime qui s'applique est celui
-# qui lit et fusionne.
-_YAML = (".yml", ".yaml")
-
-# LES EXTENSIONS DONT LE CONTENU EST UN INI PLAT — « clé = valeur », avec ou
-# sans sections. Elles sont ÉNUMÉRÉES plutôt que supposées, et c'est le fond
-# de l'affaire : la fusion traite en INI tout ce qui n'est pas YAML, donc une
-# extension inconnue serait fusionnée en INI SANS QUE PERSONNE NE L'AIT
-# DÉCIDÉ. Si le fichier n'en est pas un, aucune clé n'est posée, aucun
-# message n'est produit, et le réglage n'est jamais imposé — le défaut le
-# plus muet de ce mécanisme.
-#
-# .cfg est le retroarch.cfg, .opt le fichier d'options d'un cœur libretro :
-# deux formats « clé = valeur » sans sections, vérifiés sur la console.
-_INI = (".ini", ".cfg", ".opt", ".toml")
-
-
 def dialecte(target: str) -> str:
     """« yaml » ou « ini », d'après l'EXTENSION de la cible — jamais d'après
     un champ déclaré, qui pourrait contredire ce que le fragment contient.
@@ -1100,43 +1052,6 @@ def dialecte(target: str) -> str:
         "fusionnée en INI sans que personne ne l'ait décidé : si le fichier "
         "n'en est pas un, aucune clé ne serait posée et rien ne le dirait."
     )
-
-
-def cles_yaml(fragment: str) -> list[tuple[str, str]]:
-    """Les clés d'un YAML PLAT, sous la section vide.
-
-    Seul le PREMIER NIVEAU compte : une ligne indentée appartient à la clé du
-    dessus, et une ligne « - x » est un élément de séquence. Les compter pour
-    des réglages ferait dire au rapport qu'une clé est imposée alors qu'aucun
-    lecteur YAML ne la verrait — la panne muette que ce dépôt refuse.
-
-    La section rendue est vide, et le couple est gardé : les deux dialectes se
-    comparent alors entre eux sans que l'appelant ait à savoir lequel il tient.
-    """
-    cles = []
-    for ligne in fragment.splitlines():
-        if not ligne.strip() or ligne.lstrip().startswith("#"):
-            continue
-        if ligne[:1].isspace() or ligne.lstrip().startswith("-"):
-            continue
-        if ":" in ligne:
-            cles.append(("", ligne.split(":", 1)[0].strip()))
-    return cles
-
-
-def cles_de(target: str, fragment: str) -> list[tuple[str, str]]:
-    """Les couples (section, clé) d'un fragment, dans le dialecte de sa CIBLE.
-
-    Le dialecte se déduit de l'EXTENSION du fichier visé, pas d'un champ
-    déclaré : un champ pourrait contredire ce que le fragment contient, une
-    extension non.
-
-    Sans cela, une ligne « warn-missing-firmware: false » apportée à un YAML
-    n'aurait posé RIEN, sans un mot : `cles_ini` exige un « = », rend une
-    liste vide, et toutes les gardes bâties dessus gardent alors le vide.
-    """
-    suffixe = pathlib.PureWindowsPath(target).suffix.lower()
-    return cles_yaml(fragment) if suffixe in _YAML else cles_ini(fragment)
 
 
 def _valider_impose_contre_langues(path: pathlib.Path, target: str,

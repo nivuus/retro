@@ -143,12 +143,10 @@ confirmationRestart=false
 # thaï, turc, ukrainien, vietnamien — ne sont pas déclarées : elles prennent le
 # repli, et « retro status » les nomme une par une.
 #
-# CE BLOC NE POSE QUE L'INTERFACE. La langue SYSTÈME de la PS3 émulée — celle
-# qu'un jeu interroge — est `System: Language:` dans le config.yml de RPCS3,
-# et elle N'EST PAS POSABLE AUJOURD'HUI : c'est un YAML IMBRIQUÉ, et les deux
-# dialectes de fusion ne connaissent que l'INI à sections et le YAML PLAT
-# (retro/profiles.py, cles_yaml — « seul le PREMIER NIVEAU compte »). La
-# valeur, elle, est relevée et n'attend que le mécanisme : voir la dette D12.
+# THIS BLOCK ONLY POSES THE INTERFACE. The emulated PS3's SYSTEM language —
+# the one a game asks for — is `System: Language:` in RPCS3's config.yml,
+# posed by the third bootstrap of this profile since the YAML dialect reads
+# two levels (2026-09-26).
 [bootstrap.langue]
 repli = "english"
 english    = "[Localization]\nlanguage=en"
@@ -307,11 +305,69 @@ Player 4 Input:
 # `cfg_player` (Emu/Io/pad_config.h), qui ne porte QUE des liaisons de
 # manette. Les deux langues de RPCS3 vivent ailleurs — celle de son interface
 # dans GuiConfigs\CurrentSettings.ini (première cible de ce profil), celle de
-# la PS3 émulée dans son config.yml, qui n'est cible d'aucun amorçage : voir
-# la dette D12 pour la raison, qui n'est pas un oubli.
+# la PS3 émulée dans son config.yml (troisième cible).
 langue_absente = """ce fichier ne porte que le gestionnaire de manette \
 (cfg_player, Emu/Io/pad_config.h) ; la langue de l'interface vit dans \
 GuiConfigs\\CurrentSettings.ini et celle de la PS3 émulée dans config.yml"""
+
+# THIRD TARGET — config.yml, the emulated PS3's system language. Added on
+# 2026-09-26, once the YAML dialect learned a second level (retro/dialectes.py
+# and retro-yaml.cs, one rule on both sides).
+#
+# Read at the pinned revision 6567a5a2: Emu/system_config.h declares
+# `node_sys` as "System" holding `cfg::_enum<CellSysutilLang> language` named
+# "Language", default English (US); the twenty strings are
+# fmt_class_string<CellSysutilLang>::format in
+# Emu/Cell/Modules/cellSysutil.cpp. Games read it through
+# cellSysutilGetSystemParamInt. An unknown string is logged and the previous
+# value KEPT (Utilities/Config.cpp, try_to_enum_value) — so a typo here is a
+# game in English with one line in RPCS3.log, nothing on screen.
+#
+# `content` is a header only, in YAML comment syntax ("#", never ";"): RPCS3
+# writes this file itself at first launch, so "si-absent" only matters after
+# an upgrade has wiped the install folder — then the merge poses "System:"
+# alone and RPCS3 fills every other default on its next save, dropping the
+# header with it.
+#
+# ⚠ A per-game configuration (<game>.yml, or config\custom_configs\
+# config_<SERIAL>.yml, Emu/System.cpp) is applied AFTER this file, and those
+# written from RPCS3's UI are full copies: they override the language. None
+# exists on the console (checked 2026-09-26).
+#
+# The Steam languages the PS3 does not know — Arabic, Bulgarian, Czech, Greek,
+# Hungarian, Indonesian, Malay, Romanian, Thai, Ukrainian, Vietnamese — take
+# the fallback, and `retro status` names them.
+[[bootstrap]]
+target = '{install_dir}\config\config.yml'
+content = '''
+# Écrit par « retro ». Ce fichier porte TROIS sortes de réglages : ce que la
+# console IMPOSE et repose à chaque lancement (la langue de la PS3, sous
+# « System »), ce qu'elle a posé UNE FOIS et ne retouche plus — rien d'autre
+# —, et tout le reste, qui vous appartient : RPCS3 le réécrit lui-même.
+'''
+
+[bootstrap.langue]
+repli = "english"
+japanese   = "System:\n  Language: Japanese"
+english    = "System:\n  Language: English (US)"
+french     = "System:\n  Language: French"
+spanish    = "System:\n  Language: Spanish"
+latam      = "System:\n  Language: Spanish"
+german     = "System:\n  Language: German"
+italian    = "System:\n  Language: Italian"
+dutch      = "System:\n  Language: Dutch"
+portuguese = "System:\n  Language: Portuguese (Portugal)"
+brazilian  = "System:\n  Language: Portuguese (Brazil)"
+russian    = "System:\n  Language: Russian"
+koreana    = "System:\n  Language: Korean"
+tchinese   = "System:\n  Language: Chinese (Traditional)"
+schinese   = "System:\n  Language: Chinese (Simplified)"
+finnish    = "System:\n  Language: Finnish"
+swedish    = "System:\n  Language: Swedish"
+danish     = "System:\n  Language: Danish"
+norwegian  = "System:\n  Language: Norwegian"
+polish     = "System:\n  Language: Polish"
+turkish    = "System:\n  Language: Turkish"
 
 # `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
 # l'identifiant lui-même : un identifiant n'est pas une propriété du

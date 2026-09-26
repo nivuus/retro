@@ -1978,6 +1978,44 @@ ses valeurs se découvrent dans l'archive, et l'archive de Vita3K n'est épingl�
 par aucune empreinte (D5).
 ---
 
+### Où en est D12 — 2026-09-26 : le YAML à deux niveaux, et trois tables de plus
+
+**La langue système de la PS3 est posable.** Le dialecte YAML lit désormais
+deux niveaux, par la même règle des deux côtés — `lignes_yaml` dans
+`retro/dialectes.py`, `FusionYaml` dans `retro/data/launcher/retro-yaml.cs` :
+un « nom: » de premier niveau sans valeur ouvre une SECTION si la ligne
+significative suivante est indentée et de la forme « clé: … » ; sinon il reste
+une clé plate (« lle-modules: » suivi d'une séquence). Seules les lignes au
+PREMIER retrait de la section sont des clés ; les niveaux plus profonds ne sont
+jamais touchés. `rpcs3.toml` porte une troisième cible, `config\config.yml`,
+dont la table pose `System: Language:` — les vingt chaînes relues à la
+révision épinglée.
+
+**Vu tourner, sur la console, par le compilateur de la console.** Le 2026-09-26,
+`retro-yaml.cs` a été compilé par le `csc.exe` de l'invité avec un banc de dix
+cas, dont une copie du VRAI `config.yml` de RPCS3 (276 lignes) : une seule
+ligne change, `Language: English (US)` → `Language: French`, le nombre de lignes
+est conservé, et un second passage ne change plus rien. Le lanceur complet
+(`compiler.cmd`, deux sources) compile.
+
+**Deux tables de plus, relevées dans la source :** Flycast (`emu.cfg`,
+`Dreamcast.Language` — le français vaut **3**, pas 2 — et `UILanguage`) et
+PPSSPP (`ppsspp.ini`, `[General] Language` parmi les fichiers livrés, et
+`[SystemParam] GameLanguage` imposé à -1 pour que les jeux suivent l'interface).
+
+**Ce qui reste hors de portée, et pourquoi — un dialecte manque à chacun :**
+
+| Émulateur | Où vit la langue des jeux | Ce qui manque |
+|---|---|---|
+| Cemu 2.6 | `settings.xml`, `console_language` (entier, FR = 2) | un dialecte XML |
+| shadPS4 0.18.0 | `user/config.json`, `General.console_language` (FR = 2) | un dialecte JSON |
+| xemu 0.8.136 | `eeprom.bin`, u32 à 0x90 sous somme de contrôle | une écriture binaire |
+| Dolphin 2606a, Wii | la NAND, `SYSCONF` `IPL.LNG` (FR = 3) — `Dolphin.ini` ne sert qu'à la GameCube | une option `-C SYSCONF.IPL.LNG=` qui suive la langue |
+| KytyPS5 | l'argument `--console-language` | une option de lancement qui suive la langue |
+
+**Ce qui reste dû, comme pour toutes les autres tables : la preuve** — un jeu
+vu dans la langue demandée.
+
 ## D13 — Deux juges de la langue, et une seule indulgence sur deux
 
 **Constatée le 2026-08-30**, en relisant le mécanisme de D12 des deux côtés à

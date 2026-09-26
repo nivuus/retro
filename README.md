@@ -85,17 +85,23 @@ quand vous voulez :
   console demande. Ce n'est pas « il la suit mal », c'est « il ne la suit pas »,
   et les deux se lisent pareil à l'écran : un jeu en anglais.
 
-  **Les tables sont relevées — et aucune n'a encore été VUE agir.** Les onze
-  entrées d'amorçage des six profils qui en portent disent toutes où elles en
-  sont : sept déclarent une table, quatre déclarent que la question a été posée
-  à la source de l'émulateur et que **la réponse est non** — un fichier de
-  manettes n'a pas de langue, et le dire n'est pas la même chose que se taire.
-  `retro status` distingue les deux, parce qu'à l'écran un relevé oublié et une
-  impossibilité mesurée se lisent tous les deux comme un jeu en anglais.
+  **Les tables sont relevées — et aucune n'a encore été VUE agir.** Les
+  quatorze entrées d'amorçage des huit profils qui en portent disent toutes où
+  elles en sont : dix déclarent une table, quatre déclarent que la question a
+  été posée à la source de l'émulateur et que **la réponse est non** — un
+  fichier de manettes n'a pas de langue, et le dire n'est pas la même chose que
+  se taire. `retro status` distingue les deux, parce qu'à l'écran un relevé
+  oublié et une impossibilité mesurée se lisent tous les deux comme un jeu en
+  anglais.
 
-  Les quatre profils qui n'ont **aucune** entrée d'amorçage — `cemu`,
-  `flycast`, `ppsspp`, `xemu` — y ont désormais leur ligne aussi : il ne leur
-  manque pas une table, il leur manque le fichier de réglages où la poser.
+  Le dialecte YAML lit **deux niveaux** : une clé de premier niveau, ou une
+  clé sous une section (`System:` puis `  Language: French`). C'est ce qui rend
+  posable la langue que les jeux PS3 lisent, dans le `config.yml` de RPCS3.
+
+  Les deux profils qui n'ont **aucune** entrée d'amorçage — `cemu`, `xemu` —
+  y ont leur ligne aussi : il ne leur manque pas une table, il leur manque un
+  dialecte. La langue de Cemu vit dans un XML, celle de la Xbox dans l'EEPROM
+  binaire que xemu émule.
 
   Chaque valeur a été relevée dans la source de son émulateur, ou sur l'archive
   que le manifeste épingle quand la source ne la porte pas — c'est le cas de
