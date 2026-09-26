@@ -22,6 +22,8 @@ def test_rpcs3_dit_que_seul_le_joueur_1_a_ete_vu():
     nobody made."""
     p = profiles.load_profile(PROFIL)
     assert p.input_mapping == profiles.MAPPING_RELEVE
-    assert "joueurs 2 à 4 sont posés" in p.input_mapping_where, (
+    reserve = ("seul le joueur 1 a été VU répondre, les joueurs 2 à 4 sont "
+               "posés et jamais essayés")
+    assert reserve in p.input_mapping_where, (
         "rpcs3.toml: mapping_where no longer says that players 2 to 4 were "
         f"never seen responding — {p.input_mapping_where}")
