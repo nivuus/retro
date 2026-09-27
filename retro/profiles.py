@@ -325,6 +325,28 @@ class Bootstrap:
     # `fill_absent` et pour la `note` d'un `args` vide : « non » sans son motif
     # ne se distingue pas d'un « non » recopié sans avoir regardé.
     langue_absente: str = ""
+    # THE ENFORCED FRAGMENT THAT DEPENDS ON THE RENDER MODE — debt D14.
+    #
+    # The (mode name, fragment) pairs, sorted. A tuple and not a dict, for
+    # the exact reason of `langues`: this dataclass is frozen and the order
+    # must be stable, since the plan writes one line per mode.
+    #
+    # WHY THIS FIELD EXISTS, and why it did not: `enforced` carried a single
+    # value for both modes, on the grounds — written down, and FALSE — that
+    # the fragment is posed before the mode is resolved. The launcher says
+    # the opposite: `Amorcer()` is called FROM `Lancer()`, once the
+    # effective mode is known. An emulator whose fill lives only in its
+    # settings file — PCSX2 — can therefore receive `entier` in native and
+    # `ajuste` in full, which the policy demands and which the single field
+    # made impossible to declare.
+    #
+    # THESE KEYS ARE ENFORCED KEYS, just like `enforced` and the language
+    # tables: same guards, same merge, posed again at every launch. And one
+    # more guard, specific to this field: both modes must pose EXACTLY the
+    # same keys — the merge only writes what a fragment brings, so a key
+    # posed in native and missing from the full fragment would keep its
+    # native value for the whole full mode.
+    enforced_render: tuple[tuple[str, str], ...] = ()
 
 
 def folder_key(nom: str) -> str:
@@ -456,14 +478,17 @@ def _valider_groupes(path: pathlib.Path, pid: str, sid: str,
 # qui seul connaît la session. {render_config} l'est à l'écriture du plan : le
 # chemin d'un fichier ne dépend pas de la résolution.
 _VARIABLES = ("width", "height", "scale", "render_config")
-_CLES_RENDER = ("native", "full", "native_height", "max_scale",
-                "fill_enforced", "fill_enforced_where")
+# `fill_enforced` / `fill_enforced_where` ARE NO LONGER HERE — removed on
+# 2026-09-05 (D14). They lived here, at block level, with ONE value for both
+# modes. A profile that declares them here again is refused by a message that
+# NAMES their replacement: see `_refuser_remplissage_impose_retire`.
+_CLES_RENDER = ("native", "full", "native_height", "max_scale")
 # Le préfixe qu'un `fill_enforced_where` doit porter : « [Section] Clé ».
 # Ce n'est pas une convention de rédaction — c'est ce que la garde de
 # cohérence analyse pour aller chercher la clé dans le fragment imposé.
 _PREFIXE_OU = re.compile(r"^\[([^\[\]]+)\]\s+(\S+)")
 _CLES_MODE = ("args", "note", "crt", "crt_absent", "config",
-              "fill", "fill_absent")
+              "fill", "fill_absent", "fill_enforced", "fill_enforced_where")
 
 
 def _valider_variables(path, sid, quoi: str, gabarit: str) -> None:
@@ -557,13 +582,15 @@ def _lire_mode(path, sid, nom: str, brut) -> RenderMode:
             "'crt_absent'. Le shader CRT n'a de sens qu'en mode natif — "
             "déclaré ici, il ne serait jamais appliqué."
         )
-    fill, fill_absent = _lire_remplissage(path, sid, nom, brut, args, config)
+    fill, fill_absent, impose, impose_ou = _lire_remplissage(
+        path, sid, nom, brut, args, config)
     return RenderMode(args=args, note=note, crt=crt, crt_absent=crt_absent,
-                      config=config, fill=fill, fill_absent=fill_absent)
+                      config=config, fill=fill, fill_absent=fill_absent,
+                      fill_enforced=impose, fill_enforced_where=impose_ou)
 
 
 def _lire_remplissage(path, sid, nom: str, brut, args: str,
-                      config: str) -> tuple[str, str]:
+                      config: str) -> tuple[str, str, str, str]:
     """Le TROISIÈME axe de ce mode : `fill`, `fill_absent`, ou ni l'un ni
     l'autre.
 
@@ -578,6 +605,8 @@ def _lire_remplissage(path, sid, nom: str, brut, args: str,
     """
     fill = brut.get("fill", "").strip()
     fill_absent = brut.get("fill_absent", "").strip()
+    impose, impose_ou = _lire_remplissage_impose_du_mode(
+        path, sid, nom, brut, fill, fill_absent)
     if fill and fill_absent:
         raise ProfileError(
             f"{path} [{sid}] : 'render.{nom}' déclare SOIT 'fill' — le "
@@ -586,7 +615,7 @@ def _lire_remplissage(path, sid, nom: str, brut, args: str,
             "deux à la fois ne veulent rien dire."
         )
     if not fill:
-        return "", fill_absent
+        return "", fill_absent, impose, impose_ou
     if fill not in render_mod.REMPLISSAGES:
         raise ProfileError(
             f"{path} [{sid}] : 'render.{nom}.fill' vaut {fill!r} — "
@@ -616,7 +645,118 @@ def _lire_remplissage(path, sid, nom: str, brut, args: str,
             "politique dans retro/render.py — où elle est écrite en clair, et "
             "citée par le rapport."
         )
-    return fill, ""
+    return fill, "", impose, impose_ou
+
+
+def _lire_remplissage_impose_du_mode(path, sid, nom: str, brut, fill: str,
+                                     fill_absent: str) -> tuple[str, str]:
+    """The fill the bootstrap enforces FOR THIS MODE — debt D14.
+
+    The twin field on [system.render] carried ONE value for both modes, and
+    its original justification was false: it said the enforced fragment is
+    posed before the mode is resolved. Measured on 2026-09-05 in the
+    launcher, it is the opposite — `Amorcer()` is called FROM `Lancer()`
+    (line 1487), once the effective mode has been resolved 230 lines earlier
+    (line 1257). A fragment per mode can therefore be posed, exactly as there
+    already is a fragment per language.
+
+    WHAT CHANGES FOR THE GUARD, AND IT IS THE POINT: this field is CHECKED
+    AGAINST THE POLICY, like `fill`. The per-profile field escaped it, since
+    one value cannot satisfy two cells. Here there is no excuse left: a
+    profile enforcing `entier` in full mode is refused at load time, and
+    that refusal is what makes PCSX2 shippable without lying.
+
+    Four refusals, each on a mistake that would only show on screen.
+    """
+    impose = brut.get("fill_enforced", "")
+    impose_ou = brut.get("fill_enforced_where", "")
+    impose, impose_ou = impose.strip(), impose_ou.strip()
+    if bool(impose) != bool(impose_ou):
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}' declares "
+            + ("'fill_enforced' without 'fill_enforced_where'"
+               if impose else
+               "'fill_enforced_where' without 'fill_enforced'")
+            + ". The two go together: the first is the fill the console "
+            "enforces IN THIS MODE, the second says WHERE it is posed — and "
+            "its « [Section] Key » pair is what lets a guard check that this "
+            "mode's fragment really poses it. A fill without its address "
+            "could be verified by nobody."
+        )
+    if not impose:
+        return "", ""
+    if fill or fill_absent:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}' declares 'fill_enforced' next "
+            + ("to 'fill'" if fill else "to 'fill_absent'")
+            + ". The same axis would be decided in two places for the SAME "
+            "mode, and nothing in the profile would say which one wins. "
+            "Choose: set by the mode's arguments ('fill'), found absent "
+            "('fill_absent'), or enforced by the bootstrap in the emulator's "
+            "settings file ('fill_enforced')."
+        )
+    if impose not in render_mod.REMPLISSAGES:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}.fill_enforced' is {impose!r} — "
+            f"unknown fill. The fills are "
+            f"{', '.join(render_mod.REMPLISSAGES)}: the only two ways to "
+            "enlarge an image WITHOUT distorting it. An unknown value would "
+            "be printed as is by the report, as if it meant something."
+        )
+    if not _PREFIXE_OU.match(impose_ou):
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}.fill_enforced_where' must "
+            "START with the « [Section] Key » pair that carries the setting, "
+            f"then give its value and where it comes from — got {impose_ou!r}. "
+            "The prefix is not decorative: a guard parses it to check that "
+            "this key really is in the fragment the console enforces FOR "
+            "THIS MODE. Without it, the profile could announce a fill that "
+            "nothing poses."
+        )
+    attendu = render_mod.remplissage_attendu(nom)
+    if impose != attendu:
+        raise ProfileError(
+            f"{path} [{sid}] : 'render.{nom}.fill_enforced' is {impose!r}, "
+            f"but the fill policy picks {attendu!r} for the {nom} mode — "
+            f"{render_mod.motif_remplissage(nom)}. A PER-MODE enforced "
+            "fragment can pose the right value in each mode: nothing here "
+            "forces a contradiction of the policy, and nothing would expose "
+            "one — it would only show on screen. Fix the profile, or change "
+            "the policy in retro/render.py, where it is written in plain "
+            "sight."
+        )
+    return impose, impose_ou
+
+
+# THE REMOVED FIELDS, AND WHAT WE ANSWER WHOEVER WRITES THEM — 2026-09-05, D14.
+#
+# "unknown key: fill_enforced" would be true and useless: the profile's
+# author has a real need — enforcing a fill in the emulator's file — and has
+# just written the field that used to serve it. Telling them only that the key
+# does not exist would send them hunting for a typo. So we tell them WHERE the
+# field went and WHY; otherwise they will reintroduce it believing they fill
+# a gap — what debt D10 describes as the shortest and least visible move.
+_RETIRES_DU_RENDER = ("fill_enforced", "fill_enforced_where")
+
+
+def _refuser_remplissage_impose_retire(path, sid, brut) -> None:
+    ecrits = [c for c in _RETIRES_DU_RENDER if c in brut]
+    if not ecrits:
+        return
+    raise ProfileError(
+        f"{path} [{sid}] : 'render' declares {', '.join(ecrits)}, which was "
+        "REMOVED from the [system.render] block on 2026-09-05. It is not a "
+        "misspelt key, and the need it served still exists: an enforced fill "
+        "is now declared ON A MODE — 'render.native.fill_enforced' and "
+        "'render.full.fill_enforced' — with the matching fragment in the "
+        "[bootstrap.render] table of the bootstrap entry aimed at the "
+        "settings file.\n\n"
+        "Why it went: it carried ONE value for both modes, on the grounds — "
+        "measured FALSE — that the enforced fragment is posed before the "
+        "mode is resolved. It was therefore the only place from which a fill "
+        "escaped the per-mode policy unchallenged. The per-mode field is "
+        "checked against it at load time."
+    )
 
 
 def _lire_render(path, sid, brut, launch: str) -> Render:
@@ -625,6 +765,7 @@ def _lire_render(path, sid, brut, launch: str) -> Render:
             f"{path} [{sid}] : 'render' doit être une table "
             "([system.render.native] / [system.render.full])."
         )
+    _refuser_remplissage_impose_retire(path, sid, brut)
     inconnues = sorted(k for k in brut if k not in _CLES_RENDER)
     if inconnues:
         raise ProfileError(
@@ -672,85 +813,9 @@ def _lire_render(path, sid, brut, launch: str) -> Render:
                 "la console, bornée par l'échelle maximale : sans ces deux "
                 "nombres, elle n'est pas calculable."
             )
-    impose, impose_ou = _lire_remplissage_impose(path, sid, brut, modes)
     return Render(native=modes[render_mod.NATIVE], full=modes[render_mod.FULL],
                   native_height=brut.get("native_height", 0),
-                  max_scale=brut.get("max_scale", 0),
-                  fill_enforced=impose, fill_enforced_where=impose_ou)
-
-
-def _lire_remplissage_impose(path, sid, brut,
-                             modes: dict) -> tuple[str, str]:
-    """Le remplissage que l'AMORÇAGE impose, et où il est posé.
-
-    Sur le bloc [system.render] et non sur un mode : le fragment `enforced`
-    est posé une fois par lancement, AVANT que le mode ne soit résolu. Le
-    réglage vaut donc la même chose en natif et en full, et le déclarer par
-    mode ferait croire à deux valeurs là où le fichier n'en porte qu'une.
-
-    Quatre refus. Chacun laisserait un profil se charger, `retro status`
-    annoncer un remplissage, et RIEN n'être posé sur la machine — la faute
-    exacte que la dette D2 combat, et qui ne produit aucun message.
-
-    Le cinquième refus n'est pas ici : la clé nommée existe-t-elle vraiment
-    dans le fragment imposé ? Cela demande le profil entier, donc ses
-    [[bootstrap]] — voir `_refuser_remplissage_impose_sans_cle`.
-    """
-    impose = brut.get("fill_enforced", "")
-    impose_ou = brut.get("fill_enforced_where", "")
-    for champ, valeur in (("fill_enforced", impose),
-                          ("fill_enforced_where", impose_ou)):
-        if not isinstance(valeur, str):
-            raise ProfileError(
-                f"{path} [{sid}] : 'render.{champ}' doit être du texte."
-            )
-    impose, impose_ou = impose.strip(), impose_ou.strip()
-    if bool(impose) != bool(impose_ou):
-        raise ProfileError(
-            f"{path} [{sid}] : 'render' déclare "
-            + ("'fill_enforced' sans 'fill_enforced_where'"
-               if impose else
-               "'fill_enforced_where' sans 'fill_enforced'")
-            + ". Les deux vont ensemble : le premier est le remplissage que "
-            "la console impose, le second dit OÙ il est posé — et son couple "
-            "« [Section] Clé » est ce qui permet de vérifier que quelque "
-            "chose le pose réellement. Un remplissage sans son adresse ne "
-            "serait vérifiable par personne ; une adresse sans remplissage "
-            "décrirait un réglage que rien ne déclare."
-        )
-    if not impose:
-        return "", ""
-    if impose not in render_mod.REMPLISSAGES:
-        raise ProfileError(
-            f"{path} [{sid}] : 'render.fill_enforced' vaut {impose!r} — "
-            f"remplissage inconnu. Les remplissages sont "
-            f"{', '.join(render_mod.REMPLISSAGES)} : ce sont les deux seules "
-            "façons d'agrandir une image SANS la déformer. Une valeur "
-            "inconnue serait imprimée telle quelle par le rapport, comme si "
-            "elle voulait dire quelque chose."
-        )
-    if not _PREFIXE_OU.match(impose_ou):
-        raise ProfileError(
-            f"{path} [{sid}] : 'render.fill_enforced_where' doit COMMENCER "
-            "par le couple « [Section] Clé » qui porte le réglage, puis dire "
-            f"sa valeur et d'où elle vient — reçu {impose_ou!r}. Le préfixe "
-            "n'est pas décoratif : c'est lui qu'une garde analyse pour "
-            "vérifier que cette clé figure bien dans le fragment que la "
-            "console impose. Sans lui, le profil pourrait annoncer un "
-            "remplissage que rien ne pose, et rien ne le dirait."
-        )
-    deja = [nom for nom, m in modes.items() if m.fill or m.fill_absent]
-    if deja:
-        raise ProfileError(
-            f"{path} [{sid}] : 'render.fill_enforced' coexiste avec le "
-            f"remplissage déclaré par le mode {', '.join(sorted(deja))}. Le "
-            "même axe serait décidé à deux endroits, et rien dans le profil "
-            "ne dirait lequel gagne. Choisir : réglé par les arguments du "
-            "mode ('fill'), constaté absent ('fill_absent'), ou imposé par "
-            "l'amorçage dans le fichier de réglages de l'émulateur "
-            "('fill_enforced')."
-        )
-    return impose, impose_ou
+                  max_scale=brut.get("max_scale", 0))
 
 
 def _lire_bootstraps(path: pathlib.Path, brut) -> tuple[Bootstrap, ...]:
@@ -892,6 +957,80 @@ def _lire_langues(path: pathlib.Path, target: str,
     return tuple(sorted(fragments.items())), repli
 
 
+def _lire_par_mode(path: pathlib.Path, target: str,
+                   brut) -> tuple[tuple[str, str], ...]:
+    """An entry's [bootstrap.render] table: one enforced fragment PER MODE.
+
+    Exact transposition of `_lire_langues`, and for the same underlying
+    reason: the merge only writes the keys a fragment brings, so two fragments
+    that do not pose the same keys leave the previous one's in place — with
+    no error to say so.
+
+    What differs from languages fits in one word: there is no fallback. The
+    declared modes are TWO, known, and `auto` is not one of them — it
+    inherits the mode it picks. Both are therefore REQUIRED as soon as the
+    table exists: declaring only one would leave the other mode without a
+    fragment, and the declared mode's key would hold for the whole of the
+    other.
+    """
+    if brut is None:
+        return ()
+    if not isinstance(brut, dict):
+        raise ProfileError(
+            f"{path} [[bootstrap]] : 'render' must be the TABLE "
+            "« [bootstrap.render] », one configuration fragment per render "
+            f"mode — got a {type(brut).__name__}."
+        )
+    mauvais = sorted(n for n, t in brut.items() if not isinstance(t, str))
+    if mauvais:
+        raise ProfileError(
+            f"{path} [bootstrap.render] : {', '.join(mauvais)} — each mode "
+            "must carry TEXT, the configuration fragment to merge when that "
+            f"mode applies; « {mauvais[0]} » carries a "
+            f"{type(brut[mauvais[0]]).__name__}. The most likely mistake is "
+            "one dot too many: « [bootstrap.render.native] » opens a "
+            "sub-table, whereas the mode is declared « native = '''…''' » "
+            "INSIDE « [bootstrap.render] »."
+        )
+    inconnus = sorted(n for n in brut if n not in render_mod.MODES_DECLARES)
+    if inconnus:
+        raise ProfileError(
+            f"{path} [bootstrap.render] : {', '.join(inconnus)} — these are "
+            f"not declarable render modes. The modes are "
+            f"{', '.join(render_mod.MODES_DECLARES)}; « {render_mod.AUTO} » "
+            "is not one — it has no arguments of its own and inherits the "
+            "mode it picks, so a fragment under its name would be posed by "
+            "nobody."
+        )
+    manquants = [m for m in render_mod.MODES_DECLARES if m not in brut]
+    if manquants:
+        raise ProfileError(
+            f"{path} [bootstrap.render] : mode {', '.join(manquants)} has no "
+            "fragment. BOTH modes are required as soon as this table exists: "
+            "the merge only writes the keys a fragment brings, so the key "
+            "posed by the declared mode would keep its value for the whole "
+            "of the other — an image of the first mode in the second, with "
+            "no error to say so."
+        )
+    attendues, temoin = None, ""
+    for nom in sorted(brut):
+        cles = frozenset(cles_de(target, brut[nom]))
+        if attendues is None:
+            attendues, temoin = cles, nom
+            continue
+        if cles != attendues:
+            ecart = sorted(c for _, c in cles.symmetric_difference(attendues))
+            raise ProfileError(
+                f"{path} [bootstrap.render] : « {nom} » and « {temoin} » do "
+                f"not pose the same keys — {', '.join(ecart)}. Both modes "
+                "must pose EXACTLY the same keys: the merge only writes what "
+                "a fragment brings, so moving from one mode to the other "
+                "would leave the previous one's key in place, and the image "
+                "would not change with no error to say so."
+            )
+    return tuple(sorted(brut.items()))
+
+
 def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     """UNE entrée [[bootstrap]], validée, ou None si elle est vide.
 
@@ -1006,6 +1145,7 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     langues, repli = _lire_langues(path, target, brut.get("langue"))
     langue_absente = _lire_langue_absente(path, brut.get("langue_absente"),
                                           langues)
+    par_mode = _lire_par_mode(path, target, brut.get("render"))
     # Le dialecte se vérifie ICI, à la lecture du profil, et non au lancement
     # sur la console : une extension inconnue doit faire échouer la personne
     # qui écrit le profil, pas le propriétaire devant sa télévision. UN SEUL
@@ -1014,7 +1154,7 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     # une levée nue — sans le chemin du profil en préfixe — serait un
     # constat qui ne nomme aucun fichier, une accusation sans diagnostic,
     # dans le cas où SEULES des langues seraient présentes.
-    if enforced.strip() or langues:
+    if enforced.strip() or langues or par_mode:
         try:
             dialecte(target)
         except ProfileError as exc:
@@ -1026,16 +1166,16 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     # des langues promettrait à son propriétaire un régime qu'il n'applique
     # pas.
     impose_total = "\n".join(
-        [enforced, *(texte for _, texte in langues)])
+        [enforced, *(texte for _, texte in langues),
+         *(texte for _, texte in par_mode)])
     # Le second régime se NOMME par ce que cette entrée déclare réellement.
     # Dire « 'enforced' » à un profil qui n'a que des langues enverrait son
     # auteur chercher un champ que son fichier ne porte pas.
-    if enforced.strip() and langues:
-        impose_nomme = "'enforced' et la table [bootstrap.langue]"
-    elif langues:
-        impose_nomme = "la table [bootstrap.langue]"
-    else:
-        impose_nomme = "'enforced'"
+    declares = [nom for nom, present in (
+        ("'enforced'", enforced.strip()),
+        ("la table [bootstrap.langue]", langues),
+        ("la table [bootstrap.render]", par_mode)) if present]
+    impose_nomme = " et ".join(declares) if declares else "'enforced'"
     _valider_regimes(path, target, content, impose_total, impose_nomme)
     # ET LES DEUX FRAGMENTS IMPOSÉS NE SE RECOUVRENT PAS L'UN L'AUTRE. C'est
     # la porte d'à côté du refus « deux langues qui ne posent pas les mêmes
@@ -1043,10 +1183,57 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     # 'content' au total imposé, donc `enforced` et la table pouvaient poser
     # LA MÊME clé sans un mot.
     _valider_impose_contre_langues(path, target, enforced, langues)
+    # AND THE THIRD DOOR, opened by D14: the PER-MODE fragment is one more
+    # merge on the same target, at the same launch. A key it shared with
+    # `enforced` or with a language would be settled by the ORDER of the
+    # merges — a launcher detail the profile writes nowhere. The symptom
+    # would be "I changed modes and the image did not move", with no error
+    # to say so.
+    #
+    # ONE mode only is compared: `_lire_par_mode` has just required both to
+    # pose EXACTLY the same keys.
+    if par_mode:
+        _premier = par_mode[0][1]
+        for _autre, _nom in ((enforced, "'enforced'"),
+                             (langues[0][1] if langues else "",
+                              "the [bootstrap.langue] table")):
+            _valider_impose_contre_par_mode(path, target, _autre, _premier,
+                                            _nom)
     return Bootstrap(target=target, content=content,
                      enforced=enforced.strip(),
                      langues=langues, langue_repli=repli,
-                     langue_absente=langue_absente)
+                     langue_absente=langue_absente,
+                     enforced_render=par_mode)
+
+
+def _valider_impose_contre_par_mode(path: pathlib.Path, target: str,
+                                    autre: str, par_mode: str,
+                                    nomme: str) -> None:
+    """The [bootstrap.render] table shares no key with the other enforced
+    regime it is checked against.
+
+    Same reason as `_valider_impose_contre_langues`, one step further: three
+    fragments can now reach the same target at the same launch — the
+    enforced keys, the language, and the mode. Two of them posing the same
+    key would have it settled by the order of the merges, and the losing
+    value CHANGES with the mode. The symptom would be "I changed modes and
+    the image did not move".
+    """
+    if not autre.strip():
+        return
+    deux = sorted(set(cles_de(target, autre)) & set(cles_de(target, par_mode)))
+    if not deux:
+        return
+    noms = ", ".join(f"[{s}] {c}" if s else c for s, c in deux)
+    raise ProfileError(
+        f"{path} [[bootstrap]] : {noms} — declared both in {nomme} and in "
+        "the [bootstrap.render] table. Both are POSED AGAIN at every launch, "
+        "by two successive merges on the same target: the ORDER of those "
+        "merges would decide, a launcher detail this profile writes nowhere. "
+        "Changing render mode could then change nothing at all, with no "
+        "error to say so. Choose: enforced once for both modes, or carried "
+        "by the modes table."
+    )
 
 
 def _lire_eeprom(path: pathlib.Path, target: str, brut) -> Bootstrap:
@@ -1881,41 +2068,63 @@ def load_profile(path: pathlib.Path) -> Profile:
 
 def _refuser_remplissage_impose_sans_cle(path: pathlib.Path,
                                          profil: Profile) -> None:
-    """La clé nommée par `fill_enforced_where` est-elle RÉELLEMENT imposée ?
+    """Is the key named by `fill_enforced_where` REALLY enforced, IN ITS
+    MODE'S FRAGMENT?
 
-    Un profil peut annoncer « la console impose le remplissage, dans
-    [Display] Scaling » et n'avoir cette clé dans AUCUN de ses fragments
-    `enforced`. Rien ne le dirait : le profil se charge, `retro status`
-    imprime le remplissage, et la machine ne reçoit jamais la clé. C'est
-    exactement la faute de la dette D2 — un réglage qui a l'air posé et qui
-    ne fait rien.
+    A profile can announce "the console enforces the fill, in
+    [EmuCore/GS] IntegerScaling" and have that key in NO fragment of that
+    mode. Nothing would say so: the profile loads, `retro status` prints the
+    fill, and the machine never receives the key when that mode applies.
+    This is exactly the mistake of debt D2 — a setting that looks posed and
+    does nothing.
 
-    TOUS les [[bootstrap]] comptent, pas seulement le premier : RPCS3 en a
-    deux, et exiger que la clé soit dans l'un plutôt que l'autre serait
-    arbitraire. C'est la présence qui est vérifiée, jamais la VALEUR : ce que
-    la clé vaut est une mesure, pas une déclaration, et la comparer ici
-    ferait croire cette garde plus forte qu'elle n'est.
+    EVERY [[bootstrap]] counts, not only the first: RPCS3 has two, and
+    requiring the key in one rather than the other would be arbitrary.
+    Presence is checked, never the VALUE: what the key is worth is a
+    measurement, not a declaration, and comparing it here would make this
+    guard look stronger than it is.
+
+    AND IT DOES NOT LOOK AT `enforced`, DELIBERATELY. That is what makes it
+    narrow, and what makes it useful: posing the key in the field that
+    applies to BOTH modes would announce `entier` in native and `ajuste` in
+    full while the machine receives the same value on both sides. It is the
+    most plausible mistake of this whole mechanism.
     """
-    imposees = {couple for b in profil.bootstraps
-                for couple in cles_ini(b.enforced)}
+    # PER MODE, the guard is NARROWER, and it has to be — debt D14: the key
+    # announced by the native mode must be in the `native` fragment of
+    # [bootstrap.render], never in the other mode's. Settling for the union
+    # of both would let through a profile whose full mode poses a key the
+    # native one lacks — and native would announce a fill nothing poses for
+    # it, exactly the mistake this guard exists to catch, in one more
+    # disguise.
+    par_mode: dict[str, set] = {}
+    for b in profil.bootstraps:
+        for nom, fragment in b.enforced_render:
+            par_mode.setdefault(nom, set()).update(cles_ini(fragment))
     for systeme in profil.systems:
         rendu = systeme.render
-        if rendu is None or not rendu.fill_enforced_where:
+        if rendu is None:
             continue
-        trouve = _PREFIXE_OU.match(rendu.fill_enforced_where)
-        section, cle = trouve.group(1).strip(), trouve.group(2)
-        if (section, cle) in imposees:
-            continue
-        raise ProfileError(
-            f"{path} [{systeme.id}] : 'render.fill_enforced_where' annonce le "
-            f"remplissage posé en [{section}] {cle}, mais aucun [[bootstrap]] "
-            "de ce profil n'impose cette clé. Le profil se chargerait, "
-            "`retro status` imprimerait un remplissage, et la clé n'arriverait "
-            "JAMAIS sur la machine — un réglage qui a l'air posé et qui ne "
-            "fait rien. Ajouter la clé au fragment 'enforced' du bloc "
-            "[[bootstrap]] qui vise le fichier de réglages de cet émulateur, "
-            "ou retirer 'fill_enforced'."
-        )
+        for nom, mode in ((render_mod.NATIVE, rendu.native),
+                          (render_mod.FULL, rendu.full)):
+            if not mode.fill_enforced_where:
+                continue
+            trouve = _PREFIXE_OU.match(mode.fill_enforced_where)
+            section, cle = trouve.group(1).strip(), trouve.group(2)
+            if (section, cle) in par_mode.get(nom, set()):
+                continue
+            raise ProfileError(
+                f"{path} [{systeme.id}] : "
+                f"'render.{nom}.fill_enforced_where' announces the fill "
+                f"posed in [{section}] {cle}, but no [[bootstrap]] of this "
+                f"profile poses that key in the « {nom} » fragment of its "
+                "[bootstrap.render] table. The profile would load, `retro "
+                "status` would print a fill for that mode, and the key would "
+                "NEVER reach the machine when that mode applies — a setting "
+                "that looks posed and does nothing. Add the key to the "
+                f"« {nom} » fragment of [bootstrap.render], or remove "
+                f"'render.{nom}.fill_enforced'."
+            )
 
 
 def _charger_source(directory: pathlib.Path,

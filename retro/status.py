@@ -871,13 +871,15 @@ def etat_rendu(profils: dict) -> list[SystemRender]:
                 remplissage=tuple(
                     (nom, choix.remplissage, choix.motif)
                     for nom, choix in (
-                        (n, render_mod.resoudre_remplissage(
-                            n, m,
-                            fill_enforced=rendu.fill_enforced,
-                            fill_enforced_where=rendu.fill_enforced_where))
+                        (n, render_mod.resoudre_remplissage(n, m))
                         for n, m in ((render_mod.NATIVE, rendu.native),
                                      (render_mod.FULL, rendu.full)))),
-                remplissage_impose=bool(rendu.fill_enforced),
+                # PER MODE — debt D14. The value is one the legend explains,
+                # but its reason ALSO says where the key is posed: that is
+                # what the console takes back from the owner in their own
+                # file, at every launch, and nothing else would tell them.
+                remplissage_impose=bool(rendu.native.fill_enforced
+                                        or rendu.full.fill_enforced),
             ))
     return sorted(etats, key=lambda e: e.system_name)
 
@@ -1401,11 +1403,17 @@ def _lignes_remplissage(remplissage: tuple[tuple[str, str, str], ...],
     un remplissage IMPOSÉ par l'amorçage.
 
     Ce dernier porte pourtant une valeur de l'axe, `entier` ou `ajuste` : sans
-    `impose`, il passerait pour un remplissage que la légende explique. Elle
-    ne l'explique pas — elle cite la politique PAR MODE, et un fragment imposé
-    est posé avant que le mode ne soit résolu, donc la même valeur sort des
-    deux modes. Taire le motif ferait lire une contradiction avec la légende
-    là où il n'y en a pas, et cacherait OÙ la clé est posée.
+    `impose`, il passerait pour un remplissage que la légende explique. Yet
+    the heart of that case is NOT in the legend — it is WHERE the key is
+    posed, that is what the console takes back from the owner in their own
+    settings file, at every launch. Nothing else would tell them.
+
+    Since D14 the enforced fill is PER MODE — one value per mode, CHECKED
+    against the policy at load time. The two reasons then differ — they name
+    two keys, or two values — and both lines are printed. (A per-profile
+    form, one value for both modes, existed until 2026-09-05; the
+    deduplication below still collapses two identical reasons into one
+    line.)
     """
     if not remplissage:
         return []

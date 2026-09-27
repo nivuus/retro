@@ -160,6 +160,24 @@ def enforced_name(profile_id: str, index: int, target: str) -> str:
     return f"{profile_id}.{IMPOSE}.{index}{_suffixe(target)}"
 
 
+def enforced_mode_name(profile_id: str, index: int, mode: str,
+                       target: str) -> str:
+    """The name of the enforced fragment OF ONE RENDER MODE — debt D14.
+
+    The rank AND the mode, for two distinct reasons, exactly like
+    `langue_name`: without the rank, the two targets of one profile would
+    fight over one file; without the mode, the fragments would overwrite
+    each other and the console would pose the last one written, whatever
+    mode the launch picked.
+
+    And it differs from `enforced_name` by that same segment: the keys
+    enforced whatever the mode and those that depend on the mode live in
+    the same entry, on the same target, and would be posed in place of one
+    another if they shared a name.
+    """
+    return f"{profile_id}.{IMPOSE}.{index}.{mode}{_suffixe(target)}"
+
+
 def bootstrap_name(profile_id: str, index: int, target: str) -> str:
     """Le nom du fichier d'amorçage déposé à côté des plans.
 
@@ -208,6 +226,16 @@ def fragments_attendus(profile_id: str, index: int,
         # au loup à chaque passage sur un fragment tout neuf.
         fragments.append((enforced_name(profile_id, index, amorcage.target),
                           amorcage.enforced + "\n"))
+    # One file per declared render MODE, when the entry carries any. Same
+    # shape and same reason as the language fragments: the launcher picks
+    # ONE, the one of the mode it has just resolved, and both stay on disk —
+    # changing modes therefore needs no resynchronisation.
+    for nom, texte in amorcage.enforced_render:
+        # The trailing newline is part of the deposited file: the check
+        # compares byte for byte.
+        fragments.append((enforced_mode_name(profile_id, index, nom,
+                                             amorcage.target),
+                          texte.strip() + "\n"))
     # Un fichier par langue déclarée. Le lanceur en choisira UN, désigné par
     # le plan ; les autres restent sur le disque, prêts pour le jour où la
     # langue de Steam changera — c'est ce qui rend le changement de langue
@@ -347,6 +375,25 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
             # vient de poser.
             f"bootstrap_enforced.{rang}={impose}",
         ]
+        # THE ENFORCED FRAGMENT PER RENDER MODE — debt D14, the exact
+        # transposition of the language lines below.
+        #
+        # The launcher resolves the effective mode BEFORE bootstrapping —
+        # measured: `Amorcer()` is called from `Lancer()`, 230 lines after
+        # the mode is known. It only has to read its mode's line; it replays
+        # no decision and cannot take a different one.
+        #
+        # `auto` has NO line, and wants none: it is never the EFFECTIVE mode
+        # — the launcher resolves it to `native` or `full` before getting
+        # here, exactly as `retro status` does on its side.
+        #
+        # An entry WITHOUT a table writes NO line, on the model of
+        # `bootstrap_count=0`: empty lines would make the launcher loop over
+        # nothing.
+        for nom, _ in amorcage.enforced_render:
+            lignes.append(
+                f"bootstrap_enforced.{rang}.{nom}={plan_dir}\\"
+                f"{enforced_mode_name(profile_id, rang, nom, amorcage.target)}")
         # LA LANGUE : une ligne par langue de Steam, replis DÉJÀ RÉSOLUS.
         #
         # C'est la transposition exacte des lignes `auto_<classe>` du rendu, et
@@ -458,7 +505,10 @@ def lire_amorcages(
         et sur un profil dont deux cibles ont des replis différents la
         prévision ne dit rien de l'une des deux.
 
-    AU-DELÀ, la ligne est ignorée. Une cinquième colonne est le signe d'un
+    ~~BEYOND, the line is ignored.~~ **THIS DECISION WAS REVERSED on
+    2026-09-05**: more than four columns are accepted, the extra ones are
+    ignored and the line is KEPT. The reasoning below is preserved because
+    it is right on one point and wrong on the other. Une cinquième colonne est le signe d'un
     format qu'on ne connaît pas : en deviner le sens poserait au rapport une
     valeur que personne n'a écrite.
 
@@ -475,8 +525,10 @@ def lire_amorcages(
     amorces: dict[str, list[tuple[str, str, str]]] = {}
     for ligne in texte.splitlines():
         parts = ligne.split("\t")
-        if len(parts) in (3, 4) and parts[0].strip():
-            langue = parts[3].strip() if len(parts) == 4 else ""
+        # THREE COLUMNS OR MORE. The tolerance opens UPWARD, and only
+        # upward — see the docstring.
+        if len(parts) >= 3 and parts[0].strip():
+            langue = parts[3].strip() if len(parts) >= 4 else ""
             amorces.setdefault(parts[0].strip(), []).append(
                 (parts[1].strip(), parts[2].strip(), langue))
     return amorces

@@ -193,6 +193,17 @@ static partial class RetroLaunch
     // porte une ligne « defaut » pour ce cas precis, et rien n'est suppose
     // ici — une langue inventee serait indiscernable d'une langue relevee.
     static string langueDuLancement = "";
+    // THE RENDER MODE OF THIS LAUNCH, decided ONCE in Lancer() and read back
+    // by the bootstrap — same shape and same reason as langueDuLancement just
+    // above. It is the EFFECTIVE mode: "auto" is already resolved to "native"
+    // or "full" when this variable is set, because the plan writes no
+    // fragment for "auto", which has no arguments of its own.
+    //
+    // WHAT MAKES THIS POSSIBLE, long believed false: Amorcer() is called FROM
+    // Lancer(), more than two hundred lines after the mode is resolved. A
+    // mode's enforced fragment can therefore be chosen, exactly like a
+    // language's.
+    static string modeDuLancement = "";
     const string SI_ABSENT = "si-absent";
     // La seconde strategie d'ecriture. « si-absent » pose un fichier absent
     // et n'y revient jamais ; « fusion » rouvre un fichier QUI EXISTE pour y
@@ -508,6 +519,31 @@ static partial class RetroLaunch
         if (impose.Length > 0
             && FusionnerFragment(cible, impose, profil, "des clés imposées",
                                  "amorcage", "cle(s) imposee(s)"))
+        {
+            ecrit = true;
+        }
+
+        // THE RENDER MODE'S FRAGMENT, merged AFTER the enforced keys and
+        // BEFORE the language — debt D14.
+        //
+        // Three merges can now reach the same target in the same launch.
+        // Their order has no effect on the result — the profile's guards
+        // refuse that they share a single key — but it is FIXED, so the log
+        // reads the same and two runs produce the same file byte for byte.
+        //
+        // The mode is the one of THIS launch, decided once in Lancer().
+        // Reading it again per entry would, on a two-target profile, take
+        // two measurements of the machine that might not reach the same
+        // decision — and the console would pose two different modes in the
+        // same game.
+        //
+        // An empty fragment means this entry declares no per-mode table:
+        // there is nothing to pose, and nothing is assumed.
+        string fragmentMode = FragmentDeMode(p, n, modeDuLancement);
+        if (fragmentMode.Length > 0
+            && FusionnerFragment(cible, fragmentMode, profil, "du mode de rendu",
+                                 "mode " + modeDuLancement,
+                                 "cle(s) de mode"))
         {
             ecrit = true;
         }
@@ -1309,6 +1345,11 @@ static partial class RetroLaunch
             motifLangue = "posee a la main";
         }
 
+        // The EFFECTIVE mode, remembered for the bootstrap. Set HERE and not
+        // further down: --explain must report it too, and it returns before
+        // the rest of this method.
+        modeDuLancement = effectif;
+
         string gabarit = Valeur(p, effectif);
         string rendu = Substituer(gabarit, p, largeur, hauteur);
         // Les espaces se resserrent AVANT que la ROM entre dans la commande :
@@ -1418,6 +1459,18 @@ static partial class RetroLaunch
                 string imposeN = Valeur(p, Indice("bootstrap_enforced.", n));
                 rapport.AppendLine(Indice("amorcage_impose.", n) + "="
                     + (imposeN.Length > 0 ? "oui" : "non"));
+                // AND THE MODE'S FRAGMENT — debt D14. A target that receives
+                // one while this report says nothing would repeat the lie the
+                // language already cost: --explain is the only check readable
+                // without launching a game, and it is used.
+                //
+                // The mode is NAMED: the same plan poses two different
+                // fragments depending on it, and "oui" without saying which
+                // would send someone to check the wrong half of the file.
+                string imposeModeN = FragmentDeMode(p, n, modeDuLancement);
+                rapport.AppendLine(Indice("amorcage_impose_mode.", n) + "="
+                    + (imposeModeN.Length > 0
+                        ? "oui (" + modeDuLancement + ")" : "non"));
                 string aPoser;
                 if (cibleAmorcage.IndexOf('{') >= 0)
                     // Le garde d'Amorcer(), rendu SANS lever : --explain doit
@@ -1458,14 +1511,33 @@ static partial class RetroLaunch
                     // est deja conforme. « inconnu » est le seul des trois qui
                     // ne mente pas, et un aveu s'exploite quand un faux
                     // negatif ne s'exploite pas.
-                    aPoser = imposeN.Length > 0
-                        ? FusionAPoser(cibleAmorcage, imposeN)
-                        : (p.ContainsKey(Indice("bootstrap_langue.", n)
-                                         + ".defaut")
-                            ? "inconnu (aucune cle imposee, mais cette cible "
-                              + "recoit une fusion de langue a chaque "
-                              + "lancement, que ce rapport ne simule pas)"
-                            : "non (la cible existe)");
+                    // THREE POSSIBLE FRAGMENTS, AND FusionAPoser COMPARES
+                    // ONLY ONE. When two of them apply, the report ADMITS it
+                    // rather than giving one's verdict while hiding the
+                    // other: "non" would be false as soon as the second has
+                    // something to pose, and a false negative misleads where
+                    // an admission deceives nobody. Same reasoning as already
+                    // applied to the language, one door further.
+                    if (imposeN.Length > 0 && imposeModeN.Length > 0)
+                        aPoser = "inconnu (deux fragments imposes sur cette "
+                            + "cible — les cles imposees et celles du mode "
+                            + modeDuLancement + " — que ce rapport ne sait "
+                            + "pas comparer ensemble)";
+                    else if (imposeN.Length > 0)
+                        aPoser = FusionAPoser(cibleAmorcage, imposeN);
+                    else if (imposeModeN.Length > 0)
+                        // The mode, unlike the language, IS known to
+                        // --explain: it has just been resolved on the machine
+                        // being measured, with no side effect. So it can be
+                        // compared for real instead of admitted.
+                        aPoser = FusionAPoser(cibleAmorcage, imposeModeN);
+                    else if (p.ContainsKey(Indice("bootstrap_langue.", n)
+                                           + ".defaut"))
+                        aPoser = "inconnu (aucune cle imposee, mais cette "
+                            + "cible recoit une fusion de langue a chaque "
+                            + "lancement, que ce rapport ne simule pas)";
+                    else
+                        aPoser = "non (la cible existe)";
                 else
                     aPoser = "oui";
                 rapport.AppendLine(Indice("amorcage_a_poser.", n) + "=" + aPoser);
@@ -1709,6 +1781,24 @@ static partial class RetroLaunch
     //
     // Rend "" quand meme « defaut » manque : cette entree ne declare aucune
     // table de langues, et il n'y a rien a poser.
+    // THE ENFORCED FRAGMENT OF THE CURRENT RENDER MODE — debt D14.
+    //
+    // Same shape as FragmentDeLangue, with one difference: NO fallback. An
+    // entry that declares no [bootstrap.render] table writes none of these
+    // lines, and their absence then means "this entry enforces nothing that
+    // depends on the mode" — never "the mode was not found". Inventing a
+    // fallback would pose here the fragment of a mode the owner did not
+    // choose, which is exactly the picture they would not see coming.
+    static string FragmentDeMode(Dictionary<string, string> p, int n,
+                                 string mode)
+    {
+        if (mode.Length == 0) return "";
+        string chemin;
+        return p.TryGetValue("bootstrap_enforced."
+                             + n.ToString(CultureInfo.InvariantCulture)
+                             + "." + mode, out chemin) ? chemin : "";
+    }
+
     static string FragmentDeLangue(Dictionary<string, string> p, int n,
                                    string langue)
     {

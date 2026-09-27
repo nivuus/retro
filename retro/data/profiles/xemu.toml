@@ -99,7 +99,7 @@ id         = "xbox"
 name       = "Xbox"
 folders    = ["Microsoft Xbox", "Xbox Classic", "Xbox Original"]
 extensions = [".iso", ".xiso"]
-launch     = '-full-screen -dvd_path "{rom}"'
+launch     = '-full-screen {render} -dvd_path "{rom}"'
 # xemu EXIGE une ROM de démarrage MCPX, un BIOS flash et une image de disque
 # dur, tous trois dumpés d'une vraie console. Rien n'est déclaré ici : xemu
 # désigne ces trois fichiers par des CHEMINS que le propriétaire choisit dans
@@ -107,3 +107,30 @@ launch     = '-full-screen -dvd_path "{rom}"'
 # citable n'a pu être vérifiée pour eux. Déclarer un couple (nom, md5)
 # approximatif ferait accuser de corruption un fichier parfaitement valide.
 bios       = []
+
+# --- RENDERING (debt D2): THE THIRD AXIS IS ABSENT, AND THAT IS MEASURED ---
+#
+# This block drives NOTHING, and that is exactly what it says. It exists so
+# that `retro status` stops counting this system among those whose fill
+# nobody has looked at: the question was asked, and the answer is no. The
+# two states do not call for the same action — one reopens an
+# investigation, the other closes it.
+# Xbox: "medium" is a JUDGEMENT CALL, not a measurement — nobody has timed
+# a game on this machine. It has NO OBSERVABLE EFFECT here, which is what
+# makes it cheap: both modes of this system pass exactly the same thing to
+# the emulator — nothing —, so the mode `auto` picks changes no command.
+# The field is required as soon as a render block exists; its value will
+# only decide something the day one of the two modes has arguments.
+cost       = "medium"
+[system.render]
+# native_height and max_scale are NOT declared: only {scale} requires them,
+# and neither mode uses it.
+[system.render.native]
+args = ""
+note = "xemu 0.8.136 exposes no rendering setting usable from the command line here: its only lever is -config_path, which points at ANOTHER settings file — and xemu rewrites that file on exit, so using it would have the emulator write to disk what the console believed transient. Its rendering is set in its xemu.toml, whose location has never been surveyed: that is why no [[bootstrap]] entry of this profile targets it — the only one it carries patches the language in its EEPROM."
+crt_absent = "xemu 0.8.136 ships no CRT shader selectable on the command line. NOT VERIFIED: what it renders on its own."
+fill_absent = "xemu 0.8.136 exposes NO integer-scaling setting. Surveyed on 2026-09-04 in its source tree at the revision the manifest pins, and searched exhaustively — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh »: ZERO occurrences. What it has on this axis is a FILTER, which removes the blur but leaves pixels of unequal sizes, and reading its destination-rectangle computation confirms it rather than assuming it: floating-point reals, no `floor`, no `min(w/fbw, h/fbh)`. It is the exact counterpart of what Dolphin already declares. PROVENANCE: the debt D2 survey of 2026-09-04, not replayed here — no emulator source tree lives on the host. NOT VERIFIED: what xemu 0.8.136 does on its own on this axis — nobody has watched a game."
+[system.render.full]
+args = ""
+note = "same reason as in native mode: nothing to pass on the command line."
+fill_absent = "xemu 0.8.136 exposes NO integer-scaling setting. Surveyed on 2026-09-04 in its source tree at the revision the manifest pins, and searched exhaustively — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh »: ZERO occurrences. What it has on this axis is a FILTER, which removes the blur but leaves pixels of unequal sizes, and reading its destination-rectangle computation confirms it rather than assuming it: floating-point reals, no `floor`, no `min(w/fbw, h/fbh)`. It is the exact counterpart of what Dolphin already declares. PROVENANCE: the debt D2 survey of 2026-09-04, not replayed here — no emulator source tree lives on the host. NOT VERIFIED: what xemu 0.8.136 does on its own on this axis — nobody has watched a game."

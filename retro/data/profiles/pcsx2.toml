@@ -190,6 +190,60 @@ LargeMotor = SDL-1/LargeMotor
 SmallMotor = SDL-1/SmallMotor
 """
 
+# --- THE FILL, PER MODE (debts D2 and D14) ------------------------------
+#
+# PCSX2 IS THE FIRST SHIPPED EMULATOR WHOSE FILL DEPENDS ON THE MODE AND LIVES
+# ONLY IN ITS FILE. That is what D14 existed to make expressible, and here is
+# why it is the one:
+#
+#   · it HAS integer scaling — `[EmuCore/GS] IntegerScaling`, boolean,
+#     DEFAULT `false`, surveyed on 2026-09-04 in the source of the 2.6.3
+#     revision the manifest pins;
+#   · no command line can pose it: PCSX2 has NO setting-override option, and
+#     an unknown argument is a FATAL ERROR there (QtHost.cpp, "Unknown
+#     parameter"). The file is the only way;
+#   · its file is an INI, the dialect the merge knows, and the [[bootstrap]]
+#     entry that targets it already exists above.
+#
+# ⚠ WHY THE `full` FRAGMENT POSES THE EMULATOR'S DEFAULT, AND WHY THIS IS NOT
+# THE THIRD FALSE ORACLE. `IntegerScaling = false` IS PCSX2's default —
+# posing a default MEASURES nothing, the lesson D2 paid three times. Here we
+# do not measure: we ERASE. The merge only writes the keys a fragment brings,
+# so without this line the `true` posed by the native mode would stay in
+# PCSX2.ini for the whole full mode — a native-mode image in full mode, with
+# no message to say so. The profile's guard requires it anyway: both modes
+# must pose EXACTLY the same keys.
+#
+# 🔴 WHAT THIS BLOCK DOES NOT DO, AND IT MUST BE READ BEFORE BELIEVING THE
+# `full` MODE COMPLETE. PCSX2's first TWO axes stay out of reach:
+# `upscale_multiplier` and `AspectRatio` live in this same file, but the full
+# mode's internal resolution must follow THE SESSION — that is {scale}, which
+# the launcher substitutes in the ARGUMENTS and which does not exist in an
+# enforced fragment. Hard-coding a fixed multiplier there would bring back
+# exactly the resolution frozen at sync time that `render.py` exists to
+# avoid.
+#
+# Consequence, not to be dressed up: in full mode, PCSX2 renders its 1x frame
+# enlarged by the largest factor that fits. That is indeed `ajuste` — the
+# policy is followed to the letter — but WITHOUT the premise that justifies
+# it, "the internal resolution is already raised to the session". It is not
+# a regression: it is exactly what PCSX2 does on its own today, and this
+# block only DECLARES it. The native mode, for its part, really gains an
+# integer multiple where it had nothing.
+#
+# 🔴 NOT VERIFIED: the result on screen. Nobody has watched a game with these
+# settings posed. The measurement requires the console, it is due, and
+# nothing here replaces it — the same caveat as the Dreamcast render block.
+[bootstrap.render]
+native = """
+[EmuCore/GS]
+IntegerScaling = true
+"""
+full = """
+[EmuCore/GS]
+IntegerScaling = false
+"""
+
 # LA LANGUE DE L'INTERFACE DE PCSX2.
 #
 # RELEVÉE le 2026-08-30, en deux endroits, parce qu'aucun des deux ne suffit.
@@ -273,7 +327,7 @@ folders    = ["PS2"]
 # entrée Steam de trop par jeu. .gz et .dump le sont aussi — le premier est
 # trop générique pour un dossier de ROMs, le second est un format de trace.
 extensions = [".iso", ".chd", ".cso", ".zso", ".cue", ".mdf"]
-launch     = '-batch -nogui -fullscreen "{rom}"'
+launch     = '-batch -nogui -fullscreen {render} "{rom}"'
 # PCSX2 EXIGE un BIOS PS2 dumpé depuis sa propre console — il n'a aucune
 # émulation de remplacement. Rien n'est déclaré ici pour autant, et c'est
 # délibéré : PCSX2 ne cherche AUCUN nom de fichier particulier, il scanne son
@@ -283,3 +337,24 @@ launch     = '-batch -nogui -fullscreen "{rom}"'
 # valide sous un autre nom — l'accusation exacte que le mécanisme de groupes
 # existe pour éviter. Un fichier non vérifiable vaut mieux non déclaré.
 bios       = []
+# PlayStation 2: above the PlayStation ("light"), level with the GameCube
+# and the Dreamcast. "medium" is a JUDGEMENT CALL, not a measurement — nobody
+# has timed a game on this machine. The cost only decides what the "auto"
+# mode picks per machine class: getting it wrong costs a less ambitious mode,
+# never a wrong image.
+cost       = "medium"
+[system.render]
+# native_height and max_scale are NOT declared: only {scale} requires them,
+# and neither mode uses it — PCSX2 accepts no rendering argument, so there is
+# no template {scale} could go into.
+[system.render.native]
+args = ""
+note = "PCSX2 2.6.3 exposes NO rendering setting on the command line, and an unknown argument is a FATAL ERROR there (QtHost.cpp, « Unknown parameter »). All of its rendering is set in inis\\PCSX2.ini."
+crt_absent = "PCSX2 2.6.3 exposes no shader on the command line. Its shaders live in its settings, and nothing has been surveyed of their key. NOT VERIFIED: what PCSX2 renders on its own on this axis — nobody has watched a game."
+fill_enforced = "entier"
+fill_enforced_where = "[EmuCore/GS] IntegerScaling = true — posed by this profile's [bootstrap.render] table, « native » fragment; PCSX2 2.6.3 default: false, surveyed in its source on 2026-09-04; NEVER SEEN ACTING, the measurement requires the console"
+[system.render.full]
+args = ""
+note = "same reason as in native mode: nothing to pass on the command line."
+fill_enforced = "ajuste"
+fill_enforced_where = "[EmuCore/GS] IntegerScaling = false — posed by this profile's [bootstrap.render] table, « full » fragment; it is PCSX2's DEFAULT, written anyway because without it the native mode's « true » would remain for the whole full mode: erasing, not measuring. ⚠ AND THE POLICY SENTENCE BELOW DOES NOT HOLD FOR PCSX2: its internal resolution is NOT raised to the session in full mode — upscale_multiplier lives in this same file, but {scale} only exists in the arguments, and PCSX2 accepts none. The value « ajuste » is right, its reason is not here; NEVER SEEN ACTING"

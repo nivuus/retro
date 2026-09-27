@@ -202,66 +202,85 @@ def test_le_remplissage_explique_toujours_sa_valeur(mode_declare):
     assert choix.motif.strip()
 
 
-# --- le remplissage IMPOSÉ PAR L'AMORÇAGE -------------------------------
+# --- the fill ENFORCED BY THE BOOTSTRAP: THE PER-PROFILE FIELD IS GONE ----
 #
-# Le chaînon qui manquait au modèle : un émulateur dont les deux modes ne
-# passent rien — DuckStation — rendait NON_REGLABLE, et le rapport disait
-# « rien à régler » sur un émulateur dont la console règle pourtant le
-# cadrage. Le réglage n'est pas dans `args` : il est dans le fragment
-# `enforced`, posé avant que le mode ne soit résolu.
+# Four tests lived here, describing a `Render.fill_enforced` field carrying
+# ONE value for both modes. It was REMOVED on 2026-09-05 (D14), and these
+# tests with it — this is not lost coverage: each of their properties has its
+# PER-MODE equivalent in the next section, save one.
+#
+# The exception is the one stating the field itself: "an enforced fill is
+# worth the same in BOTH modes". That was its reason to exist, and that
+# reason — "the fragment is posed before the mode is resolved" — was measured
+# false. A property whose reason is false does not transpose: it goes.
+#
+# What stays guaranteed, and what really mattered: `fill_absent` always wins
+# over an enforced fill (a MEASUREMENT against a declaration), and the reason
+# always says WHERE the key is posed.
 
-def test_un_remplissage_impose_par_l_amorcage_se_declare_sur_un_mode_vide():
-    """Le cas que le modèle ne savait pas décrire. Un mode qui ne passe rien
-    a QUAND MÊME un remplissage si l'amorçage le pose dans le fichier de
-    réglages de l'émulateur."""
+
+# --- the fill enforced PER MODE — debt D14 --------------------------------
+#
+# The fact that made this possible, MEASURED in the launcher rather than
+# assumed: `Amorcer()` is called FROM `Lancer()`, at line 1487, while the
+# effective mode is resolved at line 1257. The enforced fragment is therefore
+# posed AFTER the mode is known, not before — which this module long claimed,
+# wrongly.
+#
+# A per-mode enforced fill is therefore subject to the POLICY, like a `fill`:
+# the guard bites here, instead of one more exemption.
+
+def test_un_mode_peut_porter_son_propre_remplissage_impose():
+    """PCSX2: nothing on the command line, but an enforced fragment PER MODE.
+    The native mode enforces integer scaling in PCSX2.ini."""
     choix = render.resoudre_remplissage(
-        render.FULL,
-        render.RenderMode(args="", note="rien en ligne de commande"),
-        fill_enforced=render.ENTIER,
-        fill_enforced_where="[Display] Scaling = X — relevé le 2026-01-01",
+        render.NATIVE,
+        render.RenderMode(
+            args="", note="rien en ligne de commande",
+            fill_enforced=render.ENTIER,
+            fill_enforced_where="[EmuCore/GS] IntegerScaling = true — relevé"),
     )
     assert choix.remplissage == render.ENTIER
 
 
-def test_le_motif_d_un_remplissage_impose_dit_ou_il_est_pose():
-    """Trois choses que le propriétaire ne peut pas deviner : que le réglage
-    vient de l'amorçage, OÙ il est posé, et qu'il vaut la même chose dans les
-    deux modes parce que cet émulateur ne règle rien en ligne de commande."""
+def test_le_remplissage_impose_par_mode_suit_la_politique_mode_par_mode():
+    """BOTH modes, and they do not say the same thing. That is exactly what
+    the per-profile field could not express."""
+    natif = render.resoudre_remplissage(
+        render.NATIVE,
+        render.RenderMode(args="", note="rien",
+                          fill_enforced=render.ENTIER,
+                          fill_enforced_where="[A] B = true — relevé"))
+    plein = render.resoudre_remplissage(
+        render.FULL,
+        render.RenderMode(args="", note="rien",
+                          fill_enforced=render.AJUSTE,
+                          fill_enforced_where="[A] B = false — relevé"))
+    assert (natif.remplissage, plein.remplissage) == (render.ENTIER,
+                                                      render.AJUSTE)
+
+
+def test_le_motif_d_un_remplissage_impose_par_mode_dit_ou_ET_cite_la_politique():
+    """Two things at once, and neither replaces the other: WHERE the key is
+    posed — what the console takes back from the owner in THEIR file — and
+    WHY that value, which is the mode's policy."""
     choix = render.resoudre_remplissage(
         render.NATIVE,
-        render.RenderMode(args="", note="rien en ligne de commande"),
-        fill_enforced=render.ENTIER,
-        fill_enforced_where="[Display] Scaling = X — relevé le 2026-01-01",
-    )
-    assert "[Display] Scaling" in choix.motif
+        render.RenderMode(args="", note="rien",
+                          fill_enforced=render.ENTIER,
+                          fill_enforced_where="[EmuCore/GS] IntegerScaling"))
+    assert "[EmuCore/GS] IntegerScaling" in choix.motif
     assert "amorçage" in choix.motif
-    assert "deux modes" in choix.motif.lower()
+    assert render.motif_remplissage(render.NATIVE) in choix.motif
 
 
-def test_un_remplissage_impose_vaut_la_meme_chose_dans_les_deux_modes():
-    """`enforced` est un fragment PAR PROFIL, posé une fois par lancement,
-    avant que le mode ne soit résolu. La politique — `entier` en natif,
-    `ajuste` en full — est donc hors de portée ici, et le rapport ne doit pas
-    faire croire qu'elle s'applique."""
-    vide = render.RenderMode(args="", note="rien en ligne de commande")
-    ou = "[Display] Scaling = X — relevé le 2026-01-01"
-    deux = {render.resoudre_remplissage(m, vide, fill_enforced=render.ENTIER,
-                                        fill_enforced_where=ou).remplissage
-            for m in render.MODES_DECLARES}
-    assert deux == {render.ENTIER}
-
-
-def test_une_mesure_d_absence_l_emporte_sur_un_remplissage_impose():
-    """L'ordre des cas. `fill_absent` est une MESURE — « il n'y a rien à
-    régler sur cet axe » — et elle l'emporte sur une déclaration. L'inverse
-    ferait annoncer un remplissage sur un émulateur dont on a constaté qu'il
-    n'en a pas."""
+def test_une_mesure_d_absence_l_emporte_sur_un_remplissage_impose_par_mode():
+    """The same order as for the former per-profile field: `fill_absent` is
+    a MEASUREMENT, and it wins over any declaration."""
     choix = render.resoudre_remplissage(
         render.FULL,
-        render.RenderMode(args="", note="rien en ligne de commande",
-                          fill_absent="aucune clé de cet axe"),
-        fill_enforced=render.ENTIER,
-        fill_enforced_where="[Display] Scaling = X — relevé le 2026-01-01",
-    )
+        render.RenderMode(args="", note="rien",
+                          fill_absent="aucune clé de cet axe",
+                          fill_enforced=render.AJUSTE,
+                          fill_enforced_where="[A] B"))
     assert choix.remplissage == render.NON_REGLABLE
-    assert "aucune clé de cet axe" in choix.motif

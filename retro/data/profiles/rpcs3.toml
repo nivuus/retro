@@ -453,9 +453,36 @@ folders    = ["PS3"]
 # .bin est écarté : un jeu dumpé s'appelle EBOOT.BIN, donc tous porteraient le
 # même titre dans Steam et un seul survivrait.
 extensions = [".iso", ".self", ".elf"]
-launch     = '--no-gui --fullscreen "{rom}"'
+launch     = '--no-gui --fullscreen {render} "{rom}"'
 # RPCS3 exige le firmware PS3, qui n'est pas un fichier déposé dans un dossier
 # de BIOS mais une mise à jour (PS3UPDAT.PUP) INSTALLÉE une fois depuis
 # l'interface. Son empreinte change à chaque version de firmware et n'a rien de
 # publiquement citable : rien de vérifiable à déclarer ici.
 bios       = []
+
+# --- RENDERING (debt D2): THE THIRD AXIS IS ABSENT, AND THAT IS MEASURED ---
+#
+# This block drives NOTHING, and that is exactly what it says. It exists so
+# that `retro status` stops counting this system among those whose fill
+# nobody has looked at: the question was asked, and the answer is no. The
+# two states do not call for the same action — one reopens an
+# investigation, the other closes it.
+# PlayStation 3: "medium" is a JUDGEMENT CALL, not a measurement — nobody has timed
+# a game on this machine. It has NO OBSERVABLE EFFECT here, which is what
+# makes it cheap: both modes of this system pass exactly the same thing to
+# the emulator — nothing —, so the mode `auto` picks changes no command.
+# The field is required as soon as a render block exists; its value will
+# only decide something the day one of the two modes has arguments.
+cost       = "medium"
+[system.render]
+# native_height and max_scale are NOT declared: only {scale} requires them,
+# and neither mode uses it.
+[system.render.native]
+args = ""
+note = "RPCS3 has only one rendering lever on the command line, « --config <partial yml> », and it DISCARDS the owner's configuration instead of adding to it — surveyed on 2026-09-04. Using it for one rendering setting would silently take all the others away from the owner. Its internal resolution (Video: Resolution Scale, in percent) and its aspect ratio therefore live in its config.yml, which no [[bootstrap]] entry of this profile targets — the two it carries target its modal-dialog INI and its Default.yml controller file."
+crt_absent = "RPCS3 ships no CRT shader selectable on the command line. NOT VERIFIED: what it renders on its own."
+fill_absent = "RPCS3 at the pinned revision exposes NO integer-scaling setting. Surveyed on 2026-09-04 in its source tree at the revision the manifest pins, and searched exhaustively — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh »: ZERO occurrences. What it has on this axis is a FILTER, which removes the blur but leaves pixels of unequal sizes, and reading its destination-rectangle computation confirms it rather than assuming it: floating-point reals, no `floor`, no `min(w/fbw, h/fbh)`. It is the exact counterpart of what Dolphin already declares. PROVENANCE: the debt D2 survey of 2026-09-04, not replayed here — no emulator source tree lives on the host. NOT VERIFIED: what RPCS3 at the pinned revision does on its own on this axis — nobody has watched a game."
+[system.render.full]
+args = ""
+note = "same reason as in native mode: nothing to pass on the command line."
+fill_absent = "RPCS3 at the pinned revision exposes NO integer-scaling setting. Surveyed on 2026-09-04 in its source tree at the revision the manifest pins, and searched exhaustively — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh »: ZERO occurrences. What it has on this axis is a FILTER, which removes the blur but leaves pixels of unequal sizes, and reading its destination-rectangle computation confirms it rather than assuming it: floating-point reals, no `floor`, no `min(w/fbw, h/fbh)`. It is the exact counterpart of what Dolphin already declares. PROVENANCE: the debt D2 survey of 2026-09-04, not replayed here — no emulator source tree lives on the host. NOT VERIFIED: what RPCS3 at the pinned revision does on its own on this axis — nobody has watched a game."

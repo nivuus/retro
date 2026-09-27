@@ -1193,58 +1193,13 @@ def test_le_rapport_dit_le_remplissage_d_un_emulateur_qui_ne_pilote_rien(
         f"{bloc}")
 
 
-def _profils_impose(tmp_path):
-    """Un profil dont le remplissage est IMPOSÉ par l'amorçage — le cas
-    DuckStation : deux modes vides, la clé posée dans son settings.ini."""
-    (tmp_path / "i.toml").write_text('''
-schema = 1
-id = "i"
-exe = "i.exe"
-[[bootstrap]]
-target = 'C:\\\\i\\\\settings.ini'
-content = """
-; Écrit par « retro », qui distingue ce qu'il IMPOSE et repose à chaque
-; lancement, ce qu'il a posé UNE FOIS et ne retouche plus, et le reste.
-[Main]
-ConfirmPowerOff = false
-"""
-enforced = """
-[Display]
-Scaling = ValeurRelevee
-"""
-[[system]]
-id = "psx"
-name = "PlayStation"
-extensions = [".cue"]
-launch = '{render} "{rom}"'
-cost = "light"
-bios = []
-[system.render.native]
-args = ""
-note = "dix-sept arguments, aucun de rendu"
-crt_absent = "aucun shader en ligne de commande"
-[system.render.full]
-args = ""
-note = "même raison qu'en mode natif"
-[system.render]
-fill_enforced = "entier"
-fill_enforced_where = "[Display] Scaling = ValeurRelevee — relevé le 2026-01-01"
-''', encoding="utf-8")
-    return {"i": profiles.load_profile(tmp_path / "i.toml")}
+# `_profils_impose` and its test lived here: a profile whose fill was
+# enforced PER PROFILE, one value for both modes. The field was removed on
+# 2026-09-05 (D14); `_profils_impose_par_mode`, at the end of this file, holds
+# the same property end to end — the profile declares it, `etat_rendu`
+# resolves it, the report prints it — on an emulator that drives nothing on
+# the command line, and with TWO values instead of one.
 
-
-def test_un_remplissage_impose_par_l_amorcage_arrive_jusqu_au_rapport(tmp_path):
-    """Bout en bout : le profil le déclare, `etat_rendu` le résout, et le
-    rapport l'imprime — sur un émulateur qui ne pilote RIEN en ligne de
-    commande."""
-    from retro import render
-    etat = next(iter(status.etat_rendu(_profils_impose(tmp_path))))
-    assert all(valeur == render.ENTIER for _, valeur, _ in etat.remplissage)
-    lignes = "\n".join(status._lignes_rendu(status.Report(
-        emulators=[], systems=[], bios=[], problems=[],
-        bios_root=pathlib.Path("/BIOS"), render=[etat])))
-    assert "entier" in lignes
-    assert "[Display] Scaling" in lignes
 
 PROFIL_DEUX_CIBLES = """
 schema = 1
@@ -2433,3 +2388,75 @@ def test_une_langue_inconnue_n_accuse_pas_un_changement_de_reglage(
                        "motif": "posee a la main"})
     section = _section_langue(texte)
     assert "le réglage a changé depuis" not in section
+
+
+# --- D14: the fill enforced PER MODE, in the report ----------------------
+
+def _profils_impose_par_mode(tmp_path):
+    """The PCSX2 case: nothing on the command line, and TWO values — integer
+    scaling enforced in native, turned off in full."""
+    (tmp_path / "m.toml").write_text('''
+schema = 1
+id = "m"
+exe = "m.exe"
+[[bootstrap]]
+target = 'C:\\\\m\\\\PCSX2.ini'
+content = """
+; Écrit par « retro », qui distingue ce qu'il IMPOSE et repose à chaque
+; lancement, ce qu'il a posé UNE FOIS et ne retouche plus, et le reste.
+[UI]
+ConfirmShutdown = false
+"""
+[bootstrap.render]
+native = """
+[EmuCore/GS]
+IntegerScaling = true
+"""
+full = """
+[EmuCore/GS]
+IntegerScaling = false
+"""
+[[system]]
+id = "ps2"
+name = "PlayStation 2"
+extensions = [".chd"]
+launch = '{render} "{rom}"'
+cost = "medium"
+bios = []
+[system.render.native]
+args = ""
+note = "aucune option de rendu en ligne de commande"
+crt_absent = "aucun shader en ligne de commande"
+fill_enforced = "entier"
+fill_enforced_where = "[EmuCore/GS] IntegerScaling = true — relevé"
+[system.render.full]
+args = ""
+note = "même raison qu'en mode natif"
+fill_enforced = "ajuste"
+fill_enforced_where = "[EmuCore/GS] IntegerScaling = false — relevé"
+''', encoding="utf-8")
+    return {"m": profiles.load_profile(tmp_path / "m.toml")}
+
+
+def test_un_remplissage_impose_par_mode_rend_DEUX_valeurs_dans_le_rapport(
+        tmp_path):
+    """The fact D14 existed to make expressible: `entier` in native,
+    `ajuste` in full, on an emulator that drives NOTHING on the command
+    line. The per-profile field rendered only one, the same one twice."""
+    from retro import render
+    etat = next(iter(status.etat_rendu(_profils_impose_par_mode(tmp_path))))
+    assert dict((mode, valeur) for mode, valeur, _ in etat.remplissage) == {
+        render.NATIVE: render.ENTIER, render.FULL: render.AJUSTE}
+
+
+def test_le_rapport_dit_OU_un_remplissage_impose_par_mode_est_pose(tmp_path):
+    """The owner cannot guess it: the console takes that key back from them
+    in THEIR settings file, at every launch. Hiding the "where" would make an
+    axis value read as if it came from the mode's arguments."""
+    etat = next(iter(status.etat_rendu(_profils_impose_par_mode(tmp_path))))
+    lignes = "\n".join(status._lignes_rendu(status.Report(
+        emulators=[], systems=[], bios=[], problems=[],
+        bios_root=pathlib.Path("/BIOS"), render=[etat])))
+    assert "native entier, full ajuste" in lignes
+    assert "[EmuCore/GS] IntegerScaling = true" in lignes
+    assert "[EmuCore/GS] IntegerScaling = false" in lignes
