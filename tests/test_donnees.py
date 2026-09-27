@@ -12,7 +12,7 @@ import tomllib
 
 import pytest
 
-from retro import cli, install, manifest, profiles
+from retro import cli, install, launcher, manifest, profiles
 
 RACINE = pathlib.Path(__file__).parent.parent
 
@@ -747,6 +747,37 @@ def test_chaque_mode_livre_tranche_sur_le_remplissage():
 # est GLOBAL, donc les jeux qui veulent l'analogique (Gran Turismo, Ape Escape,
 # Metal Gear Solid) démarreront en mode numérique. La bascule reste mappée sur
 # `Analog = SDL-0/Guide`.
+_PAD1_CLES = (
+    ("Pad1", "Analog"),
+    ("Pad1", "Circle"),
+    ("Pad1", "Cross"),
+    ("Pad1", "Down"),
+    ("Pad1", "ForceAnalogOnReset"),
+    ("Pad1", "L1"),
+    ("Pad1", "L2"),
+    ("Pad1", "L3"),
+    ("Pad1", "LDown"),
+    ("Pad1", "LLeft"),
+    ("Pad1", "LRight"),
+    ("Pad1", "LUp"),
+    ("Pad1", "LargeMotor"),
+    ("Pad1", "Left"),
+    ("Pad1", "R1"),
+    ("Pad1", "R2"),
+    ("Pad1", "R3"),
+    ("Pad1", "RDown"),
+    ("Pad1", "RLeft"),
+    ("Pad1", "RRight"),
+    ("Pad1", "RUp"),
+    ("Pad1", "Right"),
+    ("Pad1", "Select"),
+    ("Pad1", "SmallMotor"),
+    ("Pad1", "Square"),
+    ("Pad1", "Start"),
+    ("Pad1", "Triangle"),
+    ("Pad1", "Up"),
+)
+
 DUCKSTATION_IMPOSE = (
     ("Main", "SetupWizardIncomplete"),
     ("Main", "StartFullscreen"),
@@ -788,6 +819,11 @@ DUCKSTATION_IMPOSE = (
     ("Pad1", "Start"),
     ("Pad1", "Triangle"),
     ("Pad1", "Up"),
+    # Port 2, 2026-09-26: `Type` first, because DuckStation defaults the
+    # second port to None (settings.h, DEFAULT_CONTROLLER_2_TYPE); then the
+    # same keys as [Pad1], ForceAnalogOnReset included.
+    ("Pad2", "Type"),
+    *(("Pad2", c) for s, c in _PAD1_CLES),
 )
 
 
@@ -923,7 +959,13 @@ def test_aucun_profil_livre_ne_pose_de_liaison_de_manette():
                     "dire. Les exceptions de RPCS3 et de Vita3K sont nommées ; "
                     "une troisième doit l'être aussi, ou le garde ne garde "
                     "plus rien.")
-                if f.stem == "rpcs3":
+                if f.stem == "rpcs3" and b.target.endswith("config.yml"):
+                    # The system-language target (2026-09-26) poses a header
+                    # only; its one key comes from the language table.
+                    assert actives == [], (
+                        f"{f.name} : {b.target} pose des lignes actives "
+                        f"une fois pour toutes — {actives}")
+                elif f.stem == "rpcs3":
                     # Son contenu est gelé ligne à ligne : toute liaison qu'on
                     # y glisserait se verrait ici.
                     assert tuple(actives) == RPCS3_MANETTE, (
@@ -1005,6 +1047,20 @@ def test_la_procedure_de_releve_existe_et_est_atteignable():
     assert (RACINE / status.PROCEDURE_RELEVE).is_file()
 
 
+def _valeurs_de_section(texte: str, section: str, cles: set) -> list[str]:
+    """The values of `cles` inside one INI section of a fragment."""
+    courante, sortie = "", []
+    for ligne in texte.splitlines():
+        nu = ligne.strip()
+        if nu.startswith("[") and nu.endswith("]"):
+            courante = nu[1:-1]
+        elif "=" in nu and courante == section:
+            cle, valeur = nu.split("=", 1)
+            if cle.strip() in cles:
+                sortie.append(valeur.strip())
+    return sortie
+
+
 def test_les_liaisons_de_duckstation_portent_la_forme_qu_il_a_ecrite():
     """La forme de `[Pad1]` n'est pas supposée : elle est RELEVÉE.
 
@@ -1029,7 +1085,6 @@ def test_les_liaisons_de_duckstation_portent_la_forme_qu_il_a_ecrite():
     vide. Aucune de ces fautes ne se verrait autrement qu'ici.
     """
     b, = profiles.load_profile(PROFILS / "duckstation.toml").bootstraps
-    impose = dict(_cles_ini(b.enforced))
     pad = [(s, c) for s, c in _cles_ini(b.enforced) if s == "Pad1"]
 
     fautives = [c for _, c in pad if c.lower().startswith("bindings/")]
@@ -1038,11 +1093,19 @@ def test_les_liaisons_de_duckstation_portent_la_forme_qu_il_a_ecrite():
         "relevée ABSENTE de l'exécutable de DuckStation le 2026-08-29. C'est "
         "la forme de PCSX2 : " + " | ".join(fautives)
     )
-    assert "Type" not in impose, (
+    # Judged per SECTION. This used to read `"Type" not in dict(pairs)`,
+    # which looked the word up among section NAMES and could never fail.
+    assert "Type" not in {c for _, c in pad}, (
         "duckstation.toml : [Pad1] porte une clé « Type » que DuckStation n'a "
         "PAS écrite. Le fragment imposé est ce que l'émulateur a produit, pas "
         "ce qu'on aurait cru bon d'y ajouter."
     )
+    # [Pad2] is the opposite case, and it is measured: the second port
+    # defaults to None, so without `Type` it is configured and unplugged.
+    port2 = _valeurs_de_section(b.enforced, "Pad2", {"Type"})
+    assert port2 == ["AnalogController"], (
+        "duckstation.toml: [Pad2] must declare Type = AnalogController — "
+        f"got {port2}. DEFAULT_CONTROLLER_2_TYPE is None.")
 
     # Les valeurs, relues dans le fragment : toutes SDL-0, aucune XInput.
     #
@@ -1052,10 +1115,14 @@ def test_les_liaisons_de_duckstation_portent_la_forme_qu_il_a_ecrite():
     # ressemble pas à une liaison ») rouvrirait la porte qu'on ferme ici : une
     # liaison mal écrite s'exclurait elle-même du contrôle.
     liaisons = {c for _, c in pad} - {"ForceAnalogOnReset"}
-    valeurs = [l.split("=", 1)[1].strip()
-               for l in b.enforced.splitlines()
-               if "=" in l and l.split("=", 1)[0].strip() in liaisons]
+    valeurs = _valeurs_de_section(b.enforced, "Pad1", liaisons)
     hors = [v for v in valeurs if not v.startswith("SDL-0/")]
+    # Port 2 targets SDL player index 1, and nothing else.
+    hors2 = [v for v in _valeurs_de_section(b.enforced, "Pad2", liaisons)
+             if not v.startswith("SDL-1/")]
+    assert hors2 == [], (
+        "duckstation.toml: [Pad2] bindings do not all target SDL-1: "
+        + " | ".join(hors2))
     assert hors == [], (
         "duckstation.toml : des liaisons de [Pad1] ne portent pas "
         "l'identifiant « SDL-0 » relevé le 2026-08-29 : " + " | ".join(hors)
@@ -1955,14 +2022,20 @@ def test_le_lanceur_ne_pose_aucune_marque_de_ligne_dans_un_yaml():
         "n'est pas posée dans un YAML — un lecteur futur la remettrait, et "
         "chaque lancement déposerait une sauvegarde de plus"
     )
-    # Chaque pose de la marque est gardée : une seule oubliée écrirait un
-    # « ; » au milieu d'un YAML, que le lecteur de l'émulateur refuserait.
-    nues = [n + 1 for n, l in enumerate(source.splitlines())
-            if ".Add(MARQUE_FUSION)" in l and "!yaml" not in l]
-    assert nues == [], (
-        "ces poses de MARQUE_FUSION ne sont pas gardées par « !yaml » : "
-        f"lignes {nues}"
-    )
+    # The guarantee is STRUCTURAL since the two-level YAML merge: a YAML
+    # target leaves Fusionner for retro-yaml.cs before the first pose of the
+    # marker, and retro-yaml.cs does not know the marker at all. A single
+    # pose reached by a YAML target would write a "; " the emulator's reader
+    # rejects.
+    fusion = source[source.index("static string Fusionner("):]
+    delegation = fusion.index("if (yaml) return FusionYaml.Fusionner(")
+    assert delegation < fusion.index(".Add(MARQUE_FUSION)"), (
+        "retro-launch.cs: a MARQUE_FUSION pose is reachable before YAML "
+        "targets are handed to retro-yaml.cs")
+    yaml_cs = (launcher.SOURCES / launcher.SOURCE_YAML).read_text(
+        encoding="utf-8-sig")
+    assert "MARQUE_FUSION" not in yaml_cs, (
+        "retro-yaml.cs poses the INI marker, which is not a YAML comment")
 
 
 def test_la_fusion_ne_juge_pas_sa_conformite_sur_ses_propres_marques():

@@ -217,10 +217,10 @@ static class RetroLaunch
     //     garantit. En YAML, l'idempotence se juge sur la seule VALEUR.
     const string MARQUE_FUSION = "; posé par « retro » — cette ligne est réécrite à chaque lancement";
 
-    // LES EXTENSIONS DONT LE CONTENU EST UN YAML PLAT. Le miroir exact de
-    // `_YAML` dans retro/profiles.py : le dialecte se deduit de l'EXTENSION de
-    // la cible, pas d'un champ declare — un champ pourrait contredire ce que
-    // le fragment contient, une extension non.
+    // The extensions whose content is YAML, merged on two levels by
+    // retro-yaml.cs. The exact mirror of `_YAML` in retro/dialectes.py: the
+    // dialect follows the target's EXTENSION, never a declared field — a
+    // field could contradict what the fragment holds, an extension cannot.
     static bool EstYaml(string cible)
     {
         string ext = Path.GetExtension(cible);
@@ -746,13 +746,8 @@ static class RetroLaunch
     // profil et dans le fichier source depose a cote des plans ; ici, la
     // marque dit qui a pose la ligne, ce qui est ce dont on a besoin devant
     // un fichier qu'on relit six mois plus tard.
-    static string SectionDe(string ligne, bool yaml)
+    static string SectionDe(string ligne)
     {
-        // Un YAML PLAT n'a pas de sections : tout vit au premier niveau. Rendre
-        // une section sur « [a, b] », qui est une sequence en ligne, ferait
-        // basculer la fusion dans une section imaginaire et deplacerait la cle
-        // imposee hors de portee de son lecteur.
-        if (yaml) return null;
         string s = ligne.Trim();
         if (s.Length >= 2 && s[0] == '[' && s[s.Length - 1] == ']')
             return s.Substring(1, s.Length - 2).Trim();
@@ -763,25 +758,10 @@ static class RetroLaunch
     // n'en sont pas : une ligne « ; Scaling = ... » ne doit pas passer pour
     // le reglage qu'elle explique, sans quoi la fusion irait ecrire dans un
     // commentaire et la vraie cle resterait a sa valeur d'avant.
-    static string CleDe(string ligne, bool yaml)
+    static string CleDe(string ligne)
     {
         string s = ligne.Trim();
         if (s.Length == 0) return null;
-        if (yaml)
-        {
-            // Le miroir exact de `cles_yaml` (retro/profiles.py). Seul le
-            // PREMIER NIVEAU compte : une ligne indentee appartient a la cle du
-            // dessus, une ligne « - x » est un element de sequence. Les prendre
-            // pour des cles ferait ecrire notre valeur au milieu d'une
-            // structure, que le lecteur de l'emulateur refuserait.
-            if (char.IsWhiteSpace(ligne[0])) return null;
-            // « # » est le commentaire YAML ; « ; » n'en est PAS un.
-            if (s[0] == '#' || s[0] == '-') return null;
-            int deuxPoints = s.IndexOf(':');
-            if (deuxPoints <= 0) return null;
-            string cleY = s.Substring(0, deuxPoints).Trim();
-            return cleY.Length > 0 ? cleY : null;
-        }
         if (s[0] == ';' || s[0] == '#' || s[0] == '[')
             return null;
         int eq = s.IndexOf('=');
@@ -790,13 +770,8 @@ static class RetroLaunch
         return cle.Length > 0 ? cle : null;
     }
 
-    static string Cle(string section, string cle, bool yaml)
+    static string Cle(string section, string cle)
     {
-        // En YAML les cles SONT sensibles a la casse — yaml-cpp les compare
-        // octet par octet. Rapprocher « Pref-Path » de « pref-path » ferait
-        // ecrire notre valeur sur une cle que l'emulateur ne lit pas, ce qui
-        // se comporte exactement comme si rien n'avait ete pose.
-        if (yaml) return cle;
         // Les sections et les cles d'un INI ne sont pas sensibles a la casse
         // chez la plupart des lecteurs. Comparer telles quelles ferait poser
         // une SECONDE cle « scaling » a cote de « Scaling », dont l'emulateur
@@ -853,6 +828,9 @@ static class RetroLaunch
                 + "\n\nLes formats connus sont .yml et .yaml (YAML), .ini, "
                 + ".cfg, .opt et .toml (INI). Declarer l'extension dans "
                 + "retro/profiles.py et dans ce lanceur, ou changer la cible.");
+        // YAML has its own merge, on two levels: retro-yaml.cs.
+        if (yaml) return FusionYaml.Fusionner(existant, apporte, out posees);
+
         // Ce que la source apporte, dans l'ordre : (section, cle) -> ligne.
         var ordre = new List<string>();
         var lignesApportees = new Dictionary<string, string>();
@@ -860,11 +838,11 @@ static class RetroLaunch
         string courante = "";
         foreach (string ligne in apporte.Replace("\r\n", "\n").Split('\n'))
         {
-            string sec = SectionDe(ligne, yaml);
+            string sec = SectionDe(ligne);
             if (sec != null) { courante = sec; continue; }
-            string cle = CleDe(ligne, yaml);
+            string cle = CleDe(ligne);
             if (cle == null) continue;
-            string id = Cle(courante, cle, yaml);
+            string id = Cle(courante, cle);
             if (!lignesApportees.ContainsKey(id)) ordre.Add(id);
             lignesApportees[id] = ligne.Trim();
             sectionDe[id] = courante;
@@ -883,21 +861,21 @@ static class RetroLaunch
             // reposees plus bas : c'est ce qui rend la fusion idempotente.
             if (ligne.Trim() == MARQUE_FUSION) continue;
 
-            string sec = SectionDe(ligne, yaml);
+            string sec = SectionDe(ligne);
             if (sec != null)
             {
                 Completer(sortie, reste, lignesApportees, sectionDe, courante,
-                          yaml, ref posees);
+                          ref posees);
                 courante = sec;
                 sortie.Add(ligne);
                 continue;
             }
-            string cle = CleDe(ligne, yaml);
-            string id = cle == null ? null : Cle(courante, cle, yaml);
+            string cle = CleDe(ligne);
+            string id = cle == null ? null : Cle(courante, cle);
             if (id != null && lignesApportees.ContainsKey(id)
                 && reste.Contains(id))
             {
-                if (!yaml) sortie.Add(MARQUE_FUSION);
+                sortie.Add(MARQUE_FUSION);
                 sortie.Add(lignesApportees[id]);
                 reste.Remove(id);
                 posees++;
@@ -906,12 +884,9 @@ static class RetroLaunch
             sortie.Add(ligne);
         }
         Completer(sortie, reste, lignesApportees, sectionDe, courante,
-                  yaml, ref posees);
+                  ref posees);
 
-        // Ce qui reste appartient a des sections que le fichier n'a pas. En
-        // YAML, toutes les cles vivent sous la section vide, que `Completer`
-        // vient de traiter : cette boucle ne s'y execute jamais, et ecrire
-        // « [] » dans un YAML n'a donc pas lieu.
+        // Ce qui reste appartient a des sections que le fichier n'a pas.
         while (reste.Count > 0)
         {
             string section = sectionDe[reste[0]];
@@ -921,7 +896,7 @@ static class RetroLaunch
             for (int i = 0; i < reste.Count; i++)
             {
                 if (sectionDe[reste[i]] != section) continue;
-                if (!yaml) sortie.Add(MARQUE_FUSION);
+                sortie.Add(MARQUE_FUSION);
                 sortie.Add(lignesApportees[reste[i]]);
                 posees++;
                 reste.RemoveAt(i);
@@ -936,7 +911,7 @@ static class RetroLaunch
     static void Completer(List<string> sortie, List<string> reste,
                           Dictionary<string, string> lignesApportees,
                           Dictionary<string, string> sectionDe,
-                          string section, bool yaml, ref int posees)
+                          string section, ref int posees)
     {
         if (section == null) return;
         // Reculer avant les lignes vides de fin de section : la cle se pose
@@ -950,7 +925,7 @@ static class RetroLaunch
         {
             if (!string.Equals(sectionDe[reste[i]], section,
                                StringComparison.OrdinalIgnoreCase)) continue;
-            if (!yaml) ajouts.Add(MARQUE_FUSION);
+            ajouts.Add(MARQUE_FUSION);
             ajouts.Add(lignesApportees[reste[i]]);
             posees++;
             reste.RemoveAt(i);

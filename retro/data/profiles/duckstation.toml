@@ -314,6 +314,23 @@ target = '%USERPROFILE%\Documents\DuckStation\settings.ini'
 # Tant que cette mesure n'a pas eu lieu, `Scaling` n'entre pas dans `enforced`
 # et le bloc [system.render] ne déclare aucun `fill_enforced` : une valeur
 # fausse se comporte exactement comme l'absence de valeur.
+# PORT 2, added on 2026-09-26. The PlayStation has two ports; four players
+# need a multitap, which renumbers every slot for EVERY game (Pad2 becomes
+# port 2A only without it) — the same reason PCSX2 stops at two. Read in the
+# source at v0.1-11609 (a233ec1f):
+#   - src/core/settings.h: DEFAULT_CONTROLLER_2_TYPE = ControllerType::None,
+#     and settings.cpp falls back to it for every pad but the first — so
+#     without `Type` this port is configured and UNPLUGGED. That is why
+#     [Pad2] carries a `Type` that [Pad1] does not: the first port defaults
+#     to AnalogController, the second does not;
+#   - "AnalogController" is the type name in analog_controller.cpp;
+#   - "SDL-1" is SDL player index 1 (sdl_input_source.cpp, OpenDevice), the
+#     same kind of INDEX as "SDL-0" — no GUID, so it survives four identical
+#     Apollo pads.
+# ForceAnalogOnReset = false is repeated on purpose: the setting is per
+# port, and without it player 2 would be as deaf in Crash Team Racing as
+# player 1 was. The bindings are Pad1's, index swapped; nobody has held a
+# second pad in a game yet — see `mapping_where`.
 enforced = '''
 [Main]
 SetupWizardIncomplete = false
@@ -354,6 +371,37 @@ Square = SDL-0/X
 Start = SDL-0/Start
 Triangle = SDL-0/Y
 Up = SDL-0/DPadUp
+
+[Pad2]
+Type = AnalogController
+Analog = SDL-1/Guide
+Circle = SDL-1/B
+Cross = SDL-1/A
+Down = SDL-1/DPadDown
+ForceAnalogOnReset = false
+L1 = SDL-1/LeftShoulder
+L2 = SDL-1/+LeftTrigger
+L3 = SDL-1/LeftStick
+LDown = SDL-1/+LeftY
+LLeft = SDL-1/-LeftX
+LRight = SDL-1/+LeftX
+LUp = SDL-1/-LeftY
+LargeMotor = SDL-1/LargeMotor
+Left = SDL-1/DPadLeft
+R1 = SDL-1/RightShoulder
+R2 = SDL-1/+RightTrigger
+R3 = SDL-1/RightStick
+RDown = SDL-1/+RightY
+RLeft = SDL-1/-RightX
+RRight = SDL-1/+RightX
+RUp = SDL-1/-RightY
+Right = SDL-1/DPadRight
+Select = SDL-1/Back
+SmallMotor = SDL-1/SmallMotor
+Square = SDL-1/X
+Start = SDL-1/Start
+Triangle = SDL-1/Y
+Up = SDL-1/DPadUp
 '''
 
 content = '''
@@ -510,7 +558,7 @@ schinese   = "[Main]\nLanguage = zh-CN"
 steam_input = "required"
 mode        = "xinput"
 mapping       = "releve"
-mapping_where = '%USERPROFILE%\Documents\DuckStation\settings.ini, section [Pad1]'
+mapping_where = '%USERPROFILE%\Documents\DuckStation\settings.ini, sections [Pad1] et [Pad2] ; seul le joueur 1 a été VU répondre, le joueur 2 est posé et jamais essayé'
 # SOUS QUEL PAD ce releve a ete fait, et il ne vaut que sous celui-la.
 # Mesure le 2026-08-29, deux sources concordantes : Apollo annonce
 # « Gamepad 0 will be Xbox 360 controller (default) » dans son journal, et

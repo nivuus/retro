@@ -488,6 +488,35 @@ def test_un_lanceur_recompile_n_est_plus_perime(tmp_path):
     assert not launcher.lanceur_perime(tmp_path)
 
 
+def test_une_source_yaml_plus_recente_perime_le_lanceur(tmp_path):
+    """The binary is built from TWO sources. A newer retro-yaml.cs alone
+    means the YAML merge on the console is the old one — and the new
+    two-level keys would be posed at the top level, where nothing reads
+    them."""
+    import os
+    dossier = tmp_path / launcher.DIR
+    dossier.mkdir(parents=True)
+    (dossier / launcher.EXE).write_bytes(b"MZ")
+    os.utime(dossier / launcher.EXE, (2_000_000, 2_000_000))
+    (dossier / launcher.SOURCE).write_text("// old", encoding="utf-8")
+    os.utime(dossier / launcher.SOURCE, (1_000_000, 1_000_000))
+    (dossier / launcher.SOURCE_YAML).write_text("// new", encoding="utf-8")
+    os.utime(dossier / launcher.SOURCE_YAML, (3_000_000, 3_000_000))
+    assert launcher.lanceur_perime(tmp_path)
+
+
+def test_le_depot_porte_les_deux_sources_du_lanceur(tmp_path):
+    """compiler.cmd refuses to build without retro-yaml.cs: depositing only
+    retro-launch.cs would leave a launcher nobody can recompile."""
+    launcher.deposer_source(tmp_path)
+    dossier = tmp_path / launcher.DIR
+    for nom in (*launcher.SOURCES_CS, "compiler.cmd"):
+        assert (dossier / nom).is_file(), nom
+    cmd = (launcher.SOURCES / "compiler.cmd").read_bytes().decode("cp850")
+    assert all(f"%~dp0{nom}" in cmd for nom in launcher.SOURCES_CS), (
+        "compiler.cmd no longer names every C# source of the launcher")
+
+
 def test_redeposer_la_source_ne_perime_pas_un_lanceur_a_jour(tmp_path):
     """`deposer_source` copie la source AVEC sa date : sans cela, chaque
     dépôt réestampillait la source à l'instant présent et déclarait périmé un

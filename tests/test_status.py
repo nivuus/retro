@@ -1530,27 +1530,41 @@ def test_une_manette_du_type_attendu_est_dite_avec_son_nom(tmp_path):
     assert [p for p in rapport.problems if "manette" in p.what.lower()] == []
 
 
-def test_plus_d_une_manette_est_un_probleme_qui_nomme_les_profils(tmp_path):
-    """LE PREMIER DES DEUX PROBLÈMES, et c'est la FRAGILITÉ 1 de DuckStation
-    rendue visible.
+def test_des_manettes_de_modeles_differents_sont_un_probleme(tmp_path):
+    """The first of the two problems: FRAGILITY 1 of DuckStation made visible.
 
-    Ses vingt-sept liaisons visent « SDL-0 », c'est-à-dire un INDEX. Un pad de
-    plus énuméré avant celui d'Apollo les fait toutes viser un périphérique
-    qui n'est pas là, et DuckStation ne le dira pas : le symptôme est
-    exactement celui d'avant le relevé, manette muette et rien au journal.
+    Its bindings target "SDL-0" and "SDL-1", INDEXES. The condition is a
+    pad of a different VID/PID among those seen — a foreign pad enumerated
+    among Apollo's shifts the indexes onto a device that is not the
+    player's, and DuckStation will not say so: the symptom is a deaf pad and
+    nothing in the log. Several pads of ONE model are not a problem (see
+    test_quatre_pads_identiques_ne_sont_pas_un_probleme).
     """
     rapport = _rapport_pads(
         _duckstation_releve(tmp_path), date="2026-09-01 21:14:33",
         pads=[_pad(0, "054c:05c4", "Wireless Controller"),
               _pad(1, "045e:028e", "Controller (Xbox 360)")])
     problemes = [p for p in rapport.problems
-                 if "plus d'une manette" in p.what.lower()
-                 or "2 manettes" in p.what.lower()]
+                 if "modèles différents" in p.what.lower()]
     assert len(problemes) == 1, [p.what for p in rapport.problems]
     assert "duckstation" in problemes[0].what
     assert "[Pad1]" in problemes[0].where, (
         "le problème n'offre rien à ouvrir : un constat sans chemin est une "
         "accusation, pas un diagnostic")
+
+
+def test_quatre_pads_identiques_ne_sont_pas_un_probleme(tmp_path):
+    """Four identical Apollo pads are the goal, not a fault.
+
+    Since 2026-09-26 player N is bound to index N-1 on purpose. Flagging the
+    count alone would tell the owner to unplug the very pads multiplayer
+    needs — and teach them to ignore the section.
+    """
+    rapport = _rapport_pads(
+        _duckstation_releve(tmp_path), date="2026-09-26 21:34:22",
+        pads=[_pad(n, "045e:028e", "Microsoft PC-joystick driver")
+              for n in range(4)])
+    assert [p for p in rapport.problems if "manette" in p.what.lower()] == []
 
 
 def test_un_pad_d_un_autre_type_que_le_releve_est_un_probleme(tmp_path):

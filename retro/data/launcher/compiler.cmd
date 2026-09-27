@@ -26,6 +26,7 @@ rem se choisit … la compilation ; le corriger aprŠs coup dans l'en-tˆte PE d'un
 rem ex‚cutable .NET d‚j… li‚ l'empˆche de d‚marrer.
 
 set "SOURCE=%~dp0retro-launch.cs"
+set "SOURCE_YAML=%~dp0retro-yaml.cs"
 set "SORTIE=%~dp0retro-launch.exe"
 set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 
@@ -39,9 +40,13 @@ if not exist "%SOURCE%" (
     echo ECHEC : source introuvable : %SOURCE%
     exit /b 1
 )
+if not exist "%SOURCE_YAML%" (
+    echo ECHEC : source introuvable : %SOURCE_YAML%
+    exit /b 1
+)
 
 "%CSC%" /nologo /target:winexe /optimize+ /utf8output ^
-        /out:"%SORTIE%" "%SOURCE%"
+        /out:"%SORTIE%" "%SOURCE%" "%SOURCE_YAML%"
 if errorlevel 1 (
     echo ECHEC : la compilation du lanceur a echoue.
     exit /b 1

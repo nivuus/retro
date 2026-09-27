@@ -445,18 +445,23 @@ def _problemes_pads(pads: list, manettes: list[Manette]) -> list[Problem]:
     problemes = []
     ou = " ; ".join(f"{m.profile_id} : {m.where}" for m in concernes)
 
-    # 1. UN PAD DE PLUS. C'est la FRAGILITÉ 1 de duckstation.toml rendue
-    # visible : ses vingt-sept liaisons visent « SDL-0 », un INDEX. Le pad
-    # d'Apollo qui devient SDL-1 les fait toutes viser un périphérique absent.
-    if len(pads) > 1:
+    # 1. A FOREIGN PAD AMONG THEM. This is FRAGILITY 1 of duckstation.toml
+    # made visible: its bindings target "SDL-0", "SDL-1", an INDEX. Several
+    # pads are the goal since 2026-09-26 — Apollo pins four identical Xbox
+    # 360 pads, one per player — so the count alone proves nothing. What
+    # shifts an index onto the wrong device is a pad of ANOTHER model
+    # enumerated among them; with every pad sharing one VID/PID, player N
+    # is still pad N. The VID/PID is compared, not the type: an unknown
+    # model is still a different one.
+    if len({p.vid_pid.strip().lower() for p in pads}) > 1:
         problemes.append(Problem(
-            what=f"plus d'une manette au dernier lancement ({len(pads)}) : "
-                 "les liaisons relevées visent un INDEX d'énumération, et un "
-                 "pad de plus le décale — "
+            what=f"manettes de modèles différents au dernier lancement "
+                 f"({len(pads)}) : les liaisons relevées visent un INDEX "
+                 "d'énumération, et un pad étranger le décale — "
                  + ", ".join(sorted(m.profile_id for m in concernes)),
             where=ou,
-            action="ne garder qu'une seule manette branchée pendant la "
-                   "session, puis relancer un jeu et relire ce rapport",
+            action="ne garder que les manettes d'Apollo pendant la session, "
+                   "puis relancer un jeu et relire ce rapport",
             details=("un index qui désigne la mauvaise manette est ignoré "
                      "en silence, exactement comme une valeur inventée : le "
                      "symptôme est une manette muette et rien au journal",
