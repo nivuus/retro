@@ -2008,7 +2008,6 @@ PPSSPP (`ppsspp.ini`, `[General] Language` parmi les fichiers livrés, et
 | Émulateur | Où vit la langue des jeux | Ce qui manque |
 |---|---|---|
 | Cemu 2.6 | `settings.xml`, `console_language` (entier, FR = 2) | un dialecte XML |
-| shadPS4 0.18.0 | `user/config.json`, `General.console_language` (FR = 2) | un dialecte JSON |
 | xemu 0.8.136 | `eeprom.bin`, u32 à 0x90 sous somme de contrôle | une écriture binaire |
 
 **Ce qui reste dû, comme pour toutes les autres tables : la preuve** — un jeu
@@ -2033,6 +2032,26 @@ AVANT de composer la commande — deux lectures sans effet de bord, donc
   (FR = 2), au-delà de 29 l'émulateur refuse de démarrer.
 
 `retro status` rend une ligne « option de lancement » par système qui en porte.
+
+### Où en est D12 — 2026-09-27 : le dialecte JSON
+
+Une cible `.json` est fusionnée par `retro-json.cs` : chaque FEUILLE scalaire
+du fragment est imposée au même chemin, et sa valeur remplacée EN PLACE — le
+fichier garde tous les autres octets que l'émulateur a écrits. Une feuille
+absente s'insère à la fin de l'objet le plus profond qui existe, au retrait de
+ses membres. Un tableau n'est jamais fusionné : `valider_json` le refuse dans
+un fragment, puisque le remplacer effacerait ce que l'émulateur y range. JSON
+n'ayant pas de commentaire, une cible `.json` n'exige pas d'en-tête : elle
+exige que `content`, `enforced` et chaque fragment de langue soient un objet
+JSON fusionnable.
+
+**Vu tourner sur la console** le 2026-09-27, compilé par son `csc.exe` avec
+dix-sept vérifications, dont les VRAIS fichiers : le `config.json` de shadPS4
+(111 lignes, une seule change : `console_language`) et le `Config.json` d'un
+émulateur personnel (337 lignes, deux changent). Un second passage ne change
+plus rien.
+
+shadPS4 est un profil personnel : sa table vit hors dépôt.
 
 ## D13 — Deux juges de la langue, et une seule indulgence sur deux
 

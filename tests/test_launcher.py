@@ -530,6 +530,10 @@ def test_redeposer_la_source_ne_perime_pas_un_lanceur_a_jour(tmp_path):
     livree = (launcher.SOURCES / launcher.SOURCE).stat().st_mtime
     assert (dossier / launcher.SOURCE).stat().st_mtime == livree, (
         "la source déposée doit garder la date de celle du paquet")
+    # Compiled after the NEWEST of the sources: any of them may be the one
+    # last edited.
+    livree = max((launcher.SOURCES / nom).stat().st_mtime
+                 for nom in launcher.SOURCES_CS)
     (dossier / launcher.EXE).write_bytes(b"MZ")
     os.utime(dossier / launcher.EXE, (livree + 1, livree + 1))
     launcher.deposer_source(tmp_path)   # un second passage, plus tard
