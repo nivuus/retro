@@ -625,7 +625,7 @@ id         = "wii"
 name       = "Wii"
 folders    = ["Nintendo Wii"]
 extensions = [".iso", ".wbfs", ".rvz", ".gcz", ".ciso", ".wia", ".wad"]
-launch     = '-b --config Dolphin.Display.Fullscreen=True --config Dolphin.Core.SIDevice1=6 --config Dolphin.Core.SIDevice2=6 --config Dolphin.Core.SIDevice3=6 {render} -e "{rom}"'
+launch     = '-b --config Dolphin.Display.Fullscreen=True --config Dolphin.Core.SIDevice1=6 --config Dolphin.Core.SIDevice2=6 --config Dolphin.Core.SIDevice3=6 {render} {langue} -e "{rom}"'
 bios       = []
 cost       = "medium"
 # La GameCube et la Wii sortent toutes deux en 480 lignes au maximum : c'est
@@ -640,3 +640,30 @@ fill_absent = "Dolphin n'expose AUCUN réglage de remplissage : la révision 260
 [system.render.full]
 args = '--config GFX.Settings.InternalResolution={scale} --config GFX.Settings.AspectRatio=0'
 fill_absent = "Dolphin n'expose AUCUN réglage de remplissage : la révision 2606a épinglée au manifeste ne déclare aucune clé portant « Integer » dans Source/Core/Core/Config/GraphicsSettings.cpp, son .h, ni dans Source/Core/VideoCommon/VideoConfig.h — les seuls réglages de cadrage y sont l'AspectMode et les clés Crop. Corroboré par les chaînes du Dolphin.exe livré, lues le 2026-08-29, où « Integer » ne désigne que des types, du JIT et des entrées OpenGL. NON VÉRIFIÉ : ce que Dolphin fait de lui-même sur cet axe — personne n'a regardé une partie."
+
+# THE WII SYSTEM LANGUAGE, on the command line (2026-09-26). A Wii game reads
+# SYSCONF IPL.LNG from the emulated NAND (Core/Config/SYSCONFSettings.cpp,
+# SConfig::GetCurrentLanguage) — never Dolphin.ini, whose SelectedLanguage
+# only serves the GameCube. "-C <System>.<Section>.<Key>=<Value>" is parsed
+# by UICommon/CommandLineParse.cpp at 2606a, "SYSCONF" being a system name
+# (Common/Config/Config.cpp, system_to_name); BootManager pushes that layer
+# into the NAND's SYSCONF for the session and restores it after. Values are
+# DiscIO/Enums.h `Language`, Nintendo's Wii numbering: 0 JA, 1 EN, 2 DE,
+# 3 FR, 4 ES, 5 IT, 6 NL, 7 zh-Hans, 8 zh-Hant, 9 KO.
+# ⚠ With [Core] OverrideRegionSettings off (the default),
+# GetLanguageAdjustedForRegion bends the value to the disc's region: an
+# NTSC-J disc stays Japanese, an NTSC-U disc keeps only EN/FR/ES, a PAL disc
+# EN..NL. French survives on PAL and NTSC-U discs.
+[system.langue]
+repli = "english"
+japanese = "-C SYSCONF.IPL.LNG=0"
+english  = "-C SYSCONF.IPL.LNG=1"
+german   = "-C SYSCONF.IPL.LNG=2"
+french   = "-C SYSCONF.IPL.LNG=3"
+spanish  = "-C SYSCONF.IPL.LNG=4"
+latam    = "-C SYSCONF.IPL.LNG=4"
+italian  = "-C SYSCONF.IPL.LNG=5"
+dutch    = "-C SYSCONF.IPL.LNG=6"
+schinese = "-C SYSCONF.IPL.LNG=7"
+tchinese = "-C SYSCONF.IPL.LNG=8"
+koreana  = "-C SYSCONF.IPL.LNG=9"

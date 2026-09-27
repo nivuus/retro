@@ -16,6 +16,7 @@ import re
 import tomllib
 
 from retro import langue as langue_mod
+from retro import langue_args as langue_args_mod
 from retro.dialectes import (  # noqa: F401 — re-exported
     _INI, _YAML, cles_de, cles_ini, cles_yaml, lignes_yaml)
 from retro import render as render_mod
@@ -64,6 +65,10 @@ class System:
     # croiser avec la machine et déciderait sur une valeur inventée.
     cost: str = ""
     render: Render | None = None
+    # The launch option that follows the console language — `{langue}` in
+    # `launch`, and [system.langue]. See retro/langue_args.py.
+    langue_args: tuple[tuple[str, str], ...] = ()
+    langue_repli: str = ""
 
 
 # La phrase qu'un fichier d'amorçage porte en tête, dans la syntaxe de
@@ -1727,6 +1732,12 @@ def load_profile(path: pathlib.Path) -> Profile:
                         "qu'un jeu qui ne démarre pas."
                     )
 
+        try:
+            options_langue, repli_langue = langue_args_mod.lire(
+                brut.get("langue"), brut["launch"])
+        except langue_args_mod.LangueArgsError as exc:
+            raise ProfileError(f"{path} [{sid}] [system.langue] : {exc}") from exc
+
         systemes.append(System(
             id=sid, name=brut["name"], extensions=exts, launch=brut["launch"],
             bios=tuple(brut.get("bios", ())),
@@ -1735,6 +1746,8 @@ def load_profile(path: pathlib.Path) -> Profile:
             cost=cout,
             render=(_lire_render(path, sid, brut_render, brut["launch"])
                     if brut_render is not None else None),
+            langue_args=options_langue,
+            langue_repli=repli_langue,
         ))
 
     if not systemes:

@@ -124,6 +124,9 @@ class ProfilLangue:
     # sans lui, un relevé qui reste DÛ et un constat d'impossibilité rendent la
     # même phrase, alors que le premier appelle un geste et le second est fini.
     absente: str = ""
+    # A launch option (retro/langue_args.py), not a bootstrap entry: passed
+    # on the command line at each game, merged into no file.
+    option: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -946,13 +949,26 @@ def etat_langues(profils: dict, voulue: str,
         # lisait alors comme une absence de sujet, alors que c'est le même
         # défaut qu'une entrée sans table, une marche plus tôt : il ne manque
         # pas une table, il manque le fichier de réglages où la poser.
-        if not profils[pid].bootstraps:
+        # The launch options that follow the language (retro/langue_args.py),
+        # one line per system that declares them: Dolphin's Wii reads its
+        # NAND, never Dolphin.ini, so its bootstrap line alone would hide it.
+        options = [s for s in getattr(profils[pid], "systems", ())
+                   if getattr(s, "langue_args", ())]
+        for systeme in options:
+            decision = langue_mod.appliquer(
+                voulue, tuple(n for n, _ in systeme.langue_args),
+                systeme.langue_repli)
+            etats.append(ProfilLangue(
+                profile_id=pid,
+                cible=f"option de lancement, {systeme.name}",
+                declared=True, langue=decision.langue,
+                motif=decision.motif, option=True))
+        if not profils[pid].bootstraps and not options:
             etats.append(ProfilLangue(
                 profile_id=pid, cible="", declared=False,
                 motif="aucune entrée d'amorçage : ce profil ne désigne aucun "
                       "fichier de réglages, donc aucun endroit où poser une "
                       "langue"))
-            continue
         for amorcage in profils[pid].bootstraps:
             declarees = tuple(nom for nom, _ in amorcage.langues)
             decision = langue_mod.appliquer(
@@ -1643,7 +1659,11 @@ def _lignes_langue(report: Report) -> list[str]:
     # qui fuirait des lignes de synthèse vers les lignes de détail. La section
     # Amorçage a réglé le même problème avec « pas encore amorcé ».
     if report.langues:
-        lignes.append("  ce que chaque entrée d'amorçage posera au prochain "
+        # A launch option is not a bootstrap entry: the heading names both.
+        quoi = ("chaque entrée d'amorçage ou option de lancement"  # policy: allow-fr
+                if any(e.option for e in report.langues)
+                else "chaque entrée d'amorçage")  # policy: allow-fr
+        lignes.append(f"  ce que {quoi} posera au prochain "
                       "jeu" + _condition_langue(report) + " :")
     for e in report.langues:
         ou = f" ({e.cible})" if e.cible else ""
@@ -1700,6 +1720,12 @@ def _lignes_langue(report: Report) -> list[str]:
                   "langue échappe au propriétaire — changée dans l'émulateur, "
                   "elle reviendra au prochain jeu. « retro langue » est "
                   "l'endroit où elle se change.")
+    # A launch option merges into no file: the sentence above does not
+    # describe it, and it gets its own.
+    if any(e.option for e in report.langues):
+        lignes.append("  une option de lancement ne modifie aucun fichier : "  # policy: allow-fr
+                      "elle est passée à l'émulateur à chaque jeu, "  # policy: allow-fr
+                      "pour cette partie seulement.")  # policy: allow-fr
     return lignes
 
 

@@ -31,6 +31,7 @@ import pathlib
 import shutil
 
 from retro import langue as langue_mod
+from retro import langue_args as langue_args_mod
 from retro import profiles as profiles_mod
 from retro import render as render_mod
 
@@ -298,6 +299,10 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
         lignes.append(f"auto_{classe}={choix}")
     for nom, vram, coeurs in render_mod.SEUILS:
         lignes.append(f"threshold_{nom}={vram},{coeurs}")
+    # The launch option that follows the language: one line per Steam
+    # language, fallback resolved (retro/langue_args.py).
+    lignes += langue_args_mod.lignes_du_plan(systeme.langue_args,
+                                             systeme.langue_repli)
 
     # L'AMORÇAGE : un COMPTE, toujours écrit, puis une ligne indicée par
     # entrée. Le compte est ce que `Valeur()` protège — une clé absente est une

@@ -2010,11 +2010,29 @@ PPSSPP (`ppsspp.ini`, `[General] Language` parmi les fichiers livrés, et
 | Cemu 2.6 | `settings.xml`, `console_language` (entier, FR = 2) | un dialecte XML |
 | shadPS4 0.18.0 | `user/config.json`, `General.console_language` (FR = 2) | un dialecte JSON |
 | xemu 0.8.136 | `eeprom.bin`, u32 à 0x90 sous somme de contrôle | une écriture binaire |
-| Dolphin 2606a, Wii | la NAND, `SYSCONF` `IPL.LNG` (FR = 3) — `Dolphin.ini` ne sert qu'à la GameCube | une option `-C SYSCONF.IPL.LNG=` qui suive la langue |
-| KytyPS5 | l'argument `--console-language` | une option de lancement qui suive la langue |
 
 **Ce qui reste dû, comme pour toutes les autres tables : la preuve** — un jeu
 vu dans la langue demandée.
+
+### Où en est D12 — 2026-09-27 : la langue en ligne de commande
+
+Certains émulateurs ne lisent la langue des jeux QUE sur leur ligne de
+commande. Un système les déclare par le jeton `{langue}` dans son `launch` et
+une table `[system.langue]` — une option par nom de langue de Steam, plus un
+`repli` (`retro/langue_args.py`). Comme pour les tables d'amorçage, tout est
+résolu en Python : le plan porte une ligne `langue_args.<langue>` par langue de
+Steam, repli appliqué, et `langue_args.defaut` pour un Steam muet ; le lanceur
+lit une ligne et ne décide rien. Il calcule désormais la langue du lancement
+AVANT de composer la commande — deux lectures sans effet de bord, donc
+`--explain` reste inoffensif.
+
+- **Dolphin, Wii** : `-C SYSCONF.IPL.LNG=<n>` (FR = 3). Vu le 2026-09-27, par le
+  lanceur compilé sur la console en `--explain` : `french` donne `…=3`, `polish`
+  — non déclaré — donne le repli, `…=1`.
+- **KytyPS5** (profil personnel, hors dépôt) : `--console-language <n>`
+  (FR = 2), au-delà de 29 l'émulateur refuse de démarrer.
+
+`retro status` rend une ligne « option de lancement » par système qui en porte.
 
 ## D13 — Deux juges de la langue, et une seule indulgence sur deux
 
