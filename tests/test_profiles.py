@@ -1716,38 +1716,38 @@ def test_un_bloc_d_amorcage_au_singulier_est_refuse(tmp_path):
     assert "[[bootstrap]]" in str(e.value)
 
 
-# --- le remplissage IMPOSÉ PAR PROFIL : LE CHAMP A ÉTÉ RETIRÉ -------------
+# --- the PER-PROFILE enforced fill: THE FIELD HAS BEEN REMOVED -------------
 #
-# Neuf tests vivaient ici, autour de `[system.render] fill_enforced` — UNE
-# valeur pour les deux modes. Le champ est parti le 2026-09-05 (D14), et huit
-# de ces neuf propriétés ont leur équivalent PAR MODE plus bas : la valeur
-# inconnue, le `where` manquant dans les deux sens, le préfixe
-# « [Section] Clé », la coexistence avec `fill` et avec `fill_absent`, la
-# garde de cohérence, et le fait qu'elle regarde TOUS les [[bootstrap]].
+# Nine tests lived here, around `[system.render] fill_enforced` — ONE value
+# for both modes. The field went on 2026-09-05 (D14), and eight of those nine
+# properties have their PER-MODE equivalent below: the unknown value, the
+# missing `where` in both directions, the « [Section] Key » prefix, the
+# coexistence with `fill` and with `fill_absent`, the consistency guard, and
+# the fact that it looks at EVERY [[bootstrap]].
 #
-# La neuvième — « un remplissage imposé se déclare sur le bloc render » —
-# décrivait le champ lui-même, et elle s'en va avec lui.
+# The ninth — "an enforced fill is declared on the render block" — described
+# the field itself, and goes with it.
 #
-# CE QUI PREND LEUR PLACE, ET QUI N'EXISTAIT PAS : un refus qui NOMME le
-# remplaçant. « clé inconnue » serait vrai et inutile — l'auteur du profil a un
-# besoin réel et vient d'écrire le champ qui servait à ça.
+# WHAT TAKES THEIR PLACE, AND DID NOT EXIST: a refusal that NAMES the
+# replacement. "unknown key" would be true and useless — the profile's author
+# has a real need and has just written the field that used to serve it.
 
 
 def test_le_remplissage_impose_par_profil_est_refuse_EN_NOMMANT_son_remplacant(
         tmp_path):
-    """LA PROTECTION CONTRE LA RÉINTRODUCTION, et c'est le seul point où le
-    retrait pouvait coûter quelque chose.
+    """THE PROTECTION AGAINST REINTRODUCTION, the only point where the
+    removal could cost something.
 
-    Dans six mois, quelqu'un aura un émulateur sans option de ligne de commande
-    et écrira `fill_enforced` sur `[system.render]` — c'est le champ qui
-    servait à ça, et le nom est le premier qui vient. Lui répondre « clé
-    inconnue » l'enverrait chercher une faute de frappe, puis rouvrir le champ
-    en croyant combler un manque. C'est la leçon de D10 : ce qui se comble
-    sans bruit se comble.
+    In six months, someone will have an emulator with no command-line option
+    and will write `fill_enforced` on `[system.render]` — it is the field that
+    used to serve that, and the first name that comes to mind. Answering
+    "unknown key" would send them hunting for a typo, then reopening the field
+    believing they fill a gap. That is the lesson of D10: what can be filled
+    silently gets filled.
 
-    Le refus dit donc les deux choses qu'il faut : OÙ le champ est parti, et
-    POURQUOI — il portait une valeur unique là où la politique en veut deux, et
-    il était le seul endroit d'où un remplissage échappait à cette politique.
+    So the refusal says the two things needed: WHERE the field went, and
+    WHY — it carried a single value where the policy wants two, and it was
+    the only place from which a fill escaped that policy.
     """
     modes = '''[system.render.native]
 args = ""
@@ -1762,11 +1762,11 @@ note = "rien en ligne de commande"
     texte = texte[:texte.index("REMPLACE")] + modes + \
         '[system.render]\nfill_enforced = "entier"\n' \
         f'fill_enforced_where = "{_OU_NATIF}"\n'
-    with pytest.raises(profiles.ProfileError, match="RETIRÉ") as e:
+    with pytest.raises(profiles.ProfileError, match="REMOVED") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", texte))
     assert "render.native.fill_enforced" in str(e.value), (
-        "le refus ne nomme pas le remplaçant : l'auteur du profil ira "
-        "chercher une faute de frappe, puis rouvrira le champ")
+        "the refusal does not name the replacement: the profile's author "
+        "will hunt for a typo, then reopen the field")
     assert "bootstrap.render" in str(e.value)
 
 
@@ -2276,23 +2276,23 @@ def test_un_aveu_d_absence_qui_n_est_pas_du_texte_est_refuse(tmp_path):
     assert "langue_absente" in message
 
 
-# --- D14 : le remplissage imposé PAR MODE, et ses gardes -----------------
+# --- D14: the PER-MODE enforced fill, and its guards -----------------------
 #
-# Le champ ci-dessus est PAR PROFIL — une seule valeur pour les deux modes —
-# pendant que la politique est PAR MODE. PCSX2 y était bloqué : il a la mise à
-# l'échelle entière, son fichier est un INI, sa cible est déjà déclarée, et la
-# seule valeur livrable contredisait la politique en mode full.
+# The field above was PER PROFILE — a single value for both modes — while the
+# policy is PER MODE. PCSX2 was stuck on it: it has integer scaling, its file
+# is an INI, its target is already declared, and the only shippable value
+# contradicted the policy in full mode.
 #
-# LE FAIT QUI DÉBLOQUE, mesuré dans le lanceur : `Amorcer()` est appelé DEPUIS
-# `Lancer()` (ligne 1487), une fois le mode effectif résolu (ligne 1257). Un
-# fragment imposé PAR MODE est donc posable, exactement comme il y a déjà un
-# fragment par langue — et il est SOUMIS À LA POLITIQUE, ce qui fait mordre la
-# garde là où elle ne mordait pas.
+# THE FACT THAT UNBLOCKS IT, measured in the launcher: `Amorcer()` is called
+# FROM `Lancer()` (line 1487), once the effective mode is resolved (line
+# 1257). A PER-MODE enforced fragment can therefore be posed, exactly as there
+# already is a fragment per language — and it is SUBJECT TO THE POLICY, which
+# makes the guard bite where it did not.
 
 _PAR_MODE_NATIF = "[EmuCore/GS]\nIntegerScaling = true"
 _PAR_MODE_FULL = "[EmuCore/GS]\nIntegerScaling = false"
-_OU_NATIF = "[EmuCore/GS] IntegerScaling = true — relevé le 2026-01-01"
-_OU_FULL = "[EmuCore/GS] IntegerScaling = false — relevé le 2026-01-01"
+_OU_NATIF = "[EmuCore/GS] IntegerScaling = true — measured on 2026-01-01"
+_OU_FULL = "[EmuCore/GS] IntegerScaling = false — measured on 2026-01-01"
 
 
 def _profil_par_mode(natif: str = _PAR_MODE_NATIF,
@@ -2302,8 +2302,8 @@ def _profil_par_mode(natif: str = _PAR_MODE_NATIF,
                      plein_extra: str = f'fill_enforced = "ajuste"\n'
                                         f'fill_enforced_where = "{_OU_FULL}"',
                      enforced: str = "", table: str = "") -> str:
-    """Un profil PCSX2-comme : rien en ligne de commande, un fragment imposé
-    PAR MODE, et le remplissage déclaré sur chaque mode."""
+    """A PCSX2-like profile: nothing on the command line, one enforced
+    fragment PER MODE, and the fill declared on each mode."""
     if not table:
         table = f'[bootstrap.render]\nnative = """\n{natif}\n"""\n' \
                 f'full = """\n{plein}\n"""\n'
@@ -2327,20 +2327,20 @@ launch = '-batch {{render}} "{{rom}}"'
 cost = "medium"
 [system.render.native]
 args = ""
-note = "rien en ligne de commande"
-crt_absent = "aucun shader en ligne de commande"
+note = "nothing on the command line"
+crt_absent = "no shader on the command line"
 {natif_extra}
 [system.render.full]
 args = ""
-note = "rien en ligne de commande"
+note = "nothing on the command line"
 {plein_extra}
 [system.render]
 '''
 
 
 def test_un_mode_peut_declarer_son_remplissage_impose(tmp_path):
-    """Le cas de PCSX2 : deux valeurs, une par mode, chacune posée par le
-    fragment imposé de son mode."""
+    """The PCSX2 case: two values, one per mode, each posed by its mode's
+    enforced fragment."""
     p = profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode()))
     rendu = p.systems[0].render
     assert (rendu.native.fill_enforced, rendu.full.fill_enforced) == (
@@ -2350,10 +2350,10 @@ def test_un_mode_peut_declarer_son_remplissage_impose(tmp_path):
 
 def test_un_remplissage_impose_par_mode_qui_contredit_la_politique_est_refuse(
         tmp_path):
-    """LA GARDE QUI DOIT CONTINUER DE MORDRE, et qui mord désormais sur un axe
-    qu'elle ne voyait pas. Poser `entier` en mode full, c'est très exactement
-    l'écart que D14 refuse de livrer en silence."""
-    with pytest.raises(profiles.ProfileError, match="politique") as e:
+    """THE GUARD THAT MUST KEEP BITING, and now bites on an axis it did not
+    see. Posing `entier` in full mode is exactly the deviation D14 refuses to
+    ship silently."""
+    with pytest.raises(profiles.ProfileError, match="policy") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             plein_extra=f'fill_enforced = "entier"\n'
                         f'fill_enforced_where = "{_OU_FULL}"')))
@@ -2362,8 +2362,8 @@ def test_un_remplissage_impose_par_mode_qui_contredit_la_politique_est_refuse(
 
 
 def test_un_remplissage_impose_par_mode_sans_son_where_est_refuse(tmp_path):
-    """Sans le `where`, la garde de cohérence n'a aucune clé à chercher : le
-    profil annoncerait un remplissage que rien ne prouve posé."""
+    """Without the `where`, the consistency guard has no key to look for: the
+    profile would announce a fill nothing proves posed."""
     with pytest.raises(profiles.ProfileError,
                        match="fill_enforced_where") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
@@ -2372,17 +2372,17 @@ def test_un_remplissage_impose_par_mode_sans_son_where_est_refuse(tmp_path):
 
 
 def test_un_where_par_mode_sans_remplissage_impose_est_refuse(tmp_path):
-    """L'autre sens de la paire."""
-    with pytest.raises(profiles.ProfileError, match="vont ensemble") as e:
+    """The other direction of the pair."""
+    with pytest.raises(profiles.ProfileError, match="go together") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             natif_extra=f'fill_enforced_where = "{_OU_NATIF}"')))
     assert "p.toml" in str(e.value)
 
 
 def test_un_remplissage_impose_par_mode_avec_un_fill_est_refuse(tmp_path):
-    """Le même axe décidé à deux endroits sur le MÊME mode : les arguments et
-    le fichier de réglages. Rien dans le profil ne dirait lequel gagne."""
-    with pytest.raises(profiles.ProfileError, match="deux endroits") as e:
+    """The same axis decided in two places on the SAME mode: the arguments and
+    the settings file. Nothing in the profile would say which one wins."""
+    with pytest.raises(profiles.ProfileError, match="two places") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             natif_extra=f'fill = "entier"\nfill_enforced = "entier"\n'
                         f'fill_enforced_where = "{_OU_NATIF}"')))
@@ -2391,9 +2391,9 @@ def test_un_remplissage_impose_par_mode_avec_un_fill_est_refuse(tmp_path):
 
 def test_un_remplissage_impose_par_mode_avec_un_fill_absent_est_refuse(
         tmp_path):
-    """« cet émulateur n'expose rien sur cet axe » et « la console lui impose
-    ceci » ne peuvent pas être vrais ensemble."""
-    with pytest.raises(profiles.ProfileError, match="deux endroits") as e:
+    """"This emulator exposes nothing on this axis" and "the console enforces
+    this on it" cannot both be true."""
+    with pytest.raises(profiles.ProfileError, match="two places") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             natif_extra=f'fill_absent = "rien"\nfill_enforced = "entier"\n'
                         f'fill_enforced_where = "{_OU_NATIF}"')))
@@ -2401,9 +2401,9 @@ def test_un_remplissage_impose_par_mode_avec_un_fill_absent_est_refuse(
 
 
 def test_un_remplissage_impose_par_mode_inconnu_est_refuse(tmp_path):
-    """Une valeur hors de l'axe ne serait comparée à rien, et le rapport
-    l'imprimerait telle quelle comme si elle voulait dire quelque chose.
-    (Transposée du champ par profil, retiré le 2026-09-05.)"""
+    """A value outside the axis would be compared to nothing, and the report
+    would print it as is, as if it meant something.
+    (Transposed from the per-profile field, removed on 2026-09-05.)"""
     with pytest.raises(profiles.ProfileError, match="etire") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             natif_extra=f'fill_enforced = "etire"\n'
@@ -2412,22 +2412,22 @@ def test_un_remplissage_impose_par_mode_inconnu_est_refuse(tmp_path):
 
 
 def test_un_where_par_mode_sans_prefixe_section_cle_est_refuse(tmp_path):
-    """Le préfixe « [Section] Clé » n'est pas décoratif : c'est ce que la
-    garde de cohérence analyse pour aller chercher la clé dans le fragment de
-    ce mode-là. (Transposée du champ par profil, retiré le 2026-09-05.)"""
-    with pytest.raises(profiles.ProfileError, match=r"\[Section\] Clé") as e:
+    """The « [Section] Key » prefix is not decorative: it is what the
+    consistency guard parses to look for the key in that mode's fragment.
+    (Transposed from the per-profile field, removed on 2026-09-05.)"""
+    with pytest.raises(profiles.ProfileError, match=r"\[Section\] Key") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             natif_extra='fill_enforced = "entier"\n'
-                        'fill_enforced_where = "posé dans son PCSX2.ini"')))
+                        'fill_enforced_where = "posed in its PCSX2.ini"')))
     assert "p.toml" in str(e.value)
 
 
 def test_la_garde_de_coherence_par_mode_regarde_tous_les_amorcages(tmp_path):
-    """La clé peut être posée par n'importe lequel des blocs [[bootstrap]] du
-    profil : RPCS3 en a deux, et exiger le premier serait arbitraire.
-    (Transposée du champ par profil, retiré le 2026-09-05.)"""
-    # Le premier amorçage ne porte AUCUNE table de modes ; c'est le second qui
-    # pose la clé annoncée.
+    """The key may be posed by any of the profile's [[bootstrap]] blocks:
+    RPCS3 has two, and requiring the first would be arbitrary.
+    (Transposed from the per-profile field, removed on 2026-09-05.)"""
+    # The first bootstrap carries NO modes table; the second one poses the
+    # announced key.
     texte = _profil_par_mode(table=" ").replace(
         "[[system]]",
         "[[bootstrap]]\ntarget = 'C:\\\\autre.ini'\n"
@@ -2441,9 +2441,9 @@ def test_la_garde_de_coherence_par_mode_regarde_tous_les_amorcages(tmp_path):
 
 def test_un_remplissage_impose_par_mode_sur_une_cle_que_rien_ne_pose_est_refuse(
         tmp_path):
-    """LA GARDE DE COHÉRENCE, PAR MODE. La clé nommée par le `where` du mode
-    natif doit figurer dans le fragment `native` de [bootstrap.render] — pas
-    dans celui de l'autre mode, qui ne serait jamais posé en natif."""
+    """THE CONSISTENCY GUARD, PER MODE. The key named by the native mode's
+    `where` must be in the `native` fragment of [bootstrap.render] — not in
+    the other mode's, which would never be posed in native."""
     with pytest.raises(profiles.ProfileError,
                        match=r"\[EmuCore/GS\] IntegerScaling") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
@@ -2454,10 +2454,10 @@ def test_un_remplissage_impose_par_mode_sur_une_cle_que_rien_ne_pose_est_refuse(
 
 def test_une_table_par_mode_qui_ne_declare_pas_les_deux_modes_est_refuse(
         tmp_path):
-    """Un seul mode déclaré laisserait la clé du mode déclaré EN PLACE quand
-    l'autre se lance : la fusion n'écrit que ce qu'un fragment apporte, donc
-    rien ne l'effacerait. L'image serait celle du mode précédent, et rien ne
-    le dirait."""
+    """A single declared mode would leave that mode's key IN PLACE when the
+    other one launches: the merge only writes what a fragment brings, so
+    nothing would erase it. The image would be the previous mode's, and
+    nothing would say so."""
     with pytest.raises(profiles.ProfileError, match="full") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             table=f'[bootstrap.render]\nnative = """\n{_PAR_MODE_NATIF}\n"""\n')))
@@ -2465,20 +2465,20 @@ def test_une_table_par_mode_qui_ne_declare_pas_les_deux_modes_est_refuse(
 
 
 def test_deux_modes_qui_ne_posent_pas_les_memes_cles_sont_refuses(tmp_path):
-    """LE PIÈGE PROPRE À CE MÉCANISME, et il est le jumeau exact de celui des
-    langues : la fusion n'écrit que les clés qu'un fragment apporte. Une clé
-    posée en natif et absente du fragment full resterait à sa valeur native
-    tout le temps que dure le mode full — une image de mode natif dans le
-    mode full, sans qu'aucune erreur ne le dise."""
-    with pytest.raises(profiles.ProfileError, match="mêmes clés") as e:
+    """THE TRAP SPECIFIC TO THIS MECHANISM, the exact twin of the language
+    one: the merge only writes the keys a fragment brings. A key posed in
+    native and missing from the full fragment would keep its native value for
+    as long as full mode lasts — a native-mode image in full mode, with no
+    error to say so."""
+    with pytest.raises(profiles.ProfileError, match="same keys") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             natif=_PAR_MODE_NATIF + "\nBilinearFiltering = true")))
     assert "BilinearFiltering" in str(e.value)
 
 
 def test_un_mode_inconnu_dans_la_table_par_mode_est_refuse(tmp_path):
-    """« auto » n'est pas un mode déclaré : il hérite du mode qu'il retient.
-    Un fragment nommé pour lui ne serait posé par personne."""
+    """"auto" is not a declared mode: it inherits the mode it picks. A
+    fragment named after it would be posed by nobody."""
     with pytest.raises(profiles.ProfileError, match="auto") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             table=f'[bootstrap.render]\nnative = """\n{_PAR_MODE_NATIF}\n"""\n'
@@ -2488,10 +2488,10 @@ def test_un_mode_inconnu_dans_la_table_par_mode_est_refuse(tmp_path):
 
 
 def test_une_cle_a_la_fois_imposee_et_par_mode_est_refusee(tmp_path):
-    """Deux fusions successives sur la même cible, au même lancement : c'est
-    leur ORDRE qui trancherait, un détail du lanceur que le profil n'écrit
-    nulle part. C'est le refus déjà rendu pour `enforced` contre les langues,
-    par la troisième porte."""
+    """Two successive merges on the same target, at the same launch: their
+    ORDER would decide, a launcher detail the profile writes nowhere. It is
+    the refusal already given for `enforced` against languages, through the
+    third door."""
     with pytest.raises(profiles.ProfileError, match="IntegerScaling") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             enforced='enforced = """\n[EmuCore/GS]\nIntegerScaling = true\n'
@@ -2500,10 +2500,10 @@ def test_une_cle_a_la_fois_imposee_et_par_mode_est_refusee(tmp_path):
 
 
 def test_une_table_par_mode_qui_n_est_pas_du_texte_est_refusee(tmp_path):
-    """La faute de frappe la plus facile du fichier : le point de trop, qui
-    écrit « [bootstrap.render.native] » et ouvre un BLOC au lieu de nommer un
-    mode. Sans ce refus, la levée ne nommerait aucun profil."""
-    with pytest.raises(profiles.ProfileError, match="TEXTE") as e:
+    """The easiest typo in the file: the extra dot, which writes
+    « [bootstrap.render.native] » and opens a TABLE instead of naming a
+    mode. Without this refusal, the error would name no profile."""
+    with pytest.raises(profiles.ProfileError, match="TEXT") as e:
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             table='[bootstrap.render]\nnative = 1\nfull = 2\n')))
     assert "p.toml" in str(e.value)
@@ -2511,19 +2511,19 @@ def test_une_table_par_mode_qui_n_est_pas_du_texte_est_refusee(tmp_path):
 
 def test_un_remplissage_par_mode_pose_par_le_fragment_SANS_MODE_est_refuse(
         tmp_path):
-    """LA FAUTE LA PLUS PLAUSIBLE DE TOUT CE MÉCANISME, et elle est muette :
-    déclarer `fill_enforced` sur le mode natif, et poser la clé dans le champ
-    `enforced` — celui qui vaut pour LES DEUX modes.
+    """THE MOST PLAUSIBLE MISTAKE OF THIS WHOLE MECHANISM, and a silent one:
+    declaring `fill_enforced` on the native mode, and posing the key in the
+    `enforced` field — the one that applies to BOTH modes.
 
-    Le profil se chargerait, `retro status` annoncerait `entier` en natif et
-    `ajuste` en full, et la machine recevrait `entier` DANS LES DEUX. La garde
-    de cohérence cherche la clé dans le fragment DU MODE, jamais dans l'union
-    de tout ce que le profil impose — c'est ce qui la rend étroite, et c'est
-    ce qui la rend utile."""
+    The profile would load, `retro status` would announce `entier` in native
+    and `ajuste` in full, and the machine would receive `entier` IN BOTH. The
+    consistency guard looks for the key in the MODE's fragment, never in the
+    union of everything the profile enforces — that is what makes it narrow,
+    and what makes it useful."""
     with pytest.raises(profiles.ProfileError,
                        match=r"\[EmuCore/GS\] IntegerScaling") as e:
-        # « table » vaut un espace : truthy, donc le gabarit ne fabrique pas
-        # sa table par défaut, et le profil n'en porte AUCUNE.
+        # "table" is a space: truthy, so the template does not build its
+        # default table, and the profile carries NONE.
         profiles.load_profile(ecrire(tmp_path, "p.toml", _profil_par_mode(
             table=" ", enforced='enforced = """\n' + _PAR_MODE_NATIF + '\n"""\n'
         ).replace('fill_enforced = "ajuste"\n'

@@ -1379,17 +1379,17 @@ def test_les_deux_fusions_passent_par_LE_MEME_chemin():
     """Deux copies du bloc de fusion divergeraient : le jour où la première
     gagnerait une sauvegarde, la seconde poserait la langue sans.
 
-    ELLES SONT TROIS DEPUIS D14 — imposé, mode de rendu, langue — et le
-    raisonnement en sort renforcé, pas affaibli : trois copies divergeraient
-    trois fois, et personne ne saurait laquelle a touché le fichier du
-    propriétaire."""
+    THERE ARE THREE SINCE D14 — enforced, render mode, language — and the
+    reasoning comes out stronger, not weaker: three copies would diverge
+    three times, and nobody would know which one touched the owner's
+    file."""
     src = _source_du_lanceur()
     assert src.count("EcrireAtomique(cible, fusionne, bomCible)") == 1, (
-        "le fichier fusionné est écrit à deux endroits : les clés imposées, "
-        "le mode et la langue doivent passer par la même méthode")
+        "the merged file is written in two places: the enforced keys, the "
+        "mode and the language must go through the same method")
     assert src.count("FusionnerFragment(") == 4, (
-        "attendu : la définition et TROIS appels — l'imposé, le mode, puis "
-        "la langue")
+        "expected: the definition and THREE calls — enforced, mode, then "
+        "language")
 
 
 # --- le témoin par cible et sa QUATRIÈME colonne ---------------------------
@@ -1423,30 +1423,29 @@ def test_le_temoin_a_quatre_colonnes_porte_la_langue_POSEE(tmp_path):
 
 def test_une_colonne_de_temoin_INCONNUE_est_ignoree_SANS_jeter_la_ligne(
         tmp_path):
-    """CE TEST A ÉTÉ RETOURNÉ le 2026-09-05, pas supprimé — c'est la
-    CONTRAINTE qui était en cause, pas son verdict.
+    """THIS TEST WAS FLIPPED on 2026-09-05, not deleted — the CONSTRAINT was
+    at fault, not its verdict.
 
-    Il exigeait l'inverse : « au-delà de la colonne qu'on vient d'ouvrir, une
-    ligne inattendue est le signe d'un format qu'on ne connaît pas, et la
-    deviner poserait une langue que personne n'a écrite ». Le raisonnement
-    était juste sur le SENS d'une colonne inconnue — on ne le devine
-    toujours pas, et cette ligne-ci ne devine rien — et faux sur le PRIX de
-    jeter la ligne.
+    It demanded the opposite: "beyond the column just opened, an unexpected
+    line is the sign of an unknown format, and guessing it would pose a
+    language nobody wrote". The reasoning was right about the MEANING of an
+    unknown column — it is still not guessed, and this line guesses
+    nothing — and wrong about the COST of dropping the line.
 
-    Ce prix, D12 l'a déjà payé une fois pour la quatrième colonne : une ligne
-    jetée fait dire au rapport « pas encore amorcé » de la cible, donc de
-    TOUTES les cibles si le lanceur écrit toujours la même forme — sur une
-    console parfaitement amorcée. Et depuis D14, une TROISIÈME chose atteint
-    chaque cible : le fragment du mode de rendu. La cinquième colonne viendra.
+    D12 already paid that cost once for the fourth column: a dropped line
+    makes the report say "not bootstrapped yet" about the target, hence
+    about EVERY target if the launcher always writes the same shape — on a
+    perfectly bootstrapped console. And since D14 a THIRD thing reaches each
+    target: the render mode's fragment. The fifth column will come.
 
-    L'asymétrie qui tranche : le lecteur est du Python d'hôte, livrable
-    aujourd'hui ; l'écrivain est du C# que cet hôte ne compile pas. Rendre le
-    lecteur tolérant MAINTENANT ne coûte rien, n'engage aucune sémantique, et
-    désamorce une mine qui exploserait en silence.
+    The asymmetry that decides: the reader is host Python, shippable today;
+    the writer is C# this host cannot compile. Making the reader tolerant
+    NOW costs nothing, commits to no semantics, and defuses a mine that
+    would go off silently.
 
-    Ce que cette tolérance N'EST PAS : une décision sur ce que la cinquième
-    colonne signifie. Elle est IGNORÉE, pas interprétée. Le sens appartient à
-    qui écrira l'autre moitié.
+    What this tolerance IS NOT: a decision on what the fifth column means.
+    It is IGNORED, not interpreted. The meaning belongs to whoever writes
+    the other half.
     """
     dossier = tmp_path / launcher.DIR
     dossier.mkdir(parents=True)
@@ -1459,11 +1458,11 @@ def test_une_colonne_de_temoin_INCONNUE_est_ignoree_SANS_jeter_la_ligne(
 
 
 def test_une_ligne_de_temoin_TRONQUEE_est_toujours_ignoree(tmp_path):
-    """La tolérance est ouverte VERS LE HAUT seulement, et c'est le sens qui
-    compte : une ligne à moins de trois colonnes n'a pas de cible, donc rien
-    à rapporter — inventer la sienne poserait au rapport un chemin que
-    personne n'a écrit. Sans ce test, la tolérance neuve aurait pu être
-    écrite « len(parts) != 4 » et tout accepter."""
+    """The tolerance opens UPWARD only, and that direction is what matters:
+    a line with fewer than three columns has no target, hence nothing to
+    report — inventing one would give the report a path nobody wrote.
+    Without this test, the new tolerance could have been written
+    "len(parts) != 4" and accepted everything."""
     dossier = tmp_path / launcher.DIR
     dossier.mkdir(parents=True)
     (dossier / launcher.TEMOIN_BOOTSTRAP).write_text(
@@ -1471,13 +1470,13 @@ def test_une_ligne_de_temoin_TRONQUEE_est_toujours_ignoree(tmp_path):
     assert launcher.lire_amorcages(tmp_path) == {}
 
 
-# --- D14 : le fragment imposé PAR MODE ------------------------------------
+# --- D14: the enforced fragment PER MODE -----------------------------------
 #
-# Un fichier de plus par entrée, un par mode déclaré, et une ligne de plan
-# indicée par (rang, mode). C'est la transposition exacte de la langue, et
-# pour la raison mesurée dans le lanceur : `Amorcer()` est appelé DEPUIS
-# `Lancer()`, une fois le mode effectif résolu — le fragment de ce mode-là est
-# donc choisissable, comme celui de la langue du lancement.
+# One more file per entry, one per declared mode, and a plan line indexed by
+# (rank, mode). It is the exact transposition of the language, for the reason
+# measured in the launcher: `Amorcer()` is called FROM `Lancer()`, once the
+# effective mode is resolved — that mode's fragment can therefore be chosen,
+# like the launch language's.
 
 PROFIL_PAR_MODE = PROFIL_IMPOSE + """
 [bootstrap.render]
@@ -1500,8 +1499,8 @@ def profils_par_mode(tmp_path):
 
 
 def test_le_plan_porte_un_fichier_impose_par_mode(profils_par_mode):
-    """Une ligne par mode, indicée comme le reste. Le lanceur lit celle du
-    mode qu'il vient de résoudre — il ne choisit rien."""
+    """One line per mode, indexed like the rest. The launcher reads the one
+    of the mode it has just resolved — it chooses nothing."""
     profil = profils_par_mode["duckstation"]
     l = lignes(launcher.plan_systeme(
         "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
@@ -1510,16 +1509,16 @@ def test_le_plan_porte_un_fichier_impose_par_mode(profils_par_mode):
         "D:\\E\\_launcher\\systems\\duckstation.impose.1.native.ini")
     assert l["bootstrap_enforced.1.full"] == (
         "D:\\E\\_launcher\\systems\\duckstation.impose.1.full.ini")
-    # Et la ligne SANS mode reste, distincte : ce sont les clés que la console
-    # impose quel que soit le mode.
+    # And the line WITHOUT a mode stays, distinct: those are the keys the
+    # console enforces whatever the mode.
     assert l["bootstrap_enforced.1"] == (
         "D:\\E\\_launcher\\systems\\duckstation.impose.1.ini")
 
 
 def test_une_entree_sans_table_de_modes_n_ecrit_aucune_ligne_de_mode(
         profils_imposes):
-    """Sur le modèle de `bootstrap_count=0` et de la langue : écrire des
-    lignes vides ferait boucler le lanceur sur du rien."""
+    """On the model of `bootstrap_count=0` and of the language: writing
+    empty lines would make the launcher loop over nothing."""
     profil = profils_imposes["duckstation"]
     l = lignes(launcher.plan_systeme(
         "duckstation", profil.systems[0], "D:\\E\\d.exe", "D:\\E",
@@ -1539,8 +1538,8 @@ def test_les_fragments_par_mode_sont_deposes(tmp_path, profils_par_mode):
 
 
 def test_les_fragments_attendus_portent_ceux_des_modes(profils_par_mode):
-    """UNE seule définition de ce qu'une entrée dépose : le contrôle de
-    `retro status` compare exactement ce que l'écriture produit."""
+    """ONE single definition of what an entry deposits: the `retro status`
+    check compares exactly what the writer produces."""
     amorcage = profils_par_mode["duckstation"].bootstraps[0]
     noms = dict(launcher.fragments_attendus("duckstation", 1, amorcage))
     assert set(noms) == {"duckstation.bootstrap.1.ini",
@@ -1550,50 +1549,49 @@ def test_les_fragments_attendus_portent_ceux_des_modes(profils_par_mode):
 
 
 def test_le_fragment_d_un_mode_ne_se_confond_pas_avec_celui_des_cles_imposees():
-    """Sans le nom du mode, les trois fragments d'une même entrée se
-    disputeraient un fichier, et l'un serait posé à la place de l'autre."""
+    """Without the mode's name, the three fragments of one entry would fight
+    over one file, and one would be posed in place of another."""
     sans_mode = launcher.enforced_name("duckstation", 1, "x.ini")
     natif = launcher.enforced_mode_name("duckstation", 1, "native", "x.ini")
     plein = launcher.enforced_mode_name("duckstation", 1, "full", "x.ini")
     assert len({sans_mode, natif, plein}) == 3
 
 
-# --- D14, côté lanceur : la source, faute de compilateur ------------------
+# --- D14, launcher side: the source, for lack of a compiler ---------------
 #
-# ⚠ RIEN DE CE QUI SUIT N'A ÉTÉ COMPILÉ. Il n'existe aucun compilateur C# sur
-# l'hôte — ni `csc`, ni `mcs`, ni `mono`, ni `dotnet` —, revérifié le
-# 2026-09-05. Ces tests exigent que la source LISE les bonnes clés et fusionne
-# dans le bon ordre ; ils ne prouvent pas qu'elle compile, encore moins
-# qu'elle tourne. C'est la tâche 8 de D7, et elle reste due.
+# ⚠ NOTHING BELOW HAS BEEN COMPILED. There is no C# compiler on the host —
+# no `csc`, `mcs`, `mono` or `dotnet` —, re-checked on 2026-09-05. These
+# tests require the source to READ the right keys and merge in the right
+# order; they do not prove it compiles, let alone runs. That is task 8 of
+# D7, and it remains due.
 
 def test_le_lanceur_cherche_la_ligne_du_fragment_de_mode():
-    """Sans cette clé, le lanceur ne trouverait aucun fragment de mode et
-    n'en poserait aucun — en silence, comme un plan d'avant D14."""
+    """Without this key, the launcher would find no mode fragment and pose
+    none — silently, like a pre-D14 plan."""
     src = _source_du_lanceur()
     assert "bootstrap_enforced." in src
     assert "FragmentDeMode(" in src
 
 
 def test_le_mode_du_lancement_est_decide_AVANT_l_amorcage():
-    """LE FAIT QUI REND D14 POSSIBLE, et il s'épingle ici parce qu'il a été
-    cru faux pendant tout ce temps : `Amorcer()` est appelé DEPUIS
-    `Lancer()`, une fois le mode effectif résolu. Le jour où quelqu'un
-    remonterait l'appel d'`Amorcer()` au-dessus de la résolution du mode, le
-    fragment par mode deviendrait indécidable — et il serait posé au hasard,
-    sans un mot."""
+    """THE FACT THAT MAKES D14 POSSIBLE, pinned here because it was believed
+    false all along: `Amorcer()` is called FROM `Lancer()`, once the
+    effective mode is resolved. The day someone moves the `Amorcer()` call
+    above the mode resolution, the per-mode fragment becomes undecidable —
+    and it would be posed at random, without a word."""
     src = _source_du_lanceur()
     resolution = src.index("string effectif = demande")
     amorcage = src.index("Amorcer(p, profilCle)")
     assert resolution < amorcage, (
-        "le mode est résolu APRÈS l'amorçage : le fragment par mode ne "
-        "pourrait plus être choisi, et D14 serait fausse")
+        "the mode is resolved AFTER the bootstrap: the per-mode fragment "
+        "could no longer be chosen, and D14 would be false")
 
 
 def test_le_fragment_de_mode_est_fusionne_APRES_les_cles_imposees():
-    """Trois fusions peuvent atteindre la même cible au même lancement. Leur
-    ordre est sans effet sur le résultat — les gardes du profil refusent
-    qu'elles partagent une clé — mais il est FIXÉ, pour que le journal se
-    lise et que deux exécutions rendent le même fichier à l'octet près."""
+    """Three merges can reach the same target in the same launch. Their
+    order has no effect on the result — the profile's guards refuse that
+    they share a key — but it is FIXED, so the log reads the same and two
+    runs produce the same file byte for byte."""
     src = _source_du_lanceur()
     impose = src.index("FusionnerFragment(cible, impose")
     mode = src.index("FusionnerFragment(cible, fragmentMode")
@@ -1602,19 +1600,20 @@ def test_le_fragment_de_mode_est_fusionne_APRES_les_cles_imposees():
 
 
 def test_le_lanceur_lit_le_fragment_du_mode_EFFECTIF_et_non_du_demande():
-    """`auto` n'a aucun fragment — il n'est jamais le mode effectif. Lire le
-    mode DEMANDÉ ferait chercher « bootstrap_enforced.1.auto », que le plan
-    n'écrit jamais, et aucune clé ne serait posée : le mode automatique
-    perdrait son remplissage sans un mot, sur la console où il est le
-    défaut."""
+    """`auto` has no fragment — it is never the effective mode. Reading the
+    REQUESTED mode would look for "bootstrap_enforced.1.auto", which the
+    plan never writes, and no key would be posed: the automatic mode would
+    lose its fill without a word, on the console where it is the
+    default."""
     src = _source_du_lanceur()
     assert "modeDuLancement = effectif" in src, (
-        "le lanceur ne mémorise pas le mode EFFECTIF pour l'amorçage")
+        "the launcher does not remember the EFFECTIVE mode for the "
+        "bootstrap")
 
 
 def test_explain_dit_si_une_cible_recoit_un_fragment_de_mode():
-    """`--explain` est le seul contrôle lisible à distance, sans lancer de
-    jeu. Une cible qui reçoit une fusion de mode et dont il ne dirait rien
-    referait le mensonge que la langue a déjà coûté."""
+    """`--explain` is the only check readable remotely, without launching a
+    game. A target receiving a mode merge that it said nothing about would
+    repeat the lie the language already cost."""
     src = _source_du_lanceur()
     assert "amorcage_impose_mode." in src

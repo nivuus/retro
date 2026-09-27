@@ -1193,12 +1193,12 @@ def test_le_rapport_dit_le_remplissage_d_un_emulateur_qui_ne_pilote_rien(
         f"{bloc}")
 
 
-# `_profils_impose` et son test vivaient ici : un profil dont le remplissage
-# était imposé PAR PROFIL, une valeur pour les deux modes. Le champ a été
-# retiré le 2026-09-05 (D14) ; `_profils_impose_par_mode`, en fin de fichier,
-# tient la même propriété de bout en bout — le profil le déclare, `etat_rendu`
-# le résout, le rapport l'imprime — sur un émulateur qui ne pilote rien en
-# ligne de commande, et avec DEUX valeurs au lieu d'une.
+# `_profils_impose` and its test lived here: a profile whose fill was
+# enforced PER PROFILE, one value for both modes. The field was removed on
+# 2026-09-05 (D14); `_profils_impose_par_mode`, at the end of this file, holds
+# the same property end to end — the profile declares it, `etat_rendu`
+# resolves it, the report prints it — on an emulator that drives nothing on
+# the command line, and with TWO values instead of one.
 
 
 PROFIL_DEUX_CIBLES = """
@@ -2390,11 +2390,11 @@ def test_une_langue_inconnue_n_accuse_pas_un_changement_de_reglage(
     assert "le réglage a changé depuis" not in section
 
 
-# --- D14 : le remplissage imposé PAR MODE, dans le rapport ---------------
+# --- D14: the fill enforced PER MODE, in the report ----------------------
 
 def _profils_impose_par_mode(tmp_path):
-    """Le cas PCSX2 : rien en ligne de commande, et DEUX valeurs — la mise à
-    l'échelle entière imposée en natif, éteinte en full."""
+    """The PCSX2 case: nothing on the command line, and TWO values — integer
+    scaling enforced in native, turned off in full."""
     (tmp_path / "m.toml").write_text('''
 schema = 1
 id = "m"
@@ -2440,9 +2440,9 @@ fill_enforced_where = "[EmuCore/GS] IntegerScaling = false — relevé"
 
 def test_un_remplissage_impose_par_mode_rend_DEUX_valeurs_dans_le_rapport(
         tmp_path):
-    """Le fait que D14 existait pour rendre exprimable : `entier` en natif,
-    `ajuste` en full, sur un émulateur qui ne pilote RIEN en ligne de
-    commande. Le champ par profil n'en rendait qu'une, la même deux fois."""
+    """The fact D14 existed to make expressible: `entier` in native,
+    `ajuste` in full, on an emulator that drives NOTHING on the command
+    line. The per-profile field rendered only one, the same one twice."""
     from retro import render
     etat = next(iter(status.etat_rendu(_profils_impose_par_mode(tmp_path))))
     assert dict((mode, valeur) for mode, valeur, _ in etat.remplissage) == {
@@ -2450,10 +2450,9 @@ def test_un_remplissage_impose_par_mode_rend_DEUX_valeurs_dans_le_rapport(
 
 
 def test_le_rapport_dit_OU_un_remplissage_impose_par_mode_est_pose(tmp_path):
-    """Le propriétaire ne peut pas le deviner : cette clé-là, la console la
-    lui reprend dans SON fichier de réglages, et à chaque lancement. Taire le
-    « où » ferait lire une valeur de l'axe comme si elle venait des arguments
-    du mode."""
+    """The owner cannot guess it: the console takes that key back from them
+    in THEIR settings file, at every launch. Hiding the "where" would make an
+    axis value read as if it came from the mode's arguments."""
     etat = next(iter(status.etat_rendu(_profils_impose_par_mode(tmp_path))))
     lignes = "\n".join(status._lignes_rendu(status.Report(
         emulators=[], systems=[], bios=[], problems=[],

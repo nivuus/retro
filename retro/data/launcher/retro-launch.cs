@@ -193,16 +193,16 @@ static partial class RetroLaunch
     // porte une ligne « defaut » pour ce cas precis, et rien n'est suppose
     // ici — une langue inventee serait indiscernable d'une langue relevee.
     static string langueDuLancement = "";
-    // LE MODE DE RENDU DE CE LANCEMENT, decide UNE SEULE FOIS dans Lancer(),
-    // et relu par l'amorcage — meme forme et meme raison que langueDuLancement
-    // juste au-dessus. C'est le mode EFFECTIF : « auto » est deja resolu en
-    // « native » ou « full » quand cette variable est posee, parce que le plan
-    // n'ecrit aucun fragment pour « auto », qui n'a pas d'arguments a lui.
+    // THE RENDER MODE OF THIS LAUNCH, decided ONCE in Lancer() and read back
+    // by the bootstrap — same shape and same reason as langueDuLancement just
+    // above. It is the EFFECTIVE mode: "auto" is already resolved to "native"
+    // or "full" when this variable is set, because the plan writes no
+    // fragment for "auto", which has no arguments of its own.
     //
-    // CE QUI REND CECI POSSIBLE, et qui a ete cru faux longtemps : Amorcer()
-    // est appele DEPUIS Lancer(), plus de deux cents lignes apres la
-    // resolution du mode. Le fragment imposé d'un mode est donc choisissable,
-    // exactement comme celui d'une langue.
+    // WHAT MAKES THIS POSSIBLE, long believed false: Amorcer() is called FROM
+    // Lancer(), more than two hundred lines after the mode is resolved. A
+    // mode's enforced fragment can therefore be chosen, exactly like a
+    // language's.
     static string modeDuLancement = "";
     const string SI_ABSENT = "si-absent";
     // La seconde strategie d'ecriture. « si-absent » pose un fichier absent
@@ -523,23 +523,22 @@ static partial class RetroLaunch
             ecrit = true;
         }
 
-        // LE FRAGMENT DU MODE DE RENDU, fusionne APRES les cles imposees et
-        // AVANT la langue — dette D14.
+        // THE RENDER MODE'S FRAGMENT, merged AFTER the enforced keys and
+        // BEFORE the language — debt D14.
         //
-        // Trois fusions peuvent desormais atteindre la meme cible au meme
-        // lancement. Leur ordre est sans effet sur le resultat — les gardes du
-        // profil refusent qu'elles partagent une seule cle — mais il est FIXE,
-        // pour que le journal se lise et que deux executions rendent le meme
-        // fichier a l'octet pres.
+        // Three merges can now reach the same target in the same launch.
+        // Their order has no effect on the result — the profile's guards
+        // refuse that they share a single key — but it is FIXED, so the log
+        // reads the same and two runs produce the same file byte for byte.
         //
-        // Le mode est celui de CE lancement, decide une seule fois dans
-        // Lancer(). Le relire par entree ferait, sur un profil a deux cibles,
-        // deux mesures de la machine qui pourraient ne pas donner le meme
-        // arbitrage — et la console poserait deux modes differents dans le
-        // meme jeu.
+        // The mode is the one of THIS launch, decided once in Lancer().
+        // Reading it again per entry would, on a two-target profile, take
+        // two measurements of the machine that might not reach the same
+        // decision — and the console would pose two different modes in the
+        // same game.
         //
-        // Un fragment vide veut dire que cette entree ne declare aucune table
-        // par mode : il n'y a rien a poser, et rien n'est suppose.
+        // An empty fragment means this entry declares no per-mode table:
+        // there is nothing to pose, and nothing is assumed.
         string fragmentMode = FragmentDeMode(p, n, modeDuLancement);
         if (fragmentMode.Length > 0
             && FusionnerFragment(cible, fragmentMode, profil, "du mode de rendu",
@@ -1460,14 +1459,14 @@ static partial class RetroLaunch
                 string imposeN = Valeur(p, Indice("bootstrap_enforced.", n));
                 rapport.AppendLine(Indice("amorcage_impose.", n) + "="
                     + (imposeN.Length > 0 ? "oui" : "non"));
-                // ET LE FRAGMENT DU MODE — dette D14. Une cible qui en recoit
-                // un et dont ce rapport ne dirait rien referait le mensonge
-                // que la langue a deja coute : « --explain » est le seul
-                // controle lisible sans lancer de jeu, et on s'en sert.
+                // AND THE MODE'S FRAGMENT — debt D14. A target that receives
+                // one while this report says nothing would repeat the lie the
+                // language already cost: --explain is the only check readable
+                // without launching a game, and it is used.
                 //
-                // Le mode est NOMME : le meme plan pose deux fragments
-                // differents selon lui, et « oui » sans dire lequel enverrait
-                // verifier la mauvaise moitie du fichier.
+                // The mode is NAMED: the same plan poses two different
+                // fragments depending on it, and "oui" without saying which
+                // would send someone to check the wrong half of the file.
                 string imposeModeN = FragmentDeMode(p, n, modeDuLancement);
                 rapport.AppendLine(Indice("amorcage_impose_mode.", n) + "="
                     + (imposeModeN.Length > 0
@@ -1512,13 +1511,13 @@ static partial class RetroLaunch
                     // est deja conforme. « inconnu » est le seul des trois qui
                     // ne mente pas, et un aveu s'exploite quand un faux
                     // negatif ne s'exploite pas.
-                    // TROIS FRAGMENTS POSSIBLES, ET FusionAPoser N'EN
-                    // COMPARE QU'UN. Quand deux d'entre eux s'appliquent, on
-                    // AVOUE plutot que de rendre le verdict de l'un en
-                    // taisant l'autre : « non » serait faux des que le second
-                    // a quelque chose a poser, et un faux negatif s'exploite
-                    // quand un aveu ne trompe personne. C'est le raisonnement
-                    // deja rendu pour la langue, une porte plus loin.
+                    // THREE POSSIBLE FRAGMENTS, AND FusionAPoser COMPARES
+                    // ONLY ONE. When two of them apply, the report ADMITS it
+                    // rather than giving one's verdict while hiding the
+                    // other: "non" would be false as soon as the second has
+                    // something to pose, and a false negative misleads where
+                    // an admission deceives nobody. Same reasoning as already
+                    // applied to the language, one door further.
                     if (imposeN.Length > 0 && imposeModeN.Length > 0)
                         aPoser = "inconnu (deux fragments imposes sur cette "
                             + "cible — les cles imposees et celles du mode "
@@ -1527,10 +1526,10 @@ static partial class RetroLaunch
                     else if (imposeN.Length > 0)
                         aPoser = FusionAPoser(cibleAmorcage, imposeN);
                     else if (imposeModeN.Length > 0)
-                        // Le mode, lui, EST connu de « --explain » : il vient
-                        // d'etre resolu sur la machine qu'on mesure, sans
-                        // effet de bord. On peut donc comparer pour de vrai,
-                        // au lieu d'avouer.
+                        // The mode, unlike the language, IS known to
+                        // --explain: it has just been resolved on the machine
+                        // being measured, with no side effect. So it can be
+                        // compared for real instead of admitted.
                         aPoser = FusionAPoser(cibleAmorcage, imposeModeN);
                     else if (p.ContainsKey(Indice("bootstrap_langue.", n)
                                            + ".defaut"))
@@ -1782,14 +1781,14 @@ static partial class RetroLaunch
     //
     // Rend "" quand meme « defaut » manque : cette entree ne declare aucune
     // table de langues, et il n'y a rien a poser.
-    // LE FRAGMENT IMPOSE DU MODE DE RENDU EN COURS — dette D14.
+    // THE ENFORCED FRAGMENT OF THE CURRENT RENDER MODE — debt D14.
     //
-    // Meme forme que FragmentDeLangue, a une difference pres : AUCUN repli.
-    // Une entree qui ne declare pas de table [bootstrap.render] n'ecrit aucune
-    // de ces lignes, et l'absence veut alors dire « cette entree n'impose rien
-    // qui depende du mode » — jamais « le mode n'a pas ete trouve ». Inventer
-    // un repli poserait ici le fragment d'un mode que le proprietaire n'a pas
-    // choisi, ce qui est exactement l'image qu'il ne verrait pas venir.
+    // Same shape as FragmentDeLangue, with one difference: NO fallback. An
+    // entry that declares no [bootstrap.render] table writes none of these
+    // lines, and their absence then means "this entry enforces nothing that
+    // depends on the mode" — never "the mode was not found". Inventing a
+    // fallback would pose here the fragment of a mode the owner did not
+    // choose, which is exactly the picture they would not see coming.
     static string FragmentDeMode(Dictionary<string, string> p, int n,
                                  string mode)
     {

@@ -460,30 +460,29 @@ launch     = '--no-gui --fullscreen {render} "{rom}"'
 # publiquement citable : rien de vérifiable à déclarer ici.
 bios       = []
 
-# --- LE RENDU (dette D2) : LE TROISIÈME AXE EST ABSENT, ET C'EST MESURÉ ---
+# --- RENDERING (debt D2): THE THIRD AXIS IS ABSENT, AND THAT IS MEASURED ---
 #
-# Ce bloc ne pilote RIEN, et c'est très exactement ce qu'il dit. Il
-# existe pour que `retro status` cesse de compter ce système parmi ceux
-# dont personne n'a regardé le remplissage : la question a été posée, et
-# la réponse est non. Les deux états ne s'appellent pas le même geste —
-# l'un rouvre une enquête, l'autre la clôt.
-# PlayStation 3 : « medium » est un ARBITRAGE et non une mesure — personne n'a
-# chronométré une partie sur cette machine. Il est ici SANS EFFET OBSERVABLE,
-# et c'est ce qui le rend bon marché : les deux modes de ce système passent
-# exactement la même chose à l'émulateur — rien —, donc le mode que `auto`
-# retient ne change aucune commande. Le champ est exigé dès qu'un bloc de
-# rendu existe ; sa valeur ne décidera de quelque chose que le jour où l'un
-# des deux modes aura des arguments.
+# This block drives NOTHING, and that is exactly what it says. It exists so
+# that `retro status` stops counting this system among those whose fill
+# nobody has looked at: the question was asked, and the answer is no. The
+# two states do not call for the same action — one reopens an
+# investigation, the other closes it.
+# PlayStation 3: "medium" is a JUDGEMENT CALL, not a measurement — nobody has timed
+# a game on this machine. It has NO OBSERVABLE EFFECT here, which is what
+# makes it cheap: both modes of this system pass exactly the same thing to
+# the emulator — nothing —, so the mode `auto` picks changes no command.
+# The field is required as soon as a render block exists; its value will
+# only decide something the day one of the two modes has arguments.
 cost       = "medium"
 [system.render]
-# native_height et max_scale ne sont PAS déclarés : ils ne sont exigés que par
-# {scale}, et aucun des deux modes ne l'emploie.
+# native_height and max_scale are NOT declared: only {scale} requires them,
+# and neither mode uses it.
 [system.render.native]
 args = ""
-note = "RPCS3 n'a qu'un levier de rendu en ligne de commande, « --config <yml partiel> », et il ÉCARTE la configuration du propriétaire au lieu de s'y ajouter — relevé le 2026-09-04. S'en servir pour un réglage de rendu lui reprendrait tous les autres, en silence. Sa résolution interne (Video: Resolution Scale, en pourcentage) et son ratio vivent donc dans son config.yml, qu'aucune entrée [[bootstrap]] de ce profil ne vise — les deux qu'il porte visent son INI de modales et son Default.yml de manette."
-crt_absent = "RPCS3 n'embarque aucun shader CRT choisissable en ligne de commande. NON VÉRIFIÉ : ce qu'il rend de lui-même."
-fill_absent = "RPCS3 à la révision épinglée n'expose AUCUN réglage de mise à l'échelle entière. Relevé le 2026-09-04 dans son arbre source à la révision que le manifeste épingle, et cherché exhaustivement — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh » : ZÉRO occurrence. Ce qu'il a sur cet axe est un FILTRE, qui retire le flou mais laisse des pixels de tailles inégales, et la lecture de son calcul de rectangle de destination le confirme plutôt que de le supposer : réels flottants, aucun `floor`, aucun `min(w/fbw, h/fbh)`. C'est le pendant exact de ce que Dolphin déclare déjà. PROVENANCE : le relevé de la dette D2 du 2026-09-04, non rejoué ici — aucun arbre source d'émulateur ne vit sur l'hôte. NON VÉRIFIÉ : ce que RPCS3 à la révision épinglée fait de lui-même sur cet axe — personne n'a regardé une partie."
+note = "RPCS3 has only one rendering lever on the command line, « --config <partial yml> », and it DISCARDS the owner's configuration instead of adding to it — surveyed on 2026-09-04. Using it for one rendering setting would silently take all the others away from the owner. Its internal resolution (Video: Resolution Scale, in percent) and its aspect ratio therefore live in its config.yml, which no [[bootstrap]] entry of this profile targets — the two it carries target its modal-dialog INI and its Default.yml controller file."
+crt_absent = "RPCS3 ships no CRT shader selectable on the command line. NOT VERIFIED: what it renders on its own."
+fill_absent = "RPCS3 at the pinned revision exposes NO integer-scaling setting. Surveyed on 2026-09-04 in its source tree at the revision the manifest pins, and searched exhaustively — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh »: ZERO occurrences. What it has on this axis is a FILTER, which removes the blur but leaves pixels of unequal sizes, and reading its destination-rectangle computation confirms it rather than assuming it: floating-point reals, no `floor`, no `min(w/fbw, h/fbh)`. It is the exact counterpart of what Dolphin already declares. PROVENANCE: the debt D2 survey of 2026-09-04, not replayed here — no emulator source tree lives on the host. NOT VERIFIED: what RPCS3 at the pinned revision does on its own on this axis — nobody has watched a game."
 [system.render.full]
 args = ""
-note = "même raison qu'en mode natif : rien à passer sur la ligne de commande."
-fill_absent = "RPCS3 à la révision épinglée n'expose AUCUN réglage de mise à l'échelle entière. Relevé le 2026-09-04 dans son arbre source à la révision que le manifeste épingle, et cherché exhaustivement — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh » : ZÉRO occurrence. Ce qu'il a sur cet axe est un FILTRE, qui retire le flou mais laisse des pixels de tailles inégales, et la lecture de son calcul de rectangle de destination le confirme plutôt que de le supposer : réels flottants, aucun `floor`, aucun `min(w/fbw, h/fbh)`. C'est le pendant exact de ce que Dolphin déclare déjà. PROVENANCE : le relevé de la dette D2 du 2026-09-04, non rejoué ici — aucun arbre source d'émulateur ne vit sur l'hôte. NON VÉRIFIÉ : ce que RPCS3 à la révision épinglée fait de lui-même sur cet axe — personne n'a regardé une partie."
+note = "same reason as in native mode: nothing to pass on the command line."
+fill_absent = "RPCS3 at the pinned revision exposes NO integer-scaling setting. Surveyed on 2026-09-04 in its source tree at the revision the manifest pins, and searched exhaustively — « integer scal », « pixel.perfect », « integer_scal », « nearest.neigh »: ZERO occurrences. What it has on this axis is a FILTER, which removes the blur but leaves pixels of unequal sizes, and reading its destination-rectangle computation confirms it rather than assuming it: floating-point reals, no `floor`, no `min(w/fbw, h/fbh)`. It is the exact counterpart of what Dolphin already declares. PROVENANCE: the debt D2 survey of 2026-09-04, not replayed here — no emulator source tree lives on the host. NOT VERIFIED: what RPCS3 at the pinned revision does on its own on this axis — nobody has watched a game."

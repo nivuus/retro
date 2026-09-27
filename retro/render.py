@@ -97,25 +97,25 @@ class RenderMode:
     # l'écran, sur une image floue qu'on croirait normale.
     fill: str = ""
     fill_absent: str = ""
-    # LE REMPLISSAGE QUE L'AMORÇAGE IMPOSE POUR CE MODE-CI — dette D14.
+    # THE FILL THE BOOTSTRAP ENFORCES FOR THIS MODE — debt D14.
     #
-    # Même axe que `fill`, autre voie de livraison : `fill` nomme ce que les
-    # `args` de ce mode produisent, celui-ci nomme ce que le fragment imposé
-    # de ce mode pose dans le FICHIER DE RÉGLAGES de l'émulateur. Les deux
-    # ensemble n'ont pas de sens — le même axe serait décidé à deux endroits.
+    # Same axis as `fill`, another delivery path: `fill` names what this
+    # mode's `args` produce, this one names what this mode's enforced
+    # fragment poses in the emulator's SETTINGS FILE. Both together make no
+    # sense — the same axis would be decided in two places.
     #
-    # PAR MODE, et c'est le fait que D14 a mesuré : le lanceur appelle
-    # `Amorcer()` DEPUIS `Lancer()`, une fois le mode effectif résolu (lignes
-    # 1257 et 1487 de retro-launch.cs). Le fragment imposé est donc posé
-    # APRÈS que le mode est connu, et rien n'empêche d'en avoir un par mode —
-    # exactement comme il y a déjà un fragment par langue.
+    # PER MODE, and that is the fact D14 measured: the launcher calls
+    # `Amorcer()` FROM `Lancer()`, once the effective mode is resolved (lines
+    # 1257 and 1487 of retro-launch.cs). The enforced fragment is therefore
+    # posed AFTER the mode is known, and nothing prevents having one per
+    # mode — exactly as there already is one fragment per language.
     #
-    # CONSÉQUENCE, ET C'EST CE QUI COMPTE : ce champ est SOUMIS À LA
-    # POLITIQUE, comme `fill`. La garde de `profiles` refuse un mode qui la
-    # contredit, et c'est ce qui rend PCSX2 livrable sans mentir. Un champ
-    # jumeau vivait sur le `Render` — une valeur pour les deux modes, qui
-    # échappait à cette confrontation ; il a été RETIRÉ le 2026-09-05, et la
-    # note qui dit pourquoi est là-bas.
+    # CONSEQUENCE, AND IT IS WHAT MATTERS: this field is SUBJECT TO THE
+    # POLICY, like `fill`. The guard in `profiles` refuses a mode that
+    # contradicts it, and that is what makes PCSX2 shippable without lying.
+    # A twin field lived on `Render` — one value for both modes, which
+    # escaped that check; it was REMOVED on 2026-09-05, and the note saying
+    # why is over there.
     fill_enforced: str = ""
     fill_enforced_where: str = ""
 
@@ -130,20 +130,19 @@ class Render:
     # alors : sans elles, {scale} ne serait pas calculable.
     native_height: int = 0
     max_scale: int = 0
-    # LE REMPLISSAGE IMPOSÉ PAR PROFIL A ÉTÉ RETIRÉ — 2026-09-05, dette D14.
+    # THE PER-PROFILE ENFORCED FILL WAS REMOVED — 2026-09-05, debt D14.
     #
-    # Il vivait ici : `fill_enforced` / `fill_enforced_where`, UNE valeur pour
-    # les deux modes. Sa justification était que le fragment imposé est posé
-    # avant que le mode ne soit résolu — MESURÉE FAUSSE : `Amorcer()` est
-    # appelé DEPUIS `Lancer()` (retro-launch.cs:1487), quand le mode effectif
-    # l'est ligne 1257.
+    # It lived here: `fill_enforced` / `fill_enforced_where`, ONE value for
+    # both modes. Its justification was that the enforced fragment is posed
+    # before the mode is resolved — MEASURED FALSE: `Amorcer()` is called
+    # FROM `Lancer()` (retro-launch.cs:1487), while the effective mode is
+    # resolved at line 1257.
     #
-    # CE N'EST PAS UN MANQUE À COMBLER, et cette note existe pour empêcher
-    # qu'on le comble. Le remplissage imposé se déclare sur un MODE
-    # (`RenderMode.fill_enforced`), où la politique le confronte. Le remettre
-    # ici rouvrirait la seule porte par laquelle un remplissage échappait à
-    # cette confrontation — c'est-à-dire l'outil exact avec lequel refaire la
-    # demi-vérité silencieuse que D14 existe pour empêcher.
+    # THIS IS NOT A GAP TO FILL, and this note exists to stop anyone filling
+    # it. An enforced fill is declared on a MODE (`RenderMode.fill_enforced`),
+    # where the policy checks it. Putting it back here would reopen the only
+    # door through which a fill escaped that check — that is, the exact tool
+    # with which to redo the silent half-truth D14 exists to prevent.
 
 
 @dataclasses.dataclass(frozen=True)
@@ -366,8 +365,8 @@ _MOTIF_PAR_MODE = {
 # `fill` sur un tel mode. Ce sont `fill_enforced` / `fill_enforced_where`, sur
 # le MODE — un fragment imposé par mode de rendu — qui le décrivent désormais :
 # voir leur commentaire sur `RenderMode`, et le cas correspondant dans
-# `resoudre_remplissage`. (Ils ont d'abord vécu sur le `Render`, pour les deux
-# modes à la fois ; c'est le retrait daté du 2026-09-05.)
+# `resoudre_remplissage`. (They first lived on `Render`, for both modes at
+# once; that is the removal dated 2026-09-05.)
 
 
 def remplissage_attendu(mode: str) -> str:
@@ -411,10 +410,10 @@ def resoudre_remplissage(mode_nom: str, mode: RenderMode) -> ChoixRemplissage:
       C'est une MESURE, et elle l'emporte sur toute déclaration : l'inverse
       annoncerait un remplissage sur un émulateur dont on a constaté qu'il
       n'en a pas ;
-    - IMPOSÉ PAR L'AMORÇAGE, POUR CE MODE : la console pose le réglage dans le
-      fichier de l'émulateur, pas sur sa ligne de commande. Ce cas passe AVANT
-      celui du mode vide — sinon PCSX2, dont les deux modes ne passent rien,
-      resterait « rien à régler » alors que la console règle son remplissage ;
+    - ENFORCED BY THE BOOTSTRAP, FOR THIS MODE: the console poses the setting
+      in the emulator's file, not on its command line. This case comes BEFORE
+      the empty mode — otherwise PCSX2, whose two modes pass nothing, would
+      stay "nothing to set" while the console does set its fill;
     - un mode qui ne passe RIEN — ni argument ni fichier de réglages — n'a
       aucun axe à régler, celui-ci compris. Sa `note` dit déjà pourquoi, et
       c'est le cas de DuckStation : le déduire ici évite de redemander à son
@@ -425,23 +424,22 @@ def resoudre_remplissage(mode_nom: str, mode: RenderMode) -> ChoixRemplissage:
       les confondre ferait rouvrir l'enquête à chaque passage, ou pire,
       attendre un effet qui ne viendra jamais.
 
-    Le remplissage imposé est celui DU MODE, et il est confronté à la
-    politique comme un `fill` : son motif porte donc les deux choses que le
-    propriétaire ne peut pas deviner — OÙ la clé est posée, c'est-à-dire ce
-    que la console lui reprend dans son propre fichier, et POURQUOI cette
-    valeur-là.
+    The enforced fill is the MODE's own, and it is checked against the
+    policy like a `fill`: its reason therefore carries the two things the
+    owner cannot guess — WHERE the key is posed, that is what the console
+    takes back from them in their own file, and WHY that value.
     """
     if mode.fill_absent:
         return ChoixRemplissage(
             NON_REGLABLE, f"aucun réglage de remplissage — {mode.fill_absent}")
     if mode.fill_enforced:
-        # LE CAS DE D14, et il passe AVANT le champ par profil comme avant le
-        # mode vide. Le motif porte DEUX choses, et aucune ne remplace
-        # l'autre : OÙ la clé est posée — c'est ce que la console reprend au
-        # propriétaire dans son propre fichier, le prix du régime imposé — et
-        # POURQUOI cette valeur-là, qui est la politique de ce mode. La
-        # seconde moitié est ce qui distingue ce champ de son voisin par
-        # profil : celui-ci est confronté à la politique, l'autre non.
+        # THE D14 CASE, and it comes BEFORE the empty mode. The reason
+        # carries TWO things, and neither replaces the other: WHERE the key
+        # is posed — what the console takes back from the owner in their own
+        # file, the price of the enforced regime — and WHY that value, which
+        # is this mode's policy. The second half is what the removed
+        # per-profile field could not say: this one is checked against the
+        # policy, that one was not.
         return ChoixRemplissage(
             mode.fill_enforced,
             f"{mode.fill_enforced} : imposé par l'amorçage, dans le fichier "

@@ -874,11 +874,10 @@ def etat_rendu(profils: dict) -> list[SystemRender]:
                         (n, render_mod.resoudre_remplissage(n, m))
                         for n, m in ((render_mod.NATIVE, rendu.native),
                                      (render_mod.FULL, rendu.full)))),
-                # PAR MODE — dette D14. La valeur est de celles que la
-                # légende explique, mais son motif dit AUSSI où la clé est
-                # posée : c'est ce que la console reprend au propriétaire dans
-                # son propre fichier, à chaque lancement, et rien d'autre ne
-                # le lui dirait.
+                # PER MODE — debt D14. The value is one the legend explains,
+                # but its reason ALSO says where the key is posed: that is
+                # what the console takes back from the owner in their own
+                # file, at every launch, and nothing else would tell them.
                 remplissage_impose=bool(rendu.native.fill_enforced
                                         or rendu.full.fill_enforced),
             ))
@@ -1404,21 +1403,17 @@ def _lignes_remplissage(remplissage: tuple[tuple[str, str, str], ...],
     un remplissage IMPOSÉ par l'amorçage.
 
     Ce dernier porte pourtant une valeur de l'axe, `entier` ou `ajuste` : sans
-    `impose`, il passerait pour un remplissage que la légende explique. Or
-    l'essentiel de ce cas-là n'est PAS dans la légende — c'est OÙ la clé est
-    posée, c'est-à-dire ce que la console reprend au propriétaire dans son
-    propre fichier de réglages, à chaque lancement. Rien d'autre ne le lui
-    dirait.
+    `impose`, il passerait pour un remplissage que la légende explique. Yet
+    the heart of that case is NOT in the legend — it is WHERE the key is
+    posed, that is what the console takes back from the owner in their own
+    settings file, at every launch. Nothing else would tell them.
 
-    DEUX FORMES, depuis D14, et le motif les distingue lui-même :
-
-    · PAR PROFIL — une seule valeur pour les deux modes. Elle échappe à la
-      politique, faute de pouvoir satisfaire ses deux cases, et le motif le
-      dit. La déduplication ci-dessous en fait une seule ligne, les deux
-      modes portant la même phrase.
-    · PAR MODE — une valeur par mode, CONFRONTÉE à la politique au
-      chargement. Les deux motifs diffèrent alors — ils nomment deux clés,
-      ou deux valeurs — et les deux lignes sortent.
+    Since D14 the enforced fill is PER MODE — one value per mode, CHECKED
+    against the policy at load time. The two reasons then differ — they name
+    two keys, or two values — and both lines are printed. (A per-profile
+    form, one value for both modes, existed until 2026-09-05; the
+    deduplication below still collapses two identical reasons into one
+    line.)
     """
     if not remplissage:
         return []

@@ -202,38 +202,37 @@ def test_le_remplissage_explique_toujours_sa_valeur(mode_declare):
     assert choix.motif.strip()
 
 
-# --- le remplissage IMPOSÉ PAR L'AMORÇAGE : LE CHAMP PAR PROFIL EST PARTI --
+# --- the fill ENFORCED BY THE BOOTSTRAP: THE PER-PROFILE FIELD IS GONE ----
 #
-# Quatre tests vivaient ici, et ils décrivaient un champ `Render.fill_enforced`
-# portant UNE valeur pour les deux modes. Il a été RETIRÉ le 2026-09-05 (D14),
-# et ces tests avec lui — ce n'est pas une couverture perdue : chacune de leurs
-# propriétés a son équivalent PAR MODE dans la section suivante, à une près.
+# Four tests lived here, describing a `Render.fill_enforced` field carrying
+# ONE value for both modes. It was REMOVED on 2026-09-05 (D14), and these
+# tests with it — this is not lost coverage: each of their properties has its
+# PER-MODE equivalent in the next section, save one.
 #
-# L'exception est celle qui disait le champ tout entier :
-# « un remplissage imposé vaut la même chose dans les DEUX modes ». C'était sa
-# raison d'être, et cette raison — « le fragment est posé avant que le mode ne
-# soit résolu » — a été mesurée fausse. Une propriété dont le motif est faux ne
-# se transpose pas : elle s'en va.
+# The exception is the one stating the field itself: "an enforced fill is
+# worth the same in BOTH modes". That was its reason to exist, and that
+# reason — "the fragment is posed before the mode is resolved" — was measured
+# false. A property whose reason is false does not transpose: it goes.
 #
-# Ce qui reste garanti, et qui comptait vraiment : `fill_absent` l'emporte
-# toujours sur un remplissage imposé (c'est une MESURE contre une
-# déclaration), et le motif dit toujours OÙ la clé est posée.
+# What stays guaranteed, and what really mattered: `fill_absent` always wins
+# over an enforced fill (a MEASUREMENT against a declaration), and the reason
+# always says WHERE the key is posed.
 
 
-# --- le remplissage imposé PAR MODE — dette D14 --------------------------
+# --- the fill enforced PER MODE — debt D14 --------------------------------
 #
-# Le fait qui a rendu ceci possible, et il a été MESURÉ dans le lanceur plutôt
-# que supposé : `Amorcer()` est appelé DEPUIS `Lancer()`, à la ligne 1487,
-# quand le mode effectif est résolu à la ligne 1257. Le fragment imposé est
-# donc posé APRÈS que le mode est connu, et non avant — ce que ce module a
-# longtemps affirmé, et qui était faux.
+# The fact that made this possible, MEASURED in the launcher rather than
+# assumed: `Amorcer()` is called FROM `Lancer()`, at line 1487, while the
+# effective mode is resolved at line 1257. The enforced fragment is therefore
+# posed AFTER the mode is known, not before — which this module long claimed,
+# wrongly.
 #
-# Un remplissage imposé par mode est donc soumis à la POLITIQUE, comme un
-# `fill` : c'est la garde qui mord ici, et non une exemption de plus.
+# A per-mode enforced fill is therefore subject to the POLICY, like a `fill`:
+# the guard bites here, instead of one more exemption.
 
 def test_un_mode_peut_porter_son_propre_remplissage_impose():
-    """PCSX2 : rien en ligne de commande, mais un fragment imposé PAR MODE.
-    Le mode natif impose la mise à l'échelle entière dans PCSX2.ini."""
+    """PCSX2: nothing on the command line, but an enforced fragment PER MODE.
+    The native mode enforces integer scaling in PCSX2.ini."""
     choix = render.resoudre_remplissage(
         render.NATIVE,
         render.RenderMode(
@@ -245,8 +244,8 @@ def test_un_mode_peut_porter_son_propre_remplissage_impose():
 
 
 def test_le_remplissage_impose_par_mode_suit_la_politique_mode_par_mode():
-    """Les DEUX modes, et ils ne disent pas la même chose. C'est très
-    exactement ce que le champ par profil ne savait pas exprimer."""
+    """BOTH modes, and they do not say the same thing. That is exactly what
+    the per-profile field could not express."""
     natif = render.resoudre_remplissage(
         render.NATIVE,
         render.RenderMode(args="", note="rien",
@@ -262,9 +261,9 @@ def test_le_remplissage_impose_par_mode_suit_la_politique_mode_par_mode():
 
 
 def test_le_motif_d_un_remplissage_impose_par_mode_dit_ou_ET_cite_la_politique():
-    """Deux choses à la fois, et aucune ne remplace l'autre : OÙ la clé est
-    posée — c'est ce que la console reprend au propriétaire dans SON fichier —
-    et POURQUOI cette valeur-là, qui est la politique du mode."""
+    """Two things at once, and neither replaces the other: WHERE the key is
+    posed — what the console takes back from the owner in THEIR file — and
+    WHY that value, which is the mode's policy."""
     choix = render.resoudre_remplissage(
         render.NATIVE,
         render.RenderMode(args="", note="rien",
@@ -276,8 +275,8 @@ def test_le_motif_d_un_remplissage_impose_par_mode_dit_ou_ET_cite_la_politique()
 
 
 def test_une_mesure_d_absence_l_emporte_sur_un_remplissage_impose_par_mode():
-    """Le même ordre que pour le champ par profil : `fill_absent` est une
-    MESURE, et elle l'emporte sur toute déclaration."""
+    """The same order as for the former per-profile field: `fill_absent` is
+    a MEASUREMENT, and it wins over any declaration."""
     choix = render.resoudre_remplissage(
         render.FULL,
         render.RenderMode(args="", note="rien",

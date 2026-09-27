@@ -162,18 +162,18 @@ def enforced_name(profile_id: str, index: int, target: str) -> str:
 
 def enforced_mode_name(profile_id: str, index: int, mode: str,
                        target: str) -> str:
-    """Le nom du fragment imposé D'UN MODE DE RENDU — dette D14.
+    """The name of the enforced fragment OF ONE RENDER MODE — debt D14.
 
-    Le rang ET le mode, pour deux raisons distinctes, exactement comme
-    `langue_name` : sans le rang, les deux cibles d'un même profil se
-    disputeraient un fichier ; sans le mode, les fragments s'écraseraient
-    l'un l'autre et la console poserait le dernier écrit, quel que soit le
-    mode retenu au lancement.
+    The rank AND the mode, for two distinct reasons, exactly like
+    `langue_name`: without the rank, the two targets of one profile would
+    fight over one file; without the mode, the fragments would overwrite
+    each other and the console would pose the last one written, whatever
+    mode the launch picked.
 
-    Et il se distingue de `enforced_name` par ce même segment : les clés
-    imposées quel que soit le mode et celles qui dépendent du mode vivent
-    dans la même entrée, sur la même cible, et se poseraient l'une à la
-    place de l'autre si elles partageaient un nom.
+    And it differs from `enforced_name` by that same segment: the keys
+    enforced whatever the mode and those that depend on the mode live in
+    the same entry, on the same target, and would be posed in place of one
+    another if they shared a name.
     """
     return f"{profile_id}.{IMPOSE}.{index}.{mode}{_suffixe(target)}"
 
@@ -226,13 +226,13 @@ def fragments_attendus(profile_id: str, index: int,
         # au loup à chaque passage sur un fragment tout neuf.
         fragments.append((enforced_name(profile_id, index, amorcage.target),
                           amorcage.enforced + "\n"))
-    # Un fichier par MODE de rendu déclaré, quand l'entrée en porte. Même
-    # forme et même raison que les fragments de langue : le lanceur en
-    # choisira UN, celui du mode qu'il vient de résoudre, et les deux restent
-    # sur le disque — changer de mode ne demande donc aucune resynchronisation.
+    # One file per declared render MODE, when the entry carries any. Same
+    # shape and same reason as the language fragments: the launcher picks
+    # ONE, the one of the mode it has just resolved, and both stay on disk —
+    # changing modes therefore needs no resynchronisation.
     for nom, texte in amorcage.enforced_render:
-        # Le saut de ligne final fait partie du fichier déposé : le contrôle
-        # compare à l'octet près.
+        # The trailing newline is part of the deposited file: the check
+        # compares byte for byte.
         fragments.append((enforced_mode_name(profile_id, index, nom,
                                              amorcage.target),
                           texte.strip() + "\n"))
@@ -375,21 +375,21 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
             # vient de poser.
             f"bootstrap_enforced.{rang}={impose}",
         ]
-        # LE FRAGMENT IMPOSÉ PAR MODE DE RENDU — dette D14, et c'est la
-        # transposition exacte des lignes de langue ci-dessous.
+        # THE ENFORCED FRAGMENT PER RENDER MODE — debt D14, the exact
+        # transposition of the language lines below.
         #
-        # Le lanceur résout le mode effectif AVANT d'amorcer — mesuré :
-        # `Amorcer()` est appelé depuis `Lancer()`, 230 lignes après que le
-        # mode est connu. Il lui suffit donc de lire la ligne de son mode ; il
-        # ne rejoue aucune décision et ne peut pas en prendre une autre.
+        # The launcher resolves the effective mode BEFORE bootstrapping —
+        # measured: `Amorcer()` is called from `Lancer()`, 230 lines after
+        # the mode is known. It only has to read its mode's line; it replays
+        # no decision and cannot take a different one.
         #
-        # `auto` n'a AUCUNE ligne, et n'en veut pas : il n'est jamais le mode
-        # EFFECTIF — le lanceur le résout en `native` ou `full` avant
-        # d'arriver ici, exactement comme `retro status` le fait de son côté.
+        # `auto` has NO line, and wants none: it is never the EFFECTIVE mode
+        # — the launcher resolves it to `native` or `full` before getting
+        # here, exactly as `retro status` does on its side.
         #
-        # Une entrée SANS table n'écrit AUCUNE ligne, sur le modèle de
-        # `bootstrap_count=0` : des lignes vides feraient boucler le lanceur
-        # sur du rien.
+        # An entry WITHOUT a table writes NO line, on the model of
+        # `bootstrap_count=0`: empty lines would make the launcher loop over
+        # nothing.
         for nom, _ in amorcage.enforced_render:
             lignes.append(
                 f"bootstrap_enforced.{rang}.{nom}={plan_dir}\\"
@@ -505,9 +505,10 @@ def lire_amorcages(
         et sur un profil dont deux cibles ont des replis différents la
         prévision ne dit rien de l'une des deux.
 
-    ~~AU-DELÀ, la ligne est ignorée.~~ **CETTE DÉCISION A ÉTÉ RETOURNÉE le
-    2026-09-05**, et son raisonnement est conservé plus bas parce qu'il reste
-    juste sur un point et faux sur l'autre. Une cinquième colonne est le signe d'un
+    ~~BEYOND, the line is ignored.~~ **THIS DECISION WAS REVERSED on
+    2026-09-05**: more than four columns are accepted, the extra ones are
+    ignored and the line is KEPT. The reasoning below is preserved because
+    it is right on one point and wrong on the other. Une cinquième colonne est le signe d'un
     format qu'on ne connaît pas : en deviner le sens poserait au rapport une
     valeur que personne n'a écrite.
 
@@ -524,8 +525,8 @@ def lire_amorcages(
     amorces: dict[str, list[tuple[str, str, str]]] = {}
     for ligne in texte.splitlines():
         parts = ligne.split("\t")
-        # TROIS COLONNES OU PLUS. La tolérance est ouverte vers le HAUT, et
-        # seulement vers le haut — voir la docstring.
+        # THREE COLUMNS OR MORE. The tolerance opens UPWARD, and only
+        # upward — see the docstring.
         if len(parts) >= 3 and parts[0].strip():
             langue = parts[3].strip() if len(parts) >= 4 else ""
             amorces.setdefault(parts[0].strip(), []).append(
