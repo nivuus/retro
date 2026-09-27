@@ -18,8 +18,8 @@ import tomllib
 from retro import langue as langue_mod
 from retro import langue_args as langue_args_mod
 from retro.dialectes import (  # noqa: F401 — re-exported
-    _INI, _JSON, _XML, _YAML, cles_de, cles_ini, cles_json, cles_xml, cles_yaml,
-    lignes_yaml, valider_json, valider_xml)
+    _EEPROM, _INI, _JSON, _XML, _YAML, cles_de, cles_ini, cles_json, cles_xml, cles_yaml,
+    lignes_yaml, valider_eeprom, valider_json, valider_xml)
 from retro import render as render_mod
 from retro.render import Render, RenderMode
 
@@ -905,10 +905,14 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
         return None
     target = brut.get("target", "")
     content = brut.get("content", "")
-    for nom, valeur in (("target", target), ("content", content)):
-        if not isinstance(valeur, str) or not valeur.strip():
+    # An Xbox EEPROM carries no 'content': see _lire_eeprom.
+    eeprom = (isinstance(target, str)
+              and pathlib.PureWindowsPath(target).suffix.lower() in _EEPROM)
+    for field, value in (("target", target),
+                         *(() if eeprom else (("content", content),))):
+        if not isinstance(value, str) or not value.strip():
             raise ProfileError(
-                f"{path} [[bootstrap]] : champ '{nom}' manquant ou vide. La "
+                f"{path} [[bootstrap]] : champ '{field}' manquant ou vide. La "
                 "moitié d'un amorçage n'amorce rien, et se lit pourtant comme "
                 "un profil complet."
             )
@@ -938,6 +942,8 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
             "travail de l'émulateur, et le fichier posé ne serait lu par "
             "personne."
         )
+    if eeprom:
+        return _lire_eeprom(path, target, brut)
     # JSON HAS NO COMMENT SYNTAX, and the two emulators that use it rewrite
     # their whole file on every save: a header would vanish at the first
     # game anyway. For a .json target the marker is replaced by a stronger
@@ -1043,6 +1049,42 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
                      langue_absente=langue_absente)
 
 
+def _lire_eeprom(path: pathlib.Path, target: str, brut) -> Bootstrap:
+    """An entry aimed at an Xbox EEPROM image: a language table, nothing else.
+
+    No 'content': xemu generates the image at its first start with this
+    console's serial number and hard-disk key, and an image posed by retro
+    would carry none of them — the saves on the disk would no longer open.
+    No 'enforced': the launcher patches the language and its checksum only
+    (retro-eeprom.cs). Every other field would be announced by `retro
+    status` and never reach the file.
+    """
+    # PRESENCE, not truthiness: an empty 'content = ""' is still a
+    # declaration this entry cannot honour, and must not vanish silently.
+    for field in ("content", "enforced", "langue_absente"):
+        if field in brut:
+            raise ProfileError(
+                f"{path} [[bootstrap]] : '{field}' on an Xbox EEPROM target "
+                f"({target!r}). retro only patches the language of an image "
+                "xemu generated itself; nothing else would ever be written.")
+    if not brut.get("langue"):
+        raise ProfileError(
+            f"{path} [[bootstrap]] : an Xbox EEPROM target without a "
+            "[bootstrap.langue] table poses nothing.")
+    # The table's own checks first: they refuse a 'langue' that is not a
+    # table, with the profile's name, before its fragments are read.
+    langues, repli = _lire_langues(path, target, brut["langue"])
+    for nom, texte in langues:
+        try:
+            valider_eeprom(texte)
+        except ValueError as exc:
+            raise ProfileError(
+                f"{path} [[bootstrap]] : langue.{nom} of an Xbox EEPROM "
+                f"target — {exc}") from exc
+    return Bootstrap(target=target, content="", langues=langues,
+                     langue_repli=repli)
+
+
 def _lire_langue_absente(path: pathlib.Path, brut, langues) -> str:
     """L'aveu « cet émulateur n'a aucun réglage de langue ICI », et sa raison.
 
@@ -1098,12 +1140,15 @@ def dialecte(target: str) -> str:
         return "json"
     if ext in _XML:
         return "xml"
+    if ext in _EEPROM:
+        return "xbox-eeprom"
     if ext in _INI:
         return "ini"
     raise ProfileError(
         f"cible d'amorçage à l'extension inconnue : {target!r} ({ext!r}). Les "
         f"dialectes connus sont {', '.join(_YAML)} pour le YAML, "
-        f"{', '.join(_JSON)} pour le JSON, {', '.join(_XML)} pour le XML et "
+        f"{', '.join(_JSON)} pour le JSON, {', '.join(_XML)} pour le XML, "
+        f"{', '.join(_EEPROM)} pour une EEPROM Xbox et "
         f"{', '.join(_INI)} pour l'INI. Une extension non déclarée serait "
         "fusionnée en INI sans que personne ne l'ait décidé : si le fichier "
         "n'en est pas un, aucune clé ne serait posée et rien ne le dirait."

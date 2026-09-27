@@ -28,7 +28,7 @@ using System.Threading;
 // dans mscorlib : aucune reference supplementaire a passer a csc.exe.
 using Microsoft.Win32;
 
-static class RetroLaunch
+static partial class RetroLaunch
 {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     static extern int MessageBoxW(IntPtr h, string texte, string titre, uint type);
@@ -255,6 +255,14 @@ static class RetroLaunch
     {
         string ext = Path.GetExtension(cible);
         return ext != null && ext.ToLowerInvariant() == ".xml";
+    }
+
+    // The extension of an Xbox EEPROM image, whose language retro-eeprom.cs
+    // patches. The exact mirror of `_EEPROM` in retro/dialectes.py.
+    static bool EstEeprom(string cible)
+    {
+        string ext = Path.GetExtension(cible);
+        return ext != null && ext.ToLowerInvariant() == ".bin";
     }
 
     static bool EstIni(string cible)
@@ -530,9 +538,13 @@ static class RetroLaunch
         // Deux juges qui se contredisent, et le journal est le seul recit du
         // lancement devant la television.
         string etiquetteLangue = "langue " + LangueDuFragment(fragmentLangue);
+        // An Xbox EEPROM is binary: its language is patched, never merged.
         if (fragmentLangue.Length > 0
-            && FusionnerFragment(cible, fragmentLangue, profil, "de langue",
-                                 etiquetteLangue, "cle(s) de langue"))
+            && (EstEeprom(cible)
+                ? PoserLangueEeprom(cible, fragmentLangue, profil,
+                                    etiquetteLangue)
+                : FusionnerFragment(cible, fragmentLangue, profil, "de langue",
+                                    etiquetteLangue, "cle(s) de langue")))
         {
             ecrit = true;
         }
@@ -674,10 +686,23 @@ static class RetroLaunch
     // au contraire une cible existante.
     static void EcrireAtomique(string cible, string contenu, bool bom)
     {
+        var encodage = new UTF8Encoding(bom);
+        byte[] entete = encodage.GetPreamble();
+        byte[] corps = encodage.GetBytes(contenu);
+        var octets = new byte[entete.Length + corps.Length];
+        Array.Copy(entete, octets, entete.Length);
+        Array.Copy(corps, 0, octets, entete.Length, corps.Length);
+        EcrireOctetsAtomique(cible, octets);
+    }
+
+    // The same atomic write for bytes: an Xbox EEPROM (retro-eeprom.cs) is not
+    // text, and goes through the very same rename.
+    static void EcrireOctetsAtomique(string cible, byte[] octets)
+    {
         string temporaire = cible + ".retro-tmp";
         try
         {
-            File.WriteAllText(temporaire, contenu, new UTF8Encoding(bom));
+            File.WriteAllBytes(temporaire, octets);
             if (File.Exists(cible)) File.Replace(temporaire, cible, null);
             else File.Move(temporaire, cible);
         }

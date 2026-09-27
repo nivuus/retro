@@ -29,6 +29,7 @@ set "SOURCE=%~dp0retro-launch.cs"
 set "SOURCE_YAML=%~dp0retro-yaml.cs"
 set "SOURCE_JSON=%~dp0retro-json.cs"
 set "SOURCE_XML=%~dp0retro-xml.cs"
+set "SOURCE_EEPROM=%~dp0retro-eeprom.cs"
 set "SORTIE=%~dp0retro-launch.exe"
 set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 
@@ -54,9 +55,14 @@ if not exist "%SOURCE_XML%" (
     echo ECHEC : source introuvable : %SOURCE_XML%
     exit /b 1
 )
+if not exist "%SOURCE_EEPROM%" (
+    echo ECHEC : source introuvable : %SOURCE_EEPROM%
+    exit /b 1
+)
 
 "%CSC%" /nologo /target:winexe /optimize+ /utf8output ^
-        /out:"%SORTIE%" "%SOURCE%" "%SOURCE_YAML%" "%SOURCE_JSON%" "%SOURCE_XML%"
+        /out:"%SORTIE%" "%SOURCE%" "%SOURCE_YAML%" "%SOURCE_JSON%" "%SOURCE_XML%" ^
+        "%SOURCE_EEPROM%"
 if errorlevel 1 (
     echo ECHEC : la compilation du lanceur a echoue.
     exit /b 1

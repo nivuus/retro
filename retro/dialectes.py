@@ -1,4 +1,4 @@
-"""The two configuration dialects the bootstrap merges: INI and YAML.
+"""The configuration dialects the bootstrap merges or patches.
 
 Pure parsers only. Which dialect a target speaks is decided by its
 extension in `profiles.dialecte`, which raises the profile error; the
@@ -64,6 +64,18 @@ _JSON = (".json",)
 # retro-xml.cs, which sets the text of each imposed leaf element and leaves
 # the rest of the document as the emulator wrote it.
 _XML = (".xml",)
+
+# The extension of an Xbox EEPROM image: xemu's eeprom.bin. Not a text
+# dialect — retro-eeprom.cs patches the language u32 of the image and its
+# user checksum, nothing else. Its fragments are text, "language = <n>":
+# `valider_eeprom` holds them to that one key.
+_EEPROM = (".bin",)
+
+# The XC_LANGUAGE codes an Xbox EEPROM holds (Cxbx-Reloaded,
+# src/common/EmuEEPROM.h). 8 is Chinese in traditional script.
+XBOX_LANGUAGES = {1: "English", 2: "Japanese", 3: "German", 4: "French",
+                  5: "Spanish", 6: "Italian", 7: "Korean", 8: "Chinese",
+                  9: "Portuguese"}
 
 
 def cles_yaml(fragment: str) -> list[tuple[str, str]]:
@@ -222,6 +234,24 @@ def cles_xml(fragment: str) -> list[tuple[str, str]]:
                 keys.append(("/".join(path), child.tag))
     walk(root, (root.tag,))
     return keys
+
+
+def valider_eeprom(fragment: str) -> None:
+    """Raise ValueError unless `fragment` is exactly "language = <n>", with
+    <n> an XC_LANGUAGE code. The launcher writes nothing else into an
+    EEPROM, so any other key would be announced and never posed."""
+    keys = cles_ini(fragment)
+    if keys != [("", "language")]:
+        raise ValueError(
+            "an Xbox EEPROM fragment holds one line, \"language = <n>\", "
+            f"and nothing else — got the keys {keys}")
+    value = next(line.split("=", 1)[1].strip()
+                 for line in fragment.splitlines()
+                 if line.strip() and line.strip()[0] not in ";#")
+    if not value.isdigit() or int(value) not in XBOX_LANGUAGES:
+        raise ValueError(
+            f"language = {value!r} is not an XC_LANGUAGE code "
+            f"({', '.join(f'{n} {name}' for n, name in XBOX_LANGUAGES.items())})")
 
 
 def cles_de(target: str, fragment: str) -> list[tuple[str, str]]:
