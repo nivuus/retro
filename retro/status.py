@@ -946,13 +946,26 @@ def etat_langues(profils: dict, voulue: str,
         # lisait alors comme une absence de sujet, alors que c'est le même
         # défaut qu'une entrée sans table, une marche plus tôt : il ne manque
         # pas une table, il manque le fichier de réglages où la poser.
-        if not profils[pid].bootstraps:
+        # The launch options that follow the language (retro/langue_args.py),
+        # one line per system that declares them: Dolphin's Wii reads its
+        # NAND, never Dolphin.ini, so its bootstrap line alone would hide it.
+        options = [s for s in getattr(profils[pid], "systems", ())
+                   if getattr(s, "langue_args", ())]
+        for systeme in options:
+            decision = langue_mod.appliquer(
+                voulue, tuple(n for n, _ in systeme.langue_args),
+                systeme.langue_repli)
+            etats.append(ProfilLangue(
+                profile_id=pid,
+                cible=f"option de lancement, {systeme.name}",
+                declared=True, langue=decision.langue,
+                motif=decision.motif))
+        if not profils[pid].bootstraps and not options:
             etats.append(ProfilLangue(
                 profile_id=pid, cible="", declared=False,
                 motif="aucune entrée d'amorçage : ce profil ne désigne aucun "
                       "fichier de réglages, donc aucun endroit où poser une "
                       "langue"))
-            continue
         for amorcage in profils[pid].bootstraps:
             declarees = tuple(nom for nom, _ in amorcage.langues)
             decision = langue_mod.appliquer(

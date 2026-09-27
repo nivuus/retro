@@ -1242,6 +1242,26 @@ static class RetroLaunch
                 + coeurs + " cœurs)";
         }
 
+        // THE LANGUAGE OF THIS LAUNCH, decided once, before the command: the
+        // {langue} token needs it, and the bootstrap below reads the same
+        // langueDuLancement. Reading langue.txt and the registry has no side
+        // effect; the witness is still written after --explain returns.
+        string langueDemandee = LangueChoisie();
+        string langueSteam = LangueDeSteam();
+        string motifLangue;
+        if (langueDemandee == "auto")
+        {
+            langueDuLancement = langueSteam;
+            motifLangue = langueSteam.Length > 0
+                ? "auto : Steam dit " + langueSteam
+                : "auto : Steam n'a rien dit, le plan pose son defaut";
+        }
+        else
+        {
+            langueDuLancement = langueDemandee;
+            motifLangue = "posee a la main";
+        }
+
         string gabarit = Valeur(p, effectif);
         string rendu = Substituer(gabarit, p, largeur, hauteur);
         // Les espaces se resserrent AVANT que la ROM entre dans la commande :
@@ -1250,6 +1270,7 @@ static class RetroLaunch
         // réécrit, et l'émulateur ne trouverait pas le fichier.
         string commande = Valeur(p, "launch")
             .Replace("{render}", rendu)
+            .Replace("{langue}", ArgumentsDeLangue(p, langueDuLancement))
             .Replace("  ", " ")
             .Trim()
             // {rom_id} : le NOM du jeu, sans son chemin ni son extension.
@@ -1424,21 +1445,9 @@ static class RetroLaunch
         // La valeur de Steam est lue MEME quand la langue est posee a la
         // main : le rapport doit porter les DEUX, sans quoi rien ne permet de
         // verifier depuis le canape que ce lanceur lit vraiment le registre.
-        string langueDemandee = LangueChoisie();
-        string langueSteam = LangueDeSteam();
-        string motifLangue;
-        if (langueDemandee == "auto")
-        {
-            langueDuLancement = langueSteam;
-            motifLangue = langueSteam.Length > 0
-                ? "auto : Steam dit " + langueSteam
-                : "auto : Steam n'a rien dit, le plan pose son defaut";
-        }
-        else
-        {
-            langueDuLancement = langueDemandee;
-            motifLangue = "posee a la main";
-        }
+        // (The language itself is now decided before the command is built,
+        // since {langue} needs it: see the top of Lancer. Both reads are
+        // side-effect free, so --explain stays harmless.)
         // UNE FOIS PAR LANCEMENT, et non par entree d'amorcage : un profil a
         // deux cibles l'ecrirait deux fois, un profil sans amorcage jamais, et
         // le rapport ne dirait rien de la langue sur une console qui joue.
@@ -1662,6 +1671,22 @@ static class RetroLaunch
         if (langue.Length > 0 && p.TryGetValue(prefixe + langue, out chemin))
             return chemin;
         return p.TryGetValue(prefixe + "defaut", out chemin) ? chemin : "";
+    }
+
+    // The launch option that follows the language, for {langue}. Same rule
+    // as FragmentDeLangue: the plan carries one line per Steam language,
+    // fallback already resolved in Python (retro/langue_args.py), and
+    // "defaut" covers both a silent Steam and a language the plan does not
+    // know. Nothing is decided here. "" when the system declares no table —
+    // its template then has no {langue} either.
+    static string ArgumentsDeLangue(Dictionary<string, string> p,
+                                    string langue)
+    {
+        string options;
+        if (langue.Length > 0
+            && p.TryGetValue("langue_args." + langue, out options))
+            return options;
+        return p.TryGetValue("langue_args.defaut", out options) ? options : "";
     }
 
     // LA LANGUE QUE CE FRAGMENT POSE, lue sur son nom de fichier.
