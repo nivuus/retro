@@ -128,8 +128,14 @@ def valider_json(fragment: str) -> None:
     """Raise ValueError unless `fragment` is a JSON object of objects and
     scalars. An array leaf is refused: the merge would replace it WHOLE,
     dropping whatever the emulator keeps in it."""
+    def refuse_constant(name):
+        # NaN and Infinity are not JSON: Python accepts them by default,
+        # the launcher's reader does not, and the profile would load here
+        # to fail at launch on the console.
+        raise ValueError(f"{name} is not a JSON value")
+
     try:
-        root = json.loads(fragment)
+        root = json.loads(fragment, parse_constant=refuse_constant)
     except json.JSONDecodeError as exc:
         raise ValueError(f"not JSON: {exc}") from exc
     if not isinstance(root, dict):
@@ -137,6 +143,13 @@ def valider_json(fragment: str) -> None:
 
     def walk(node, path):
         for key, value in node.items():
+            if "/" in key:
+                # The "/"-joined section of `cles_json` would confuse
+                # {"a/b": ...} with {"a": {"b": ...}}, and the overlap guards
+                # would compare two different paths as one.
+                raise ValueError(
+                    f"{'/'.join((*path, key))}: a key holding \"/\" cannot "
+                    "be told apart from a nested path")
             if isinstance(value, list):
                 raise ValueError(
                     f"{'/'.join((*path, key))} is an array: the merge "

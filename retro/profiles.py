@@ -946,11 +946,18 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     # nothing.
     json_cible = pathlib.PureWindowsPath(target).suffix.lower() in _JSON
     if json_cible:
+        # Only the TEXT fields: a malformed 'enforced' or 'langue' is
+        # refused below, with its own message, by the checks every target
+        # goes through.
+        langue = brut.get("langue")
         for nom, texte in (("content", content),
                            ("enforced", brut.get("enforced", "") or "{}"),
                            *(("langue." + n, t) for n, t in
-                             (brut.get("langue") or {}).items()
-                             if n != "repli" and isinstance(t, str))):
+                             (langue.items() if isinstance(langue, dict)
+                              else ())
+                             if n != "repli")):
+            if not isinstance(texte, str):
+                continue
             try:
                 valider_json(texte)
             except ValueError as exc:

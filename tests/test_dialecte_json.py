@@ -87,3 +87,29 @@ def test_un_contenu_json_invalide_est_refuse(tmp_path):
 def test_un_fragment_de_langue_json_invalide_est_refuse(tmp_path):
     with pytest.raises(profiles.ProfileError, match="french"):
         _charger(tmp_path, french='{"General": {"console_language": [2]}}')
+
+
+@pytest.mark.parametrize("fragment", ['{"a": NaN}', '{"a": Infinity}',
+                                      '{"a": -Infinity}'])
+def test_une_constante_hors_json_est_refusee(fragment):
+    """Python accepts NaN and Infinity; the launcher's reader does not."""
+    with pytest.raises(ValueError, match="not a JSON value"):
+        dialectes.valider_json(fragment)
+
+
+def test_une_cle_contenant_une_barre_est_refusee():
+    """{"a/b": ...} and {"a": {"b": ...}} would share one section."""
+    with pytest.raises(ValueError, match="/"):
+        dialectes.valider_json('{"a/b": {"c": 1}}')
+
+
+def test_une_table_de_langue_qui_n_est_pas_une_table_est_une_erreur_de_profil(
+        tmp_path):
+    """Refused as a ProfileError naming the profile, never an
+    AttributeError from inside the JSON check."""
+    p = tmp_path / "emu.toml"
+    texte = _PROFIL.replace("__CONTENU__", "{}")
+    texte = texte[:texte.index("[bootstrap.langue]")] + 'langue = "french"\n'
+    p.write_text(texte, encoding="utf-8")
+    with pytest.raises(profiles.ProfileError):
+        profiles.load_profile(p)

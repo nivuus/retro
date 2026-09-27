@@ -82,6 +82,14 @@ static class FusionJson
             posees++;
             if (trouve != null)
             {
+                // A scalar never replaces an object or an array: that would
+                // delete what the emulator keeps inside it.
+                if (trouve.Enfant != null || texte[trouve.DebutValeur] == '[')
+                    throw new Exception(
+                        "The target holds \"" + string.Join("/", f.Chemin)
+                        + "\" as an object or an array, and the plan poses a "
+                        + "plain value there. Replacing it would erase what "
+                        + "the emulator keeps in it.");
                 remplacements[trouve.DebutValeur] = new KeyValuePair<int, string>(
                     trouve.FinValeur, f.Valeur);
                 continue;
@@ -136,13 +144,28 @@ static class FusionJson
     static string Ecrire(string cle, object valeur, string retrait)
     {
         string entete = (retrait.Length > 0 ? finDeLigne + retrait : "")
-                      + "\"" + cle + "\": ";
+                      + "\"" + Echapper(cle) + "\": ";
         string simple = valeur as string;
         if (simple != null) return entete + simple;
         var sous = (Dictionary<string, object>)valeur;
         var parties = new List<string>();
         foreach (var p in sous) parties.Add(Ecrire(p.Key, p.Value, ""));
         return entete + "{" + string.Join(", ", parties.ToArray()) + "}";
+    }
+
+    // A key as JSON text: the key was DECODED when read, so a quote, a
+    // backslash or a control character must be escaped again.
+    static string Echapper(string cle)
+    {
+        var s = new StringBuilder();
+        foreach (char c in cle)
+        {
+            if (c == '"' || c == '\\') s.Append('\\').Append(c);
+            else if (c < ' ')
+                s.Append("\\u").Append(((int)c).ToString("x4"));
+            else s.Append(c);
+        }
+        return s.ToString();
     }
 
     static Membre Chercher(Objet o, string cle)
