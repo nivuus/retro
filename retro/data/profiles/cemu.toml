@@ -22,19 +22,527 @@ schema = 1
 id  = "cemu"
 exe = 'Cemu_2.6\Cemu.exe'
 
-# Amorçage : pas de bloc [[bootstrap]]. Ce que Cemu doit recevoir pour
-# lancer un jeu au lieu de son assistant de première configuration reste À
-# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
-# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
-# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
-# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
-# « cet émulateur se débrouille » : voir
-# docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
-# Cas particulier, à trancher par la mesure : sa configuration vit peut-être
-# SOUS le dossier d'installation, que « retro install » supprime à chaque
-# montée de version. Si aucun dossier de données hors installation n'est
-# exposé, le profil le dira, et l'amorçage se rejouera après chaque mise à
-# jour — la cible ayant disparu avec le dossier.
+# BOOTSTRAP — five targets, added on 2026-09-27, every value read in the
+# source at v2.6 (a6fb0a4). None has been seen acting: no Wii U game is on the
+# console yet.
+#
+# WHERE: without a "portable" folder or a settings.xml next to Cemu.exe,
+# CemuApp::DeterminePaths (src/gui/CemuApp.cpp) keeps config and user data in
+# %APPDATA%\Cemu. That is deliberate here: the install folder is wiped by
+# every upgrade, and the emulated NAND (mlc01) with its saves lives under the
+# same user data path. Nothing below may create settings.xml next to the exe.
+#
+# 1. settings.xml — WITHOUT IT, EVERY GAME HANGS ON A MODAL. CemuApp::OnInit
+#    treats a missing settings.xml as a first start and opens the "Getting
+#    Started" dialog (GettingStartedDialog::ShowModal) before any game: on a
+#    console without a keyboard, a game that never starts. Posing the file
+#    once skips it. `check_update` (CemuConfig.h, default true) is imposed
+#    false: an update prompt is one more modal nobody can close.
+#    `console_language` is what games read (coreinit_MCP.cpp, UCReadSysConfig
+#    "cafe.language"): an integer, CafeConsoleLanguage in CemuConfig.h —
+#    0 JA, 1 EN, 2 FR, 3 DE, 4 IT, 5 ES, 6 zh-Hans, 7 KO, 8 NL, 9 PT, 10 RU,
+#    11 zh-Hant. Outside 0..11 it silently falls back to English
+#    (ConfigValueBounds). The interface language is a wxLanguage integer that
+#    depends on the wxWidgets build: not posed, it follows Windows.
+#
+# 2. controllerProfiles\controller0..3.xml — FOUR PLAYERS. Cemu creates no
+#    profile on its own (InputManager::load reads controller<N>.xml or leaves
+#    the player empty), and a profile without <mappings> is a deaf pad: the
+#    defaults are only applied from the UI. Player 1 is the Wii U GamePad,
+#    players 2 to 4 Pro Controllers (VPAD and WPAD channels, set_controller).
+#    <api>XInput</api> and <uuid>N</uuid>: ControllerFactory turns the uuid
+#    into XInputController(N), the XInput USER INDEX — no GUID, so four
+#    identical Apollo pads map player N to pad N. The mappings are
+#    set_default_mapping's XInput table (VPADController.cpp and
+#    ProController.cpp), as numbers: the ButtonId enums on one side, the
+#    Buttons2 enum (src/input/api/Controller.h) on the other.
+
+[[bootstrap]]
+target = '%APPDATA%\Cemu\settings.xml'
+content = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Écrit par « retro ». Ce fichier porte TROIS sortes de réglages : ce que la
+     console IMPOSE et repose à chaque lancement (pas de recherche de mise à
+     jour, la langue de la console), ce qu'elle a posé UNE FOIS — ce fichier
+     lui-même, sans lequel Cemu ouvre son assistant —, et tout le reste, qui
+     vous appartient : Cemu le réécrit lui-même. -->
+<content>
+</content>
+'''
+enforced = "<content><check_update>false</check_update></content>"
+
+[bootstrap.langue]
+repli = "english"
+japanese   = "<content><console_language>0</console_language></content>"
+english    = "<content><console_language>1</console_language></content>"
+french     = "<content><console_language>2</console_language></content>"
+german     = "<content><console_language>3</console_language></content>"
+italian    = "<content><console_language>4</console_language></content>"
+spanish    = "<content><console_language>5</console_language></content>"
+latam      = "<content><console_language>5</console_language></content>"
+schinese   = "<content><console_language>6</console_language></content>"
+koreana    = "<content><console_language>7</console_language></content>"
+dutch      = "<content><console_language>8</console_language></content>"
+portuguese = "<content><console_language>9</console_language></content>"
+brazilian  = "<content><console_language>9</console_language></content>"
+russian    = "<content><console_language>10</console_language></content>"
+tchinese   = "<content><console_language>11</console_language></content>"
+
+[[bootstrap]]
+target = '%APPDATA%\Cemu\controllerProfiles\controller0.xml'
+content = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Écrit par « retro », UNE FOIS, à la création de ce fichier : joueur 1,
+     manette XInput 0. Les liaisons que vous ferez dans Cemu tiennent. -->
+<emulated_controller>
+	<type>Wii U GamePad</type>
+	<controller>
+		<api>XInput</api>
+		<uuid>0</uuid>
+		<mappings>
+			<entry>
+				<mapping>1</mapping>
+				<button>13</button>
+			</entry>
+			<entry>
+				<mapping>2</mapping>
+				<button>12</button>
+			</entry>
+			<entry>
+				<mapping>3</mapping>
+				<button>15</button>
+			</entry>
+			<entry>
+				<mapping>4</mapping>
+				<button>14</button>
+			</entry>
+			<entry>
+				<mapping>5</mapping>
+				<button>8</button>
+			</entry>
+			<entry>
+				<mapping>6</mapping>
+				<button>9</button>
+			</entry>
+			<entry>
+				<mapping>7</mapping>
+				<button>42</button>
+			</entry>
+			<entry>
+				<mapping>8</mapping>
+				<button>43</button>
+			</entry>
+			<entry>
+				<mapping>9</mapping>
+				<button>4</button>
+			</entry>
+			<entry>
+				<mapping>10</mapping>
+				<button>5</button>
+			</entry>
+			<entry>
+				<mapping>11</mapping>
+				<button>0</button>
+			</entry>
+			<entry>
+				<mapping>12</mapping>
+				<button>1</button>
+			</entry>
+			<entry>
+				<mapping>13</mapping>
+				<button>2</button>
+			</entry>
+			<entry>
+				<mapping>14</mapping>
+				<button>3</button>
+			</entry>
+			<entry>
+				<mapping>15</mapping>
+				<button>6</button>
+			</entry>
+			<entry>
+				<mapping>16</mapping>
+				<button>7</button>
+			</entry>
+			<entry>
+				<mapping>17</mapping>
+				<button>39</button>
+			</entry>
+			<entry>
+				<mapping>18</mapping>
+				<button>45</button>
+			</entry>
+			<entry>
+				<mapping>19</mapping>
+				<button>44</button>
+			</entry>
+			<entry>
+				<mapping>20</mapping>
+				<button>38</button>
+			</entry>
+			<entry>
+				<mapping>21</mapping>
+				<button>41</button>
+			</entry>
+			<entry>
+				<mapping>22</mapping>
+				<button>47</button>
+			</entry>
+			<entry>
+				<mapping>23</mapping>
+				<button>46</button>
+			</entry>
+			<entry>
+				<mapping>24</mapping>
+				<button>40</button>
+			</entry>
+		</mappings>
+	</controller>
+</emulated_controller>
+'''
+langue_absente = "un profil de manette Cemu ne porte que des liaisons (InputManager::load, src/input/InputManager.cpp) ; la langue vit dans settings.xml"
+
+[[bootstrap]]
+target = '%APPDATA%\Cemu\controllerProfiles\controller1.xml'
+content = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Écrit par « retro », UNE FOIS, à la création de ce fichier : joueur 2,
+     manette XInput 1. Les liaisons que vous ferez dans Cemu tiennent. -->
+<emulated_controller>
+	<type>Wii U Pro Controller</type>
+	<controller>
+		<api>XInput</api>
+		<uuid>1</uuid>
+		<mappings>
+			<entry>
+				<mapping>1</mapping>
+				<button>13</button>
+			</entry>
+			<entry>
+				<mapping>2</mapping>
+				<button>12</button>
+			</entry>
+			<entry>
+				<mapping>3</mapping>
+				<button>15</button>
+			</entry>
+			<entry>
+				<mapping>4</mapping>
+				<button>14</button>
+			</entry>
+			<entry>
+				<mapping>5</mapping>
+				<button>8</button>
+			</entry>
+			<entry>
+				<mapping>6</mapping>
+				<button>9</button>
+			</entry>
+			<entry>
+				<mapping>7</mapping>
+				<button>42</button>
+			</entry>
+			<entry>
+				<mapping>8</mapping>
+				<button>43</button>
+			</entry>
+			<entry>
+				<mapping>9</mapping>
+				<button>4</button>
+			</entry>
+			<entry>
+				<mapping>10</mapping>
+				<button>5</button>
+			</entry>
+			<entry>
+				<mapping>12</mapping>
+				<button>0</button>
+			</entry>
+			<entry>
+				<mapping>13</mapping>
+				<button>1</button>
+			</entry>
+			<entry>
+				<mapping>14</mapping>
+				<button>2</button>
+			</entry>
+			<entry>
+				<mapping>15</mapping>
+				<button>3</button>
+			</entry>
+			<entry>
+				<mapping>16</mapping>
+				<button>6</button>
+			</entry>
+			<entry>
+				<mapping>17</mapping>
+				<button>7</button>
+			</entry>
+			<entry>
+				<mapping>18</mapping>
+				<button>39</button>
+			</entry>
+			<entry>
+				<mapping>19</mapping>
+				<button>45</button>
+			</entry>
+			<entry>
+				<mapping>20</mapping>
+				<button>44</button>
+			</entry>
+			<entry>
+				<mapping>21</mapping>
+				<button>38</button>
+			</entry>
+			<entry>
+				<mapping>22</mapping>
+				<button>41</button>
+			</entry>
+			<entry>
+				<mapping>23</mapping>
+				<button>47</button>
+			</entry>
+			<entry>
+				<mapping>24</mapping>
+				<button>46</button>
+			</entry>
+			<entry>
+				<mapping>25</mapping>
+				<button>40</button>
+			</entry>
+		</mappings>
+	</controller>
+</emulated_controller>
+'''
+langue_absente = "un profil de manette Cemu ne porte que des liaisons (InputManager::load, src/input/InputManager.cpp) ; la langue vit dans settings.xml"
+
+[[bootstrap]]
+target = '%APPDATA%\Cemu\controllerProfiles\controller2.xml'
+content = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Écrit par « retro », UNE FOIS, à la création de ce fichier : joueur 3,
+     manette XInput 2. Les liaisons que vous ferez dans Cemu tiennent. -->
+<emulated_controller>
+	<type>Wii U Pro Controller</type>
+	<controller>
+		<api>XInput</api>
+		<uuid>2</uuid>
+		<mappings>
+			<entry>
+				<mapping>1</mapping>
+				<button>13</button>
+			</entry>
+			<entry>
+				<mapping>2</mapping>
+				<button>12</button>
+			</entry>
+			<entry>
+				<mapping>3</mapping>
+				<button>15</button>
+			</entry>
+			<entry>
+				<mapping>4</mapping>
+				<button>14</button>
+			</entry>
+			<entry>
+				<mapping>5</mapping>
+				<button>8</button>
+			</entry>
+			<entry>
+				<mapping>6</mapping>
+				<button>9</button>
+			</entry>
+			<entry>
+				<mapping>7</mapping>
+				<button>42</button>
+			</entry>
+			<entry>
+				<mapping>8</mapping>
+				<button>43</button>
+			</entry>
+			<entry>
+				<mapping>9</mapping>
+				<button>4</button>
+			</entry>
+			<entry>
+				<mapping>10</mapping>
+				<button>5</button>
+			</entry>
+			<entry>
+				<mapping>12</mapping>
+				<button>0</button>
+			</entry>
+			<entry>
+				<mapping>13</mapping>
+				<button>1</button>
+			</entry>
+			<entry>
+				<mapping>14</mapping>
+				<button>2</button>
+			</entry>
+			<entry>
+				<mapping>15</mapping>
+				<button>3</button>
+			</entry>
+			<entry>
+				<mapping>16</mapping>
+				<button>6</button>
+			</entry>
+			<entry>
+				<mapping>17</mapping>
+				<button>7</button>
+			</entry>
+			<entry>
+				<mapping>18</mapping>
+				<button>39</button>
+			</entry>
+			<entry>
+				<mapping>19</mapping>
+				<button>45</button>
+			</entry>
+			<entry>
+				<mapping>20</mapping>
+				<button>44</button>
+			</entry>
+			<entry>
+				<mapping>21</mapping>
+				<button>38</button>
+			</entry>
+			<entry>
+				<mapping>22</mapping>
+				<button>41</button>
+			</entry>
+			<entry>
+				<mapping>23</mapping>
+				<button>47</button>
+			</entry>
+			<entry>
+				<mapping>24</mapping>
+				<button>46</button>
+			</entry>
+			<entry>
+				<mapping>25</mapping>
+				<button>40</button>
+			</entry>
+		</mappings>
+	</controller>
+</emulated_controller>
+'''
+langue_absente = "un profil de manette Cemu ne porte que des liaisons (InputManager::load, src/input/InputManager.cpp) ; la langue vit dans settings.xml"
+
+[[bootstrap]]
+target = '%APPDATA%\Cemu\controllerProfiles\controller3.xml'
+content = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Écrit par « retro », UNE FOIS, à la création de ce fichier : joueur 4,
+     manette XInput 3. Les liaisons que vous ferez dans Cemu tiennent. -->
+<emulated_controller>
+	<type>Wii U Pro Controller</type>
+	<controller>
+		<api>XInput</api>
+		<uuid>3</uuid>
+		<mappings>
+			<entry>
+				<mapping>1</mapping>
+				<button>13</button>
+			</entry>
+			<entry>
+				<mapping>2</mapping>
+				<button>12</button>
+			</entry>
+			<entry>
+				<mapping>3</mapping>
+				<button>15</button>
+			</entry>
+			<entry>
+				<mapping>4</mapping>
+				<button>14</button>
+			</entry>
+			<entry>
+				<mapping>5</mapping>
+				<button>8</button>
+			</entry>
+			<entry>
+				<mapping>6</mapping>
+				<button>9</button>
+			</entry>
+			<entry>
+				<mapping>7</mapping>
+				<button>42</button>
+			</entry>
+			<entry>
+				<mapping>8</mapping>
+				<button>43</button>
+			</entry>
+			<entry>
+				<mapping>9</mapping>
+				<button>4</button>
+			</entry>
+			<entry>
+				<mapping>10</mapping>
+				<button>5</button>
+			</entry>
+			<entry>
+				<mapping>12</mapping>
+				<button>0</button>
+			</entry>
+			<entry>
+				<mapping>13</mapping>
+				<button>1</button>
+			</entry>
+			<entry>
+				<mapping>14</mapping>
+				<button>2</button>
+			</entry>
+			<entry>
+				<mapping>15</mapping>
+				<button>3</button>
+			</entry>
+			<entry>
+				<mapping>16</mapping>
+				<button>6</button>
+			</entry>
+			<entry>
+				<mapping>17</mapping>
+				<button>7</button>
+			</entry>
+			<entry>
+				<mapping>18</mapping>
+				<button>39</button>
+			</entry>
+			<entry>
+				<mapping>19</mapping>
+				<button>45</button>
+			</entry>
+			<entry>
+				<mapping>20</mapping>
+				<button>44</button>
+			</entry>
+			<entry>
+				<mapping>21</mapping>
+				<button>38</button>
+			</entry>
+			<entry>
+				<mapping>22</mapping>
+				<button>41</button>
+			</entry>
+			<entry>
+				<mapping>23</mapping>
+				<button>47</button>
+			</entry>
+			<entry>
+				<mapping>24</mapping>
+				<button>46</button>
+			</entry>
+			<entry>
+				<mapping>25</mapping>
+				<button>40</button>
+			</entry>
+		</mappings>
+	</controller>
+</emulated_controller>
+'''
+langue_absente = "un profil de manette Cemu ne porte que des liaisons (InputManager::load, src/input/InputManager.cpp) ; la langue vit dans settings.xml"
 
 # `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
 # l'identifiant lui-même : un identifiant n'est pas une propriété du
@@ -72,7 +580,8 @@ exe = 'Cemu_2.6\Cemu.exe'
 [input]
 steam_input = "required"
 mode        = "xinput"
-mapping     = "inconnu"
+mapping       = "pose"
+mapping_where = "%APPDATA%\\Cemu\\controllerProfiles\\controller0.xml à controller3.xml — GamePad pour le joueur 1, Pro Controller pour les joueurs 2 à 4, posés une fois ; aucun joueur n'a encore été VU répondre"
 rumble      = "inconnu"
 
 [exit]

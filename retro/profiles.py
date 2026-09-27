@@ -18,8 +18,8 @@ import tomllib
 from retro import langue as langue_mod
 from retro import langue_args as langue_args_mod
 from retro.dialectes import (  # noqa: F401 — re-exported
-    _INI, _JSON, _YAML, cles_de, cles_ini, cles_json, cles_yaml, lignes_yaml,
-    valider_json)
+    _INI, _JSON, _XML, _YAML, cles_de, cles_ini, cles_json, cles_xml, cles_yaml,
+    lignes_yaml, valider_json, valider_xml)
 from retro import render as render_mod
 from retro.render import Render, RenderMode
 
@@ -971,6 +971,21 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
             "configuration écrit par un outil doit dire qui l'a écrit : sans "
             "cela, le propriétaire le prend pour le sien."
         )
+    # An XML target keeps its header (XML has comments), and every fragment
+    # must also be well-formed: retro-xml.cs would pose nothing otherwise.
+    if pathlib.PureWindowsPath(target).suffix.lower() in _XML:
+        for nom, texte in (("content", content),
+                           *((("enforced", brut["enforced"]),)
+                             if brut.get("enforced") else ()),
+                           *(("langue." + n, t) for n, t in
+                             (brut.get("langue") or {}).items()
+                             if n != "repli" and isinstance(t, str))):
+            try:
+                valider_xml(texte)
+            except ValueError as exc:
+                raise ProfileError(
+                    f"{path} [[bootstrap]] : {nom} of an XML target — "
+                    f"{exc}") from exc
     enforced = brut.get("enforced", "")
     if not isinstance(enforced, str):
         raise ProfileError(
@@ -1077,12 +1092,14 @@ def dialecte(target: str) -> str:
         return "yaml"
     if ext in _JSON:
         return "json"
+    if ext in _XML:
+        return "xml"
     if ext in _INI:
         return "ini"
     raise ProfileError(
         f"cible d'amorçage à l'extension inconnue : {target!r} ({ext!r}). Les "
         f"dialectes connus sont {', '.join(_YAML)} pour le YAML, "
-        f"{', '.join(_JSON)} pour le JSON et "
+        f"{', '.join(_JSON)} pour le JSON, {', '.join(_XML)} pour le XML et "
         f"{', '.join(_INI)} pour l'INI. Une extension non déclarée serait "
         "fusionnée en INI sans que personne ne l'ait décidé : si le fichier "
         "n'en est pas un, aucune clé ne serait posée et rien ne le dirait."

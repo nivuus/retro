@@ -28,6 +28,7 @@ rem ex‚cutable .NET d‚j… li‚ l'empˆche de d‚marrer.
 set "SOURCE=%~dp0retro-launch.cs"
 set "SOURCE_YAML=%~dp0retro-yaml.cs"
 set "SOURCE_JSON=%~dp0retro-json.cs"
+set "SOURCE_XML=%~dp0retro-xml.cs"
 set "SORTIE=%~dp0retro-launch.exe"
 set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 
@@ -49,9 +50,13 @@ if not exist "%SOURCE_JSON%" (
     echo ECHEC : source introuvable : %SOURCE_JSON%
     exit /b 1
 )
+if not exist "%SOURCE_XML%" (
+    echo ECHEC : source introuvable : %SOURCE_XML%
+    exit /b 1
+)
 
 "%CSC%" /nologo /target:winexe /optimize+ /utf8output ^
-        /out:"%SORTIE%" "%SOURCE%" "%SOURCE_YAML%" "%SOURCE_JSON%"
+        /out:"%SORTIE%" "%SOURCE%" "%SOURCE_YAML%" "%SOURCE_JSON%" "%SOURCE_XML%"
 if errorlevel 1 (
     echo ECHEC : la compilation du lanceur a echoue.
     exit /b 1
