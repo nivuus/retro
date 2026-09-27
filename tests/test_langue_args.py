@@ -132,3 +132,24 @@ def test_le_rapport_dit_la_langue_de_l_option_de_lancement():
            and "option de lancement" in e.cible]
     assert [(e.cible, e.langue) for e in wii] == [
         ("option de lancement, Wii", "french")]
+
+
+def test_une_option_sur_plusieurs_lignes_est_refusee(tmp_path):
+    """The plan carries each option on one line."""
+    with pytest.raises(profiles.ProfileError, match="line break"):
+        _profil(tmp_path, table=TABLE + 'german = "-C A=1\\n-C B=2"\n')
+
+
+def test_le_rapport_ne_dit_pas_d_une_option_qu_elle_est_fusionnee():
+    """A launch option merges into no file: the report says so, under a
+    heading that names it, instead of letting the merge sentence cover it."""
+    from retro import status
+    profils = profiles.load_profiles(
+        pathlib.Path(__file__).parent.parent / "retro" / "data" / "profiles")
+    texte = status.format_report(status.build_report(
+        install_dirs={}, emulation_root=pathlib.Path("."),
+        systems=[], bios_status=[], bios_root=pathlib.Path("/BIOS"),
+        langue="french", langue_temoin={"steam": "french"},
+        profils=profils))
+    assert "entrée d'amorçage ou option de lancement" in texte
+    assert "une option de lancement ne modifie aucun fichier" in texte

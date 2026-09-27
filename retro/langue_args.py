@@ -63,6 +63,15 @@ def lire(brut, launch: str) -> tuple[tuple[tuple[str, str], ...], str]:
             "the emulator's own language while retro status announces the "
             "table's: leave the language undeclared, it then takes the "
             "fallback.")
+    # One plan line per language: a line break inside an option would end
+    # the line early, and the launcher would read the rest as another key.
+    multiline = sorted(n for n, v in options.items()
+                           if "\n" in v or "\r" in v)
+    if multiline:
+        raise LangueArgsError(
+            f"{', '.join(multiline)} — the option holds a line break, "
+            "and the plan carries it on ONE line: the launcher would read "
+            "the rest as another plan key.")
     inconnues = sorted(n for n in options if n not in langue_mod.LANGUES)
     if inconnues:
         raise LangueArgsError(
