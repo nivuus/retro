@@ -37,3 +37,9 @@ def test_un_fragment_xml_illisible_est_refuse(fragment):
 
 def test_un_fragment_xml_valide_passe():
     dialectes.valider_xml("<content><check_update>false</check_update></content>")
+
+
+def test_une_racine_sans_enfant_est_refusee():
+    """The root is never a leaf: nothing would be posed."""
+    with pytest.raises(ValueError, match="no child element"):
+        dialectes.valider_xml("<setting>true</setting>")

@@ -974,14 +974,18 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
     # An XML target keeps its header (XML has comments), and every fragment
     # must also be well-formed: retro-xml.cs would pose nothing otherwise.
     if pathlib.PureWindowsPath(target).suffix.lower() in _XML:
+        langue = brut.get("langue")
         for nom, texte in (("content", content),
                            *((("enforced", brut["enforced"]),)
-                             if brut.get("enforced") else ()),
+                             if isinstance(brut.get("enforced"), str)
+                             and brut["enforced"] else ()),
                            *(("langue." + n, t) for n, t in
-                             (brut.get("langue") or {}).items()
+                             (langue.items() if isinstance(langue, dict)
+                              else ())
                              if n != "repli" and isinstance(t, str))):
             try:
-                valider_xml(texte)
+                # Only a merged fragment must carry leaves.
+                valider_xml(texte, merged=nom != "content")
             except ValueError as exc:
                 raise ProfileError(
                     f"{path} [[bootstrap]] : {nom} of an XML target — "

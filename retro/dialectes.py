@@ -186,12 +186,21 @@ def cles_json(fragment: str) -> list[tuple[str, str]]:
     return keys
 
 
-def valider_xml(fragment: str) -> None:
-    """Raise ValueError unless `fragment` is a well-formed XML document."""
+def valider_xml(fragment: str, merged: bool = True) -> None:
+    """Raise ValueError unless `fragment` is a well-formed XML document.
+
+    A MERGED fragment (enforced, language) must also hold at least one child
+    element under its root. The root itself is never a leaf: `cles_xml` and
+    the launcher both read the leaves BELOW it, so a bare
+    "<setting>true</setting>" would pose nothing, and say nothing. A file
+    posed once ('content') is written as is, and may be a bare root."""
     try:
-        ElementTree.fromstring(fragment)
+        root = ElementTree.fromstring(fragment)
     except ElementTree.ParseError as exc:
         raise ValueError(f"not XML: {exc}") from exc
+    if merged and not len(root):
+        raise ValueError(
+            f"<{root.tag}> holds no child element: nothing would be posed")
 
 
 def cles_xml(fragment: str) -> list[tuple[str, str]]:

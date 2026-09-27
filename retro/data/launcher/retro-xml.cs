@@ -26,6 +26,12 @@ static class FusionXml
         source.LoadXml(apporte);
         var feuilles = new List<KeyValuePair<List<string>, string>>();
         Aplatir(source.DocumentElement, new List<string>(), feuilles);
+        // A root with no child element carries no leaf: the merge would pose
+        // nothing, and say nothing. retro/dialectes.py refuses it as well.
+        if (feuilles.Count == 0)
+            throw new Exception(
+                "The XML fragment <" + source.DocumentElement.Name + "> holds "
+                + "no child element: the merge would pose nothing.");
 
         var cible = new XmlDocument { PreserveWhitespace = true };
         if (existant.Trim().Length == 0)
@@ -59,7 +65,7 @@ static class FusionXml
                 }
                 courant = suivant;
             }
-            courant.InnerText = f.Value;
+            PoserTexte(courant, f.Value, chemin);
             posees++;
         }
 
@@ -109,6 +115,34 @@ static class FusionXml
                 parent.AppendChild(doc.CreateWhitespace("\n" + retraitEnfants));
             parent.AppendChild(enfant);
         }
+    }
+
+    // The leaf's text, set without touching anything else inside it.
+    // InnerText would replace EVERY child: a comment Cemu keeps there would
+    // go, and an element holding children would lose them all. The second
+    // is refused — a scalar never replaces a structure.
+    static void PoserTexte(XmlElement e, string valeur, List<string> chemin)
+    {
+        var texte = new List<XmlNode>();
+        foreach (XmlNode n in e.ChildNodes)
+        {
+            if (n.NodeType == XmlNodeType.Element)
+                throw new Exception(
+                    "The XML target holds <" + string.Join("/", chemin.ToArray())
+                    + "> with child elements, and the plan poses a plain "
+                    + "value there. Replacing it would erase what the "
+                    + "emulator keeps in it.");
+            if (n.NodeType == XmlNodeType.Text
+                || n.NodeType == XmlNodeType.CDATA
+                || n.NodeType == XmlNodeType.Whitespace
+                || n.NodeType == XmlNodeType.SignificantWhitespace)
+                texte.Add(n);
+        }
+        XmlNode avant = texte.Count > 0 ? texte[0] : e.FirstChild;
+        XmlNode nouveau = e.OwnerDocument.CreateTextNode(valeur);
+        if (avant != null) e.InsertBefore(nouveau, avant);
+        else e.AppendChild(nouveau);
+        foreach (XmlNode n in texte) e.RemoveChild(n);
     }
 
     static void Aplatir(XmlElement e, List<string> chemin,
