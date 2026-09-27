@@ -2042,6 +2042,12 @@ def test_le_lanceur_ne_pose_aucune_marque_de_ligne_dans_un_yaml():
         "retro-json.cs poses the INI marker; JSON has no comment at all")
     assert fusion.index("if (json) return FusionJson.Fusionner(") < \
         fusion.index(".Add(MARQUE_FUSION)")
+    xml_cs = (launcher.SOURCES / launcher.SOURCE_XML).read_text(
+        encoding="utf-8-sig")
+    assert "MARQUE_FUSION" not in xml_cs, (
+        "retro-xml.cs poses the INI marker, which is not an XML comment")
+    assert fusion.index("if (xml) return FusionXml.Fusionner(") < \
+        fusion.index(".Add(MARQUE_FUSION)")
 
 
 def test_la_fusion_ne_juge_pas_sa_conformite_sur_ses_propres_marques():
@@ -2200,7 +2206,7 @@ def test_le_lanceur_refuse_une_extension_de_cible_inconnue():
         "les suppose, ce qui revient a fusionner en silence un format qu'il "
         "n'a jamais examine"
     )
-    assert "!yaml && !json && !EstIni(cible)" in source, (
+    assert "!yaml && !json && !xml && !EstIni(cible)" in source, (
         "EstIni existe mais rien ne s'en sert : une extension inconnue "
         "resterait fusionnee en INI, sans un mot"
     )

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import xml.etree.ElementTree as ElementTree
 
 
 def cles_ini(fragment: str) -> list[tuple[str, str]]:
@@ -58,6 +59,11 @@ _INI = (".ini", ".cfg", ".opt", ".toml")
 # of each imposed leaf in place and leaves every other byte of the file as
 # the emulator wrote it.
 _JSON = (".json",)
+
+# The extensions whose content is XML: Cemu's settings.xml. Merged by
+# retro-xml.cs, which sets the text of each imposed leaf element and leaves
+# the rest of the document as the emulator wrote it.
+_XML = (".xml",)
 
 
 def cles_yaml(fragment: str) -> list[tuple[str, str]]:
@@ -180,6 +186,44 @@ def cles_json(fragment: str) -> list[tuple[str, str]]:
     return keys
 
 
+def valider_xml(fragment: str, merged: bool = True) -> None:
+    """Raise ValueError unless `fragment` is a well-formed XML document.
+
+    A MERGED fragment (enforced, language) must also hold at least one child
+    element under its root. The root itself is never a leaf: `cles_xml` and
+    the launcher both read the leaves BELOW it, so a bare
+    "<setting>true</setting>" would pose nothing, and say nothing. A file
+    posed once ('content') is written as is, and may be a bare root."""
+    try:
+        root = ElementTree.fromstring(fragment)
+    except ElementTree.ParseError as exc:
+        raise ValueError(f"not XML: {exc}") from exc
+    if merged and not len(root):
+        raise ValueError(
+            f"<{root.tag}> holds no child element: nothing would be posed")
+
+
+def cles_xml(fragment: str) -> list[tuple[str, str]]:
+    """The (section, key) pairs of an XML fragment: every element with no
+    child element, its section the "/"-joined path of the elements above
+    it, root included. Invalid XML gives no key — `valider_xml` is what
+    refuses it, with the reason."""
+    try:
+        root = ElementTree.fromstring(fragment)
+    except ElementTree.ParseError:
+        return []
+    keys = []
+
+    def walk(node, path):
+        for child in node:
+            if len(child):
+                walk(child, (*path, child.tag))
+            else:
+                keys.append(("/".join(path), child.tag))
+    walk(root, (root.tag,))
+    return keys
+
+
 def cles_de(target: str, fragment: str) -> list[tuple[str, str]]:
     """The (section, key) pairs of a fragment, in its TARGET's dialect.
 
@@ -194,4 +238,6 @@ def cles_de(target: str, fragment: str) -> list[tuple[str, str]]:
     suffix = pathlib.PureWindowsPath(target).suffix.lower()
     if suffix in _JSON:
         return cles_json(fragment)
+    if suffix in _XML:
+        return cles_xml(fragment)
     return cles_yaml(fragment) if suffix in _YAML else cles_ini(fragment)

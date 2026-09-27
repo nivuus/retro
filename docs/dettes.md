@@ -2007,7 +2007,6 @@ PPSSPP (`ppsspp.ini`, `[General] Language` parmi les fichiers livrés, et
 
 | Émulateur | Où vit la langue des jeux | Ce qui manque |
 |---|---|---|
-| Cemu 2.6 | `settings.xml`, `console_language` (entier, FR = 2) | un dialecte XML |
 | xemu 0.8.136 | `eeprom.bin`, u32 à 0x90 sous somme de contrôle | une écriture binaire |
 
 **Ce qui reste dû, comme pour toutes les autres tables : la preuve** — un jeu
@@ -2052,6 +2051,26 @@ dix-sept vérifications, dont les VRAIS fichiers : le `config.json` de shadPS4
 plus rien.
 
 shadPS4 est un profil personnel : sa table vit hors dépôt.
+
+### Où en est D12 — 2026-09-27 : le dialecte XML, et Cemu démarre enfin
+
+**Cemu ne pouvait lancer AUCUN jeu.** Sans `%APPDATA%\Cemu\settings.xml`,
+`CemuApp::OnInit` ouvre la fenêtre modale « Getting Started » avant tout jeu,
+et la console n'avait jamais lancé Cemu. Le profil pose désormais ce fichier
+une fois, impose `check_update = false` (une invite de mise à jour est une
+modale de plus), et fusionne `console_language` (FR = 2) par le nouveau
+dialecte XML (`retro-xml.cs`, `System.Xml` avec `PreserveWhitespace`).
+
+**Quatre manettes** : `controllerProfiles\controller0..3.xml`, posés une fois —
+GamePad pour le joueur 1, Pro Controller ensuite, `<api>XInput</api>` et
+`<uuid>` = index XInput, liaisons = la table XInput par défaut de Cemu
+(`set_default_mapping`) traduite en nombres. Cemu ne crée aucun profil seul.
+
+**Vu sur la console le 2026-09-27** : fichiers posés par la vraie fusion
+compilée sur l'invité, Cemu lancé seul → sa fenêtre principale, SANS
+l'assistant ; fermé proprement, il a réécrit `settings.xml` en gardant
+`console_language = 2` et `check_update = false`. Aucun jeu Wii U n'est encore
+sur la console : aucune manette n'a été vue répondre.
 
 ## D13 — Deux juges de la langue, et une seule indulgence sur deux
 

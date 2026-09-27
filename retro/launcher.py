@@ -47,7 +47,9 @@ SOURCE = "retro-launch.cs"
 SOURCE_YAML = "retro-yaml.cs"
 # The JSON half, compiled into the same binary too.
 SOURCE_JSON = "retro-json.cs"
-SOURCES_CS = (SOURCE, SOURCE_YAML, SOURCE_JSON)
+# And the XML half.
+SOURCE_XML = "retro-xml.cs"
+SOURCES_CS = (SOURCE, SOURCE_YAML, SOURCE_JSON, SOURCE_XML)
 PLAN = "systems"
 MODE = "mode.txt"
 LANGUE_FICHIER = "langue.txt"
