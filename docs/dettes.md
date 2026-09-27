@@ -2072,6 +2072,31 @@ l'assistant ; fermé proprement, il a réécrit `settings.xml` en gardant
 `console_language = 2` et `check_update = false`. Aucun jeu Wii U n'est encore
 sur la console : aucune manette n'a été vue répondre.
 
+### Où en est D12 — 2026-09-27 : la langue de xemu, dans son EEPROM
+
+Un jeu Xbox demande sa langue au noyau, qui la lit dans l'EEPROM. xemu génère
+cette image lui-même (`%APPDATA%\xemu\xemu\eeprom.bin`) avec le numéro de
+série et la clé du disque dur de CETTE console : retro ne la pose donc jamais.
+Une cible `.bin` est une EEPROM Xbox (dialecte « xbox-eeprom ») : elle ne
+porte qu'une table de langues, `language = <code XC_LANGUAGE>` (FR = 4), et
+`retro-eeprom.cs` y change le u32 à 0x90 puis la somme de contrôle de la
+section utilisateur à 0x60 (`xbox_eeprom_crc` sur 0x5C octets depuis 0x64,
+`hw/xbox/eeprom_generation.h` à fc24584) — rien d'autre. Une image absente
+n'est pas créée : le premier démarrage part dans la langue que xemu génère,
+le suivant la trouve et la corrige, et le journal le dit.
+
+**Vu sur la console le 2026-09-27**, compilé par son `csc.exe` avec douze
+vérifications sur une copie de la VRAIE `eeprom.bin` : anglais → français ne
+change que 0x60 et 0x90, la somme recalculée est celle de l'algorithme de
+xemu (revérifiée sur l'hôte en Python), le retour à l'anglais rend l'image
+d'origine à l'octet près, une somme fausse ou une taille fausse sont
+refusées, un second passage ne sauvegarde ni ne réécrit rien.
+
+**Ce qui reste dû : un jeu, ou le tableau de bord, vu en français.** xemu a
+besoin d'OpenGL 4 pour sa fenêtre ; sans client Moonlight connecté, la
+session n'a que l'adaptateur VGA de base, et le lancement de contrôle s'est
+arrêté sur « Unable to create OpenGL context ».
+
 ## D13 — Deux juges de la langue, et une seule indulgence sur deux
 
 **Constatée le 2026-08-30**, en relisant le mécanisme de D12 des deux côtés à

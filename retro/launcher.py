@@ -49,7 +49,9 @@ SOURCE_YAML = "retro-yaml.cs"
 SOURCE_JSON = "retro-json.cs"
 # And the XML half.
 SOURCE_XML = "retro-xml.cs"
-SOURCES_CS = (SOURCE, SOURCE_YAML, SOURCE_JSON, SOURCE_XML)
+# And the Xbox EEPROM patch.
+SOURCE_EEPROM = "retro-eeprom.cs"
+SOURCES_CS = (SOURCE, SOURCE_YAML, SOURCE_JSON, SOURCE_XML, SOURCE_EEPROM)
 PLAN = "systems"
 MODE = "mode.txt"
 LANGUE_FICHIER = "langue.txt"
@@ -135,7 +137,12 @@ def _suffixe(target: str) -> str:
     en `.ini` se lirait comme un fichier d'un autre format, et le premier
     lecteur du dossier n'aurait aucun moyen de savoir ce qu'il regarde.
     """
-    return pathlib.PureWindowsPath(target).suffix or ".txt"
+    suffixe = pathlib.PureWindowsPath(target).suffix
+    # An Xbox EEPROM's fragment is text ("language = 4"), not an image: a
+    # ".bin" name would claim the opposite.
+    if suffixe.lower() in profiles_mod._EEPROM:
+        return ".txt"
+    return suffixe or ".txt"
 
 
 def enforced_name(profile_id: str, index: int, target: str) -> str:
@@ -191,8 +198,10 @@ def fragments_attendus(profile_id: str, index: int,
     chose : un fragment vide déposé se lirait comme « rien n'est imposé »,
     alors que le plan, lui, porterait déjà la ligne vide qui le dit.
     """
-    fragments = [(bootstrap_name(profile_id, index, amorcage.target),
-                  amorcage.content)]
+    # No file to pose once when the entry has no 'content' — an Xbox
+    # EEPROM, which xemu generates itself (profiles._lire_eeprom).
+    fragments = ([(bootstrap_name(profile_id, index, amorcage.target),
+                   amorcage.content)] if amorcage.content else [])
     if amorcage.enforced:
         # Le saut de ligne final fait partie du fichier déposé : la comparaison
         # du contrôle est faite à l'octet près, et l'omettre ici ferait crier
@@ -319,7 +328,8 @@ def plan_systeme(profile_id: str, systeme, emulator_exe: str,
     for rang, amorcage in enumerate(bootstraps, 1):
         # La cible est SUBSTITUÉE ; le nom du fichier déposé, lui, suit la
         # cible BRUTE — c'est son extension qui compte, et elle ne change pas.
-        source = f"{plan_dir}\\{bootstrap_name(profile_id, rang, amorcage.target)}"
+        source = (f"{plan_dir}\\{bootstrap_name(profile_id, rang, amorcage.target)}"
+                  if amorcage.content else "")
         # Le fragment des clés imposées, s'il y en a. Vide sinon : c'est ce qui
         # distingue une entrée qui n'impose rien de celle qui impose, sans que
         # le lanceur ait à ouvrir quoi que ce soit pour le savoir.

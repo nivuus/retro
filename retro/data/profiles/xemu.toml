@@ -19,14 +19,35 @@ schema = 1
 id  = "xemu"
 exe = 'xemu.exe'
 
-# Amorçage : pas de bloc [[bootstrap]]. Ce que Xemu doit recevoir pour
-# lancer un jeu au lieu de son assistant de première configuration reste À
-# MESURER sur la machine, et aucune clé n'entre dans un profil sans avoir
-# été relevée dans un fichier que l'émulateur a lui-même écrit — une clé
-# recopiée d'une documentation est ignorée en silence, et le jeu ne démarre
-# toujours pas. Ce bloc absent dit donc « personne n'a encore regardé », pas
-# « cet émulateur se débrouille » : voir
-# docs/superpowers/specs/2026-08-28-amorcage-emulateurs-design.md.
+# THE GAMES' LANGUAGE. An Xbox game asks the kernel for it, and the kernel
+# reads it from the EEPROM — never from xemu.toml. xemu generates that image
+# itself at first start (%APPDATA%\xemu\xemu\eeprom.bin, the default of
+# sys.files.eeprom_path, found there on the console) with THIS console's
+# serial number and hard-disk key: retro therefore never poses it, it
+# changes the language (u32 at 0x90) and the user section's checksum (0x60)
+# and nothing else (retro-eeprom.cs, layout of hw/xbox/eeprom_generation.h
+# at revision fc24584). XC_LANGUAGE codes from Cxbx-Reloaded,
+# src/common/EmuEEPROM.h. The Xbox has a single Chinese, traditional:
+# "schinese" is not declared and takes the fallback.
+#
+# The rest of xemu's start-up — the welcome screen, the BIOS paths — lives
+# in the console's xemu.toml, posed outside this profile.
+[[bootstrap]]
+target = '%APPDATA%\xemu\xemu\eeprom.bin'
+
+[bootstrap.langue]
+repli      = "english"
+english    = "language = 1"
+japanese   = "language = 2"
+german     = "language = 3"
+french     = "language = 4"
+spanish    = "language = 5"
+latam      = "language = 5"
+italian    = "language = 6"
+koreana    = "language = 7"
+tchinese   = "language = 8"
+portuguese = "language = 9"
+brazilian  = "language = 9"
 
 # `mapping` dit où en est le RELEVÉ de la manette de cet émulateur, et jamais
 # l'identifiant lui-même : un identifiant n'est pas une propriété du
