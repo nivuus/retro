@@ -45,7 +45,9 @@ EXE = "retro-launch.exe"
 SOURCE = "retro-launch.cs"
 # The YAML half of the merge, compiled with SOURCE into the same binary.
 SOURCE_YAML = "retro-yaml.cs"
-SOURCES_CS = (SOURCE, SOURCE_YAML)
+# The JSON half, compiled into the same binary too.
+SOURCE_JSON = "retro-json.cs"
+SOURCES_CS = (SOURCE, SOURCE_YAML, SOURCE_JSON)
 PLAN = "systems"
 MODE = "mode.txt"
 LANGUE_FICHIER = "langue.txt"

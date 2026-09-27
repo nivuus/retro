@@ -241,6 +241,14 @@ static class RetroLaunch
     //
     // .cfg est le retroarch.cfg, .opt le fichier d'options d'un coeur
     // libretro : deux formats « cle = valeur », verifies sur la console.
+    // The extensions whose content is JSON, merged by retro-json.cs. The
+    // exact mirror of `_JSON` in retro/dialectes.py.
+    static bool EstJson(string cible)
+    {
+        string ext = Path.GetExtension(cible);
+        return ext != null && ext.ToLowerInvariant() == ".json";
+    }
+
     static bool EstIni(string cible)
     {
         string ext = Path.GetExtension(cible);
@@ -821,15 +829,18 @@ static class RetroLaunch
         // aucun « = », aucune cle n'est posee, et le reglage n'est jamais
         // impose : pas de message, pas de trace, le jeu se lance simplement
         // sans ce qu'on croyait lui avoir donne.
-        if (!yaml && !EstIni(cible))
+        bool json = EstJson(cible);
+        if (!yaml && !json && !EstIni(cible))
             throw new Exception(
                 "Le plan demande de fusionner un fichier dont ce lanceur ne "
                 + "connait pas le format :\n\n" + cible
-                + "\n\nLes formats connus sont .yml et .yaml (YAML), .ini, "
+                + "\n\nLes formats connus sont .yml et .yaml (YAML), .json (JSON), .ini, "
                 + ".cfg, .opt et .toml (INI). Declarer l'extension dans "
                 + "retro/profiles.py et dans ce lanceur, ou changer la cible.");
         // YAML has its own merge, on two levels: retro-yaml.cs.
         if (yaml) return FusionYaml.Fusionner(existant, apporte, out posees);
+        // JSON too, in place: retro-json.cs.
+        if (json) return FusionJson.Fusionner(existant, apporte, out posees);
 
         // Ce que la source apporte, dans l'ordre : (section, cle) -> ligne.
         var ordre = new List<string>();

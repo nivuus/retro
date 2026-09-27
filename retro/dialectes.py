@@ -6,6 +6,7 @@ launcher mirrors every rule here in C# (retro-launch.cs, retro-yaml.cs).
 """
 from __future__ import annotations
 
+import json
 import pathlib
 
 
@@ -51,6 +52,12 @@ _YAML = (".yml", ".yaml")
 # .cfg is retroarch.cfg, .opt a libretro core's options file: two
 # "key = value" formats without sections, checked on the console.
 _INI = (".ini", ".cfg", ".opt", ".toml")
+
+# The extensions whose content is JSON: shadPS4's user/config.json and
+# another emulator's Config.json. Merged by retro-json.cs, which replaces the value
+# of each imposed leaf in place and leaves every other byte of the file as
+# the emulator wrote it.
+_JSON = (".json",)
 
 
 def cles_yaml(fragment: str) -> list[tuple[str, str]]:
@@ -117,6 +124,49 @@ def _opens_a_section(lines: list[str], n: int) -> bool:
     return False
 
 
+def valider_json(fragment: str) -> None:
+    """Raise ValueError unless `fragment` is a JSON object of objects and
+    scalars. An array leaf is refused: the merge would replace it WHOLE,
+    dropping whatever the emulator keeps in it."""
+    try:
+        root = json.loads(fragment)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"not JSON: {exc}") from exc
+    if not isinstance(root, dict):
+        raise ValueError("a JSON fragment must be an object")
+
+    def walk(node, path):
+        for key, value in node.items():
+            if isinstance(value, list):
+                raise ValueError(
+                    f"{'/'.join((*path, key))} is an array: the merge "
+                    "would replace it whole")
+            if isinstance(value, dict):
+                walk(value, (*path, key))
+    walk(root, ())
+
+
+def cles_json(fragment: str) -> list[tuple[str, str]]:
+    """The (section, key) pairs of a JSON fragment: every scalar leaf, its
+    section the "/"-joined path of the objects above it. Invalid JSON gives
+    no key — `valider_json` is what refuses it, with the reason."""
+    try:
+        root = json.loads(fragment)
+    except json.JSONDecodeError:
+        return []
+    keys = []
+
+    def walk(node, path):
+        for key, value in node.items():
+            if isinstance(value, dict):
+                walk(value, (*path, key))
+            elif not isinstance(value, list):
+                keys.append(("/".join(path), key))
+    if isinstance(root, dict):
+        walk(root, ())
+    return keys
+
+
 def cles_de(target: str, fragment: str) -> list[tuple[str, str]]:
     """The (section, key) pairs of a fragment, in its TARGET's dialect.
 
@@ -129,4 +179,6 @@ def cles_de(target: str, fragment: str) -> list[tuple[str, str]]:
     returns an empty list, and every guard built on it then guards nothing.
     """
     suffix = pathlib.PureWindowsPath(target).suffix.lower()
+    if suffix in _JSON:
+        return cles_json(fragment)
     return cles_yaml(fragment) if suffix in _YAML else cles_ini(fragment)

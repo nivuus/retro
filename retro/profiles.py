@@ -18,7 +18,8 @@ import tomllib
 from retro import langue as langue_mod
 from retro import langue_args as langue_args_mod
 from retro.dialectes import (  # noqa: F401 — re-exported
-    _INI, _YAML, cles_de, cles_ini, cles_yaml, lignes_yaml)
+    _INI, _JSON, _YAML, cles_de, cles_ini, cles_json, cles_yaml, lignes_yaml,
+    valider_json)
 from retro import render as render_mod
 from retro.render import Render, RenderMode
 
@@ -937,7 +938,26 @@ def _lire_bootstrap(path: pathlib.Path, brut) -> Bootstrap | None:
             "travail de l'émulateur, et le fichier posé ne serait lu par "
             "personne."
         )
-    if MARQUE_BOOTSTRAP not in content:
+    # JSON HAS NO COMMENT SYNTAX, and the two emulators that use it rewrite
+    # their whole file on every save: a header would vanish at the first
+    # game anyway. For a .json target the marker is replaced by a stronger
+    # demand — every fragment must be a JSON object the merge can apply
+    # (retro-json.cs), since an invalid one would pose nothing and say
+    # nothing.
+    json_cible = pathlib.PureWindowsPath(target).suffix.lower() in _JSON
+    if json_cible:
+        for nom, texte in (("content", content),
+                           ("enforced", brut.get("enforced", "") or "{}"),
+                           *(("langue." + n, t) for n, t in
+                             (brut.get("langue") or {}).items()
+                             if n != "repli" and isinstance(t, str))):
+            try:
+                valider_json(texte)
+            except ValueError as exc:
+                raise ProfileError(
+                    f"{path} [[bootstrap]] : {nom} of a JSON target — "
+                    f"{exc}") from exc
+    elif MARQUE_BOOTSTRAP not in content:
         raise ProfileError(
             f"{path} [[bootstrap]] : 'content' ne porte pas « "
             f"{MARQUE_BOOTSTRAP} » en commentaire. Un fichier de "
@@ -1048,11 +1068,14 @@ def dialecte(target: str) -> str:
     ext = pathlib.PureWindowsPath(target).suffix.lower()
     if ext in _YAML:
         return "yaml"
+    if ext in _JSON:
+        return "json"
     if ext in _INI:
         return "ini"
     raise ProfileError(
         f"cible d'amorçage à l'extension inconnue : {target!r} ({ext!r}). Les "
-        f"dialectes connus sont {', '.join(_YAML)} pour le YAML et "
+        f"dialectes connus sont {', '.join(_YAML)} pour le YAML, "
+        f"{', '.join(_JSON)} pour le JSON et "
         f"{', '.join(_INI)} pour l'INI. Une extension non déclarée serait "
         "fusionnée en INI sans que personne ne l'ait décidé : si le fichier "
         "n'en est pas un, aucune clé ne serait posée et rien ne le dirait."
@@ -1174,6 +1197,10 @@ def _valider_regimes(path: pathlib.Path, target: str,
             "puis laissé au propriétaire."
         )
     minuscules = content.lower()
+    # A JSON target carries no header at all (see the marker check in
+    # _lire_bootstrap): there is no promise here to keep true.
+    if pathlib.PureWindowsPath(target).suffix.lower() in _JSON:
+        return
     if not ("impos" in minuscules and "une fois" in minuscules):
         raise ProfileError(
             f"{path} [[bootstrap]] : ce profil IMPOSE des clés, mais son "
