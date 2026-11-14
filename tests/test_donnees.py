@@ -2235,6 +2235,17 @@ def test_les_deux_cotes_connaissent_les_memes_dialectes():
         )
 
 
+def test_the_launcher_merges_as_ini_exactly_the_package_ini_extensions():
+    """The other direction of the mirror: an extension the launcher still
+    merged as INI while the package refuses it would come back the day a
+    profile check is loosened. Read from the source, as above."""
+    source = _source_lanceur()
+    corps = source[source.index("static bool EstIni("):]
+    corps = corps[:corps.index("}")]
+    assert sorted(re.findall(r'ext == "(\.[a-z0-9]+)"', corps)) == sorted(
+        profiles._INI)
+
+
 def test_aucun_profil_ne_nie_l_amorcage_qu_il_porte():
     """L'EN-TETE EST CRU. Un profil qui declare « pas de bloc [[bootstrap]] »
     en portant un bloc ment a son lecteur — et cette phrase-la, ecrite pour

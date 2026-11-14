@@ -281,7 +281,7 @@ static partial class RetroLaunch
         string ext = Path.GetExtension(cible);
         if (ext == null) return false;
         ext = ext.ToLowerInvariant();
-        return ext == ".ini" || ext == ".cfg" || ext == ".opt" || ext == ".toml";
+        return ext == ".ini" || ext == ".cfg" || ext == ".opt";
     }
 
     static int Main()
@@ -905,7 +905,7 @@ static partial class RetroLaunch
                 "Le plan demande de fusionner un fichier dont ce lanceur ne "
                 + "connait pas le format :\n\n" + cible
                 + "\n\nLes formats connus sont .yml et .yaml (YAML), .json (JSON), .xml (XML), .ini, "
-                + ".cfg, .opt et .toml (INI). Declarer l'extension dans "
+                + ".cfg et .opt (INI). Declarer l'extension dans "
                 + "retro/profiles.py et dans ce lanceur, ou changer la cible.");
         // YAML has its own merge, on two levels: retro-yaml.cs.
         if (yaml) return FusionYaml.Fusionner(existant, apporte, out posees);
