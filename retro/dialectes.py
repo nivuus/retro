@@ -52,7 +52,12 @@ _YAML = (".yml", ".yaml")
 #
 # .cfg is retroarch.cfg, .opt a libretro core's options file: two
 # "key = value" formats without sections, checked on the console.
-_INI = (".ini", ".cfg", ".opt", ".toml")
+#
+# .toml is NOT here: the INI merge writes a marker line starting with ";",
+# which a TOML reader rejects, and it knows nothing of TOML strings, arrays
+# or dotted keys. A .toml target stays refused until a TOML-aware merge
+# exists on both sides.
+_INI = (".ini", ".cfg", ".opt")
 
 # The extensions whose content is JSON: shadPS4's user/config.json and
 # another emulator's Config.json. Merged by retro-json.cs, which replaces the value

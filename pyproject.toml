@@ -14,7 +14,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+# setuptools: tests/test_identite.py imports the in-tree build backend,
+# which imports setuptools at module scope; Python 3.12+ ships none.
+# Same floor as [build-system].requires.
+dev = ["pytest>=8.0", "setuptools>=68"]
 
 [project.scripts]
 retro = "retro.cli:main"

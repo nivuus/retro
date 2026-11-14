@@ -73,6 +73,25 @@ def test_deuxieme_passage_ne_change_rien(tmp_path):
     assert compte.shortcuts_path.read_bytes() == avant
 
 
+def test_steam_maintained_fields_survive_and_nothing_is_rewritten(tmp_path):
+    """After a play session Steam has stamped LastPlayTime (and the owner may
+    have hidden the game). With an unchanged inventory the sync must leave the
+    file alone: same bytes, no backup."""
+    compte = faire_compte(tmp_path)
+    sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkMuet())
+    joue = vdf_io.load_shortcuts(compte.shortcuts_path)
+    joue[0].update(LastPlayTime=1775936395, IsHidden=1)
+    compte.shortcuts_path.write_bytes(vdf_io.dumps_shortcuts(joue))
+    avant = compte.shortcuts_path.read_bytes()
+
+    r = sync.sync_account(compte, [rom("Chrono Trigger")], "D:\\Emulation", ArtworkMuet())
+
+    assert r.backup is None
+    assert compte.shortcuts_path.read_bytes() == avant
+    relu = vdf_io.load_shortcuts(compte.shortcuts_path)[0]
+    assert (relu["LastPlayTime"], relu["IsHidden"]) == (1775936395, 1)
+
+
 def test_l_artwork_est_recupere_avant_l_ecriture(tmp_path):
     """Un jeu sans vignette vaut mieux qu'une vignette sans jeu : une panne
     d'artwork ne doit pas empêcher les raccourcis d'être écrits. Le témoin

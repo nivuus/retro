@@ -52,7 +52,8 @@ def reconcile(
             continue
         cle = existante.get("appid")
         if cle in voulu:
-            sortie.append(voulu[cle])         # remplacée : tags rafraîchis
+            # Only the owned fields are refreshed; Steam's are kept.
+            sortie.append(entry_mod.refresh(existante, voulu[cle]))
             kept.append(voulu[cle]["appname"])
             vus.add(cle)
         else:

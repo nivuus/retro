@@ -86,7 +86,10 @@ def test_une_serie_ambigue_ne_renomme_rien(tmp_path):
                     {"name": "Deux", "rom_name": "deux.bin", "serial": "81070"}],
          "Saturn.rdb")
     cue = tmp_path / "jeu.cue"
-    cue.write_bytes(b"FILE")
+    # The cue must name its track, or the refusal would come from finding
+    # no track at all rather than from the ambiguity under test.
+    cue.write_bytes(b'FILE "jeu (Track 01).bin" BINARY\n')
+    assert titres._pistes(cue) == [piste]
     assert resolveur(tmp_path).resoudre(cue, "saturn") is None
 
 
@@ -156,3 +159,83 @@ def test_le_marqueur_de_piste_se_retire_du_nom_de_la_base():
 def test_deux_series_se_comparent_sans_ponctuation():
     assert titres.normaliser_serie("SLES_527.25") \
         == titres.normaliser_serie("SLES-52725")
+
+
+# --- descriptor files name their own tracks ---------------------------------
+
+def _saturn_track(path, serial, padding=0):
+    path.write_bytes(b"\x00" * 16 + b"SEGA SEGASATURN" + b"\x00" * 17
+                     + serial.ljust(10).encode() + b"\x00" * (64 + padding))
+
+
+def test_a_cue_sheet_is_read_from_the_tracks_it_names(tmp_path):
+    """Two games share a folder. The unrecognised cue names the SMALLER image:
+    picking the largest image of the folder would title it after its
+    neighbour."""
+    _saturn_track(tmp_path / "game a (Track 01).bin", "T-1111")
+    _saturn_track(tmp_path / "game b (Track 01).bin", "T-2222", padding=4096)
+    base(tmp_path, [{"name": "Game A (Japan)", "rom_name": "x.bin", "serial": "T-1111"},
+                    {"name": "Game B (Japan)", "rom_name": "y.bin", "serial": "T-2222"}],
+         "Saturn.rdb")
+    cue = tmp_path / "unknown dump.cue"
+    cue.write_text('FILE "game a (Track 01).bin" BINARY\n'
+                   '  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n')
+    t = resolveur(tmp_path).resoudre(cue, "saturn")
+    assert t is not None and t.nom == "Game A (Japan)"
+
+
+def test_cue_file_entries_are_listed_in_order(tmp_path):
+    for name in ("d1.bin", "d2 audio.bin"):
+        (tmp_path / name).write_bytes(b"x")
+    cue = tmp_path / "g.cue"
+    cue.write_text('﻿FILE "d1.bin" BINARY\n  TRACK 01 MODE2/2352\n'
+                   'file "d2 audio.bin" BINARY\n  TRACK 02 AUDIO\n'
+                   'FILE "missing.bin" BINARY\n')
+    assert [p.name for p in titres._pistes(cue)] == ["d1.bin", "d2 audio.bin"]
+
+
+def test_cue_names_in_any_script_are_read(tmp_path):
+    name = "ゲーム (Track 01).bin"
+    (tmp_path / name).write_bytes(b"x")
+    cue = tmp_path / "g.cue"
+    cue.write_text(f'FILE "{name}" BINARY\n', encoding="utf-8")
+    assert [p.name for p in titres._pistes(cue)] == [name]
+
+
+def test_a_gdi_is_read_from_its_file_column(tmp_path):
+    for name, size in (("track01.bin", 10), ("track 02.raw", 50), ("track03.bin", 30)):
+        (tmp_path / name).write_bytes(b"x" * size)
+    (tmp_path / "other game.bin").write_bytes(b"x" * 999)
+    gdi = tmp_path / "g.gdi"
+    gdi.write_text('3\n1 0 4 2352 track01.bin 0\n'
+                   '2 756 0 2352 "track 02.raw" 0\n'
+                   '3 45000 4 2352 track03.bin 0\n')
+    # Largest first among the descriptor's own files, as before.
+    assert [p.name for p in titres._pistes(gdi)] == [
+        "track 02.raw", "track03.bin", "track01.bin"]
+
+
+def test_an_m3u_is_read_from_the_discs_it_lists(tmp_path):
+    (tmp_path / "disc1.bin").write_bytes(b"x")
+    (tmp_path / "disc2.bin").write_bytes(b"x" * 100)
+    (tmp_path / "disc1.cue").write_text('FILE "disc1.bin" BINARY\n')
+    (tmp_path / "disc2.cue").write_text('FILE "disc2.bin" BINARY\n')
+    m3u = tmp_path / "g.m3u"
+    m3u.write_text("#EXTM3U\ndisc1.cue\n\ndisc2.cue\n")
+    assert [p.name for p in titres._pistes(m3u)] == ["disc1.bin", "disc2.bin"]
+
+
+def test_a_ccd_is_read_from_its_same_stem_image(tmp_path):
+    (tmp_path / "g.img").write_bytes(b"x")
+    (tmp_path / "other.img").write_bytes(b"x" * 100)
+    ccd = tmp_path / "g.ccd"
+    ccd.write_text("[CloneCD]\nVersion=3\n")
+    assert [p.name for p in titres._pistes(ccd)] == ["g.img"]
+
+
+def test_a_descriptor_naming_nothing_falls_back_to_same_stem_images(tmp_path):
+    (tmp_path / "g.bin").write_bytes(b"x")
+    (tmp_path / "neighbour.bin").write_bytes(b"x" * 100)
+    cue = tmp_path / "g.cue"
+    cue.write_bytes(b"\xff\xfe garbage")
+    assert [p.name for p in titres._pistes(cue)] == ["g.bin"]

@@ -161,3 +161,22 @@ def test_les_trois_get_requires_gravent(tmp_path):
         copie = _copie_du_depot(tmp_path / hook)
         _appeler_hook(copie, hook)
         assert (copie / "retro" / "_identite.py").is_file(), hook
+
+
+def test_an_all_digit_digest_survives_pep440_normalisation(tmp_path, monkeypatch):
+    """PEP 440 reads an all-digit local segment as an integer, so a digest such
+    as 01234567 would lose its leading zero in the wheel's METADATA while
+    retro/_identite.py kept it, and the installer's string comparison would
+    then refuse the package for good."""
+    from packaging.version import Version
+
+    class Fixed:
+        def update(self, _data):
+            pass
+
+        def hexdigest(self):
+            return "0123456789" * 7
+
+    monkeypatch.setattr(identite_build.hashlib, "sha256", lambda: Fixed())
+    v = identite_build.version(_arbre(tmp_path))
+    assert str(Version(v)) == v

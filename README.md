@@ -619,4 +619,4 @@ provient pas.
 
 ## Licence
 
-MIT — le texte complet est dans [LICENSE](LICENSE).
+PolyForm Noncommercial 1.0.0 — le texte complet est dans [LICENSE.md](LICENSE.md).

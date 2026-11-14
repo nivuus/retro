@@ -117,3 +117,28 @@ def test_doublons_dans_le_voulu_ne_creent_qu_une_entree():
 def test_bibliotheque_vide_des_deux_cotes():
     r = reconcile.reconcile([], [], EMU_ROOT)
     assert r.entries == [] and r.created == [] and r.removed == []
+
+
+def test_a_kept_entry_keeps_the_fields_steam_maintains():
+    """Steam records play time, visibility and overlay choices in the entry
+    itself. A kept entry must carry them over: only the fields this tool
+    derives from the inventory may be refreshed."""
+    jeu = rom("Chrono Trigger")
+    existante = entry.build_shortcut(jeu)
+    existante.update(LastPlayTime=1775936395, IsHidden=1, AllowOverlay=0,
+                     sortas="Chrono", ShortcutPath="C:\\x.lnk")
+    r = reconcile.reconcile([existante], [jeu], EMU_ROOT)
+    assert r.kept == ["Chrono Trigger"]
+    assert r.entries == [existante]
+
+
+def test_a_kept_entry_still_gets_the_owned_fields_refreshed():
+    jeu = rom("Chrono Trigger")
+    existante = entry.build_shortcut(jeu)
+    existante.update(LastPlayTime=1775936395, LaunchOptions="stale",
+                     tags={"0": entry.OWNER_TAG, "1": "Old system"})
+    r = reconcile.reconcile([existante], [jeu], EMU_ROOT)
+    neuve = entry.build_shortcut(jeu)
+    assert r.entries[0]["LaunchOptions"] == neuve["LaunchOptions"]
+    assert r.entries[0]["tags"] == neuve["tags"]
+    assert r.entries[0]["LastPlayTime"] == 1775936395
