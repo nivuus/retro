@@ -15,12 +15,20 @@ quand vous voulez :
 - **`retro install`** installe les émulateurs du manifeste sous la racine
   d'émulation. Il les **télécharge depuis Internet** et les extrait — voir
   « Ce qui est téléchargé » plus bas, qui dit d'où et comment c'est vérifié.
-  Une montée de version **efface le dossier d'installation** : les
-  configurations qui y vivaient partent avec, et la commande les **nomme** au
-  lieu de les laisser disparaître en silence. Elles sont reposées au prochain
-  lancement d'un jeu ; d'ici là, l'émulateur repart sur ses défauts. C'est
-  pourquoi `install` lit les mêmes profils que `scan` (`--profiles`,
-  `--user-profiles`) : eux seuls savent quels fichiers vivaient là.
+  Une montée de version **ne remplace que les fichiers que l'archive
+  précédente livrait** : sauvegardes, cartes mémoire, firmwares installés et
+  configurations écrites dans le dossier d'installation restent en place. La
+  liste de ce que chaque installation a extrait est gardée à côté du témoin
+  (`.retro-files`) ; une montée de version retire ce que l'ancienne version
+  livrait et que la nouvelle ne livre plus, rien d'autre. Une installation
+  antérieure à cette liste ne perd rien que la nouvelle archive ne contienne.
+  L'archive est extraite à côté du dossier, sur le même volume, puis chaque
+  fichier y est renommé ; un passage interrompu laisse l'émulateur sans témoin
+  (« non attesté ») et le passage suivant termine le travail. Si l'archive
+  livre elle-même un fichier de configuration qu'un profil amorce, la
+  commande le **nomme** : il a été remplacé ou retiré avec la version
+  précédente. C'est pourquoi `install` lit les mêmes profils que `scan`
+  (`--profiles`, `--user-profiles`).
 - **`retro launcher`** dépose le lanceur commun sous la racine d'émulation et
   vous donne la commande qui le compile. C'est lui que Steam appelle pour
   chaque jeu : il mesure la session au moment du clic, compose la ligne de

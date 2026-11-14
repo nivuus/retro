@@ -5,7 +5,7 @@ import zipfile
 
 import pytest
 
-from retro import install, manifest, profiles
+from retro import acquire, install, manifest, profiles
 
 
 def faire_zip(chemin, nom_membre="t.exe"):
@@ -161,21 +161,24 @@ bios = []
     return profiles.load_profile(f)
 
 
-def test_une_reinstallation_nomme_la_configuration_effacee(tmp_path):
-    """« réinstallé » a effacé le dossier ; « à jour » n'a rien touché.
-
-    Confondre les deux ferait annoncer une configuration perdue à chaque
-    `retro install`, y compris ceux qui ne téléchargent rien — et un message
-    qui crie tous les jours ne se lit plus le jour où il est vrai.
-    """
+def test_only_a_configuration_the_changeover_replaced_is_named(tmp_path):
+    """A launcher-written file under the install directory is the owner's:
+    the upgrade leaves it alone, and naming it would send the owner hunting
+    for a loss that did not happen. Only a path the changeover replaced or
+    removed is named — and "à jour" touched nothing at all."""
     cible = "{install_dir}\\config\\input_configs\\global\\Default.yml"
     profils = {"rpcs3": profil_avec_cible(tmp_path, "rpcs3", cible)}
     emulateurs = {"rpcs3": emu("rpcs3", "0" * 64)}
-    for etat in ("installé", "réinstallé"):
+    shipped = "config/input_configs/global/Default.yml"
+    for outcome in (acquire.Outcome("réinstallé", replaced=[shipped]),
+                    acquire.Outcome("réinstallé", removed=[shipped])):
         assert install.configurations_effacees(
-            [("rpcs3", etat)], emulateurs, profils) == [("rpcs3", cible)]
-    assert install.configurations_effacees(
-        [("rpcs3", "à jour")], emulateurs, profils) == []
+            [("rpcs3", outcome)], emulateurs, profils) == [("rpcs3", cible)]
+    for outcome in (acquire.Outcome("réinstallé", replaced=["rpcs3.exe"]),
+                    acquire.Outcome("installé"), acquire.Outcome("à jour"),
+                    "ÉCHEC : x"):
+        assert install.configurations_effacees(
+            [("rpcs3", outcome)], emulateurs, profils) == []
 
 
 def test_une_cible_hors_du_dossier_d_installation_n_est_pas_nommee(tmp_path):
@@ -188,8 +191,10 @@ def test_une_cible_hors_du_dossier_d_installation_n_est_pas_nommee(tmp_path):
     cible = "%USERPROFILE%\\Documents\\ailleurs.ini"
     profils = {"ailleurs": profil_avec_cible(tmp_path, "ailleurs", cible)}
     emulateurs = {"ailleurs": emu("ailleurs", "0" * 64)}
+    outcome = acquire.Outcome("réinstallé",
+                              replaced=["Documents/ailleurs.ini", "ailleurs.ini"])
     assert install.configurations_effacees(
-        [("ailleurs", "réinstallé")], emulateurs, profils) == []
+        [("ailleurs", outcome)], emulateurs, profils) == []
 
 
 def test_le_lien_manifeste_profil_passe_par_le_champ_profile(tmp_path):
@@ -201,7 +206,8 @@ def test_le_lien_manifeste_profil_passe_par_le_champ_profile(tmp_path):
     e = emu("la-cle", "0" * 64)
     emulateurs = {"la-cle": dataclasses.replace(e, profile="le-profil")}
     assert install.configurations_effacees(
-        [("la-cle", "installé")], emulateurs, profils) == [("le-profil", cible)]
+        [("la-cle", acquire.Outcome("réinstallé", replaced=["x.ini"]))],
+        emulateurs, profils) == [("le-profil", cible)]
 
 
 def test_le_message_nomme_le_profil_et_la_cible(tmp_path):
@@ -213,19 +219,62 @@ def test_le_message_nomme_le_profil_et_la_cible(tmp_path):
     assert install.format_configurations_effacees([]) == ""
 
 
-def test_les_etats_qui_effacent_sont_ceux_qu_acquire_rend(tmp_path):
-    """Le couplage entre les deux modules est une CHAÎNE, et une chaîne qui
-    changerait d'un côté rendrait la liste vide de l'autre — sans erreur, sans
-    symptôme, et le message se tairait le jour où il compte. Le seul garde
-    possible est de faire tourner une vraie installation et de lire l'état
-    qu'elle rend, puis de la refaire pour obtenir celui qui n'efface rien.
-    """
-    blob = faire_zip(tmp_path / "s.zip")
-    sha = hashlib.sha256(blob).hexdigest()
-    m = {"a": emu("a", sha)}
-    (_, premier), = install.install_all(m, tmp_path / "Emu",
-                                        fetch=lambda u: blob)
-    assert premier in install.ETATS_EFFACANTS
-    (_, second), = install.install_all(m, tmp_path / "Emu",
-                                       fetch=lambda u: blob)
-    assert second not in install.ETATS_EFFACANTS
+def test_a_real_upgrade_names_a_shipped_configuration_and_nothing_else(
+        tmp_path):
+    """The coupling between the two modules goes through a real install:
+    `acquire` reports what its changeover touched, `install` names the bootstrap
+    files among them. A launcher-written file the archive never shipped is
+    kept and not named."""
+    cible_livree = "{install_dir}\\shipped.ini"
+    cible_lanceur = "{install_dir}\\config\\Default.yml"
+    f = tmp_path / "a.toml"
+    f.write_text(f"""
+schema = 1
+id = "a"
+exe = "t.exe"
+
+[[bootstrap]]
+target = '{cible_livree}'
+content = '''
+; Écrit par « retro »
+'''
+
+[[bootstrap]]
+target = '{cible_lanceur}'
+content = '''
+; Écrit par « retro »
+'''
+
+[[system]]
+id = "a-s"
+name = "Un système"
+extensions = [".rom"]
+launch = '"{{rom}}"'
+bios = []
+""", encoding="utf-8")
+    profils = {"a": profiles.load_profile(f)}
+    v1 = tmp_path / "v1.zip"
+    with zipfile.ZipFile(v1, "w") as z:
+        z.writestr("t.exe", "v1")
+        z.writestr("shipped.ini", "v1")
+    b1 = v1.read_bytes()
+    v2 = tmp_path / "v2.zip"
+    with zipfile.ZipFile(v2, "w") as z:
+        z.writestr("t.exe", "v2")
+        z.writestr("shipped.ini", "v2")
+    b2 = v2.read_bytes()
+    racine = tmp_path / "Emu"
+    e1 = dataclasses.replace(emu("a", hashlib.sha256(b1).hexdigest()))
+    e2 = dataclasses.replace(emu("a", hashlib.sha256(b2).hexdigest()),
+                             version="2.0")
+    premier = install.install_all({"a": e1}, racine, fetch=lambda u: b1)
+    assert install.configurations_effacees(premier, {"a": e1}, profils) == []
+    lanceur = racine / "A" / "config" / "Default.yml"
+    lanceur.parent.mkdir(parents=True)
+    lanceur.write_text("mine", encoding="utf-8")
+
+    second = install.install_all({"a": e2}, racine, fetch=lambda u: b2)
+
+    assert install.configurations_effacees(second, {"a": e2}, profils) == [
+        ("a", cible_livree)]
+    assert lanceur.read_text(encoding="utf-8") == "mine"

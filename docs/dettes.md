@@ -1090,9 +1090,10 @@ Vita3K est chargé depuis `<Vita3K>\config.yml`, c'est-à-dire depuis son
 dossier d'INSTALLATION. Or `bootstrap.target` doit être un chemin Windows
 absolu ou partir d'une variable d'environnement : la racine d'émulation est un
 paramètre de `retro scan`, aucune constante ne la désigne. Il faudra un jeton
-substitué à la synchronisation, sur le modèle de `{render_config}`. Et, comme
-pour Cemu, une configuration qui vit sous le dossier d'installation disparaît
-à chaque montée de version : l'amorçage devra se rejouer.
+substitué à la synchronisation, sur le modèle de `{render_config}`. Une
+configuration qui vit sous le dossier d'installation survit désormais à une
+montée de version, tant que l'archive ne livre pas un fichier au même chemin
+(`acquire._put_in_place`).
 
 **L'étape 4, le mouvement : c'est D4, elle n'a pas bougé.** Ce qui restera à
 faire dans ce profil-ci est noté dans le profil.
@@ -1445,10 +1446,10 @@ Un **jeton de chemin** dans `target`, sur le modèle de `{render_config}` que
 L'émulateur hors dépôt demande en plus un **second dialecte de fusion**, JSON,
 côté validation Python comme côté lanceur C#.
 
-**Et un aggravant propre à RPCS3 :** ses deux fichiers vivent sous son dossier
-d'installation, que `retro install` **efface à chaque montée de version**. La
-manette redeviendrait donc muette à une simple mise à jour de l'émulateur, sans
-qu'aucun message ne fasse le lien.
+**Un aggravant propre à RPCS3, levé depuis :** ses deux fichiers vivent sous
+son dossier d'installation, que `retro install` effaçait à chaque montée de
+version. Il ne remplace plus que les fichiers que l'archive précédente livrait
+(`acquire._put_in_place`) : ces deux-là, écrits par le lanceur, restent en place.
 
 ### Ce qu'il ne faut pas faire, et pourquoi c'est tentant
 

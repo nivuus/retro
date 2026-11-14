@@ -134,53 +134,48 @@ def format_install_report(resultats: list[tuple[str, str]]) -> str:
     return "\n".join(lignes)
 
 
-# CE QU'UNE MONTÉE DE VERSION VIENT D'EFFACER, ET QUE PERSONNE NE VOIT PARTIR.
+# WHAT AN UPGRADE JUST REPLACED, AND THAT NOBODY SEES GO.
 #
-# `acquire` supprime le dossier d'installation (shutil.rmtree) avant de
-# réextraire. Les configurations d'amorçage qui vivent SOUS ce dossier partent
-# avec lui — pour RPCS3, c'est le fichier sans lequel `cfg_player` vaut
-# `pad_handler::null`, c'est-à-dire aucune manette du tout.
-#
-# Le mécanisme les repose au lancement suivant : le régime « si-absent » voit
-# la cible disparue et la recrée. Ce n'est donc PAS une panne. Ce qui manquait
-# est le MESSAGE : entre la mise à jour et la partie suivante, la manette ne
-# répond pas, et une manette muette ne ressemble en rien à une mise à jour.
-# Sans cette phrase, le propriétaire cherche du côté du pad, des pilotes, de
-# Steam — partout sauf là où c'est.
+# An upgrade only overwrites or removes files the previous archive shipped
+# (`acquire._put_in_place`): a configuration the launcher wrote under the install
+# directory is the owner's, and it survives. It is lost only when an archive
+# ships a file at that very path — then the upgrade replaces it, or removes
+# it when the new version stops shipping it, and the controller goes silent
+# with nothing pointing at the upgrade. That case, and only that one, is
+# named: a notice printed on every install would stop being read the day it
+# is true.
 
-# Les deux états d'`acquire` qui ont effacé quelque chose. « à jour » n'a rien
-# touché : l'y ajouter ferait crier ce message à chaque `retro install`, y
-# compris ceux qui ne téléchargent rien, et un message qui crie tous les jours
-# ne se lit plus le jour où il est vrai.
-#
-# Le couplage est par CHAÎNE, et il est gardé par un test qui fait tourner une
-# vraie installation : le changer d'un seul côté rendrait ce rapport vide, sans
-# erreur ni symptôme.
-ETATS_EFFACANTS = ("installé", "réinstallé")
+
+def _relative_to_install(target: str) -> str:
+    """A bootstrap target under {install_dir}, as acquire records paths."""
+    rest = target[len(profiles.JETON_INSTALL):]
+    return "/".join(p for p in _SEPARATEURS.split(rest) if p)
 
 
 def configurations_effacees(resultats, emulateurs, profils) -> list[tuple[str, str]]:
-    """(profil, cible) des amorçages disparus avec le dossier d'installation.
+    """(profile, target) of the bootstrap files the changeover replaced or removed.
 
-    Seuls ceux dont la cible commence par le jeton du dossier d'installation :
-    un %USERPROFILE% survit à toutes les montées de version, et l'annoncer
-    effacé enverrait chercher une panne là où il n'y en a pas.
+    Only targets that start with the install-directory token can be touched:
+    a %USERPROFILE% survives every upgrade. The paths come from what
+    `acquire` reports it changed (`Outcome.replaced` and `.removed`); a state
+    without that record, such as a failure, touched nothing that is named.
 
-    Le lien manifeste → profil est `emu.profile`, celui qu'`_install_dirs_pour`
-    emploie déjà. La clé du manifeste n'est PAS l'identifiant du profil, et les
-    confondre rendrait une liste vide — donc un silence, qui est très
-    exactement ce que cette fonction existe pour rompre.
+    The link from manifest to profile is `emu.profile`, the one
+    `_install_dirs_pour` already uses: the manifest key is NOT the profile
+    id, and confusing them would return an empty list — a silence.
     """
     effaces = []
     for cle, etat in resultats:
-        if etat not in ETATS_EFFACANTS:
+        if not isinstance(etat, acquire.Outcome):
             continue
+        touched = {acquire.path_key(p) for p in etat.replaced | etat.removed}
         emu = emulateurs.get(cle)
         profil = profils.get(emu.profile) if emu else None
-        if profil is None:
+        if profil is None or not touched:
             continue
         effaces += [(profil.id, b.target) for b in profil.bootstraps
-                    if b.target.startswith(profiles.JETON_INSTALL)]
+                    if b.target.startswith(profiles.JETON_INSTALL)
+                    and acquire.path_key(_relative_to_install(b.target)) in touched]
     return effaces
 
 
@@ -199,10 +194,12 @@ def format_configurations_effacees(effacees: list[tuple[str, str]]) -> str:
         # Windows en ferait un faux à copier-coller, et le propriétaire irait
         # regarder un fichier qui n'existe pas.
         lignes.append(textwrap.fill(
-            f"{pid} : sa configuration a été effacée avec son dossier "
-            f"({cible}). Elle sera reposée au prochain lancement d'un de ses "
-            "jeux — d'ici là, cet émulateur repart sur ses défauts : une "
-            "manette qui ne répond pas, une fenêtre que rien ne ferme.",
+            f"{pid} : the upgrade replaced or removed its configuration "
+            f"({cible}), a file the previous version shipped. The next launch "
+            "of one of its games applies the console's settings again where "
+            "they are missing or enforced; until then this emulator runs on "
+            "the new version's defaults — a controller that does not answer, "
+            "a window nothing closes.",
             width=78, initial_indent="  · ", subsequent_indent="    ",
             # La cible ne porte pas d'espace : elle ne peut pas être coupée en
             # deux par le remplissage, et reste copiable d'un seul geste.

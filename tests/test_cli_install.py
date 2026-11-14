@@ -759,7 +759,10 @@ def test_retro_install_dit_ce_qu_il_a_efface(tmp_path, capsys, monkeypatch):
     écrit doit être la sortie de la commande qui vient de l'effacer.
     """
     cible = "{install_dir}\\config\\input_configs\\global\\Default.yml"
-    monkeypatch.setattr(acquire, "acquire", lambda *a, **k: "réinstallé")
+    # The upgrade's changeover replaced that very file, the only case named.
+    replaced = acquire.Outcome(
+        "réinstallé", replaced=["config/input_configs/global/Default.yml"])
+    monkeypatch.setattr(acquire, "acquire", lambda *a, **k: replaced)
     code = cli.main(["install",
                      "--manifest", str(_manifeste_d_un(tmp_path)),
                      "--profiles", str(_profils_d_un(tmp_path, "rpcs3", cible)),
@@ -779,7 +782,8 @@ def test_une_installation_a_jour_n_annonce_rien_d_efface(tmp_path, capsys,
     """« à jour » n'a rien touché. Un message qui crie à chaque installation
     ne se lit plus le jour où il est vrai."""
     cible = "{install_dir}\\config\\input_configs\\global\\Default.yml"
-    monkeypatch.setattr(acquire, "acquire", lambda *a, **k: "à jour")
+    monkeypatch.setattr(acquire, "acquire",
+                        lambda *a, **k: acquire.Outcome("à jour"))
     code = cli.main(["install",
                      "--manifest", str(_manifeste_d_un(tmp_path)),
                      "--profiles", str(_profils_d_un(tmp_path, "rpcs3", cible)),
@@ -792,7 +796,9 @@ def test_un_dossier_de_profils_du_proprietaire_absent_reste_normal(
         tmp_path, capsys, monkeypatch):
     """Il vit sur un partage qui n'est pas toujours monté. Une installation
     qui échouerait pour cette raison serait une panne inventée."""
-    monkeypatch.setattr(acquire, "acquire", lambda *a, **k: "réinstallé")
+    monkeypatch.setattr(
+        acquire, "acquire",
+        lambda *a, **k: acquire.Outcome("réinstallé", replaced=["x.ini"]))
     code = cli.main(["install",
                      "--manifest", str(_manifeste_d_un(tmp_path)),
                      "--profiles", str(_profils_d_un(
