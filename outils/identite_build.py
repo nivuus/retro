@@ -106,14 +106,18 @@ def revision(racine: pathlib.Path) -> str:
 
 
 def version(racine: pathlib.Path) -> str:
-    """« 0.1.0+20260829143512.a1b2c3d4.g9f8e7d6 ».
+    """« 0.1.0+20260829143512.ha1b2c3d4.g9f8e7d6 ».
 
     L'horodatage EN PREMIER : les segments locaux PEP 440 se comparent
     segment par segment, un segment numérique numériquement. Mis ailleurs, une
     construction plus récente pourrait se classer AVANT une plus ancienne et
     `pip --upgrade` refuserait de l'installer.
     """
-    parties = [horodatage(racine), empreinte(racine)]
+    # The digest carries a letter prefix, as the revision does: an all-digit
+    # local segment is an integer to PEP 440, so a digest like 01234567
+    # would lose its leading zero in the wheel's METADATA and no longer
+    # match the string burned into retro/_identite.py.
+    parties = [horodatage(racine), "h" + empreinte(racine)]
     sha = revision(racine)
     if sha:
         parties.append("g" + sha)
