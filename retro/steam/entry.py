@@ -80,6 +80,25 @@ def build_shortcut(entry: RomEntry, icon_path: str = "") -> dict:
     }
 
 
+# The fields this tool derives from the inventory. Every other field of a
+# shortcut is Steam's or the owner's (LastPlayTime, IsHidden, AllowOverlay,
+# sortas, ...): a kept entry carries them over untouched, otherwise each sync
+# would erase them and rewrite the file, with a fresh backup, every time.
+OWNED_FIELDS = ("appid", "appname", "exe", "StartDir", "icon",
+                "LaunchOptions", "tags")
+
+
+def refresh(existing: dict, fresh: dict) -> dict:
+    """A copy of ``existing`` overlaid with the owned fields of ``fresh``.
+
+    Key order is the existing one, so an unchanged entry renders to the same
+    bytes."""
+    merged = dict(existing)
+    for key in OWNED_FIELDS:
+        merged[key] = fresh[key]
+    return merged
+
+
 def exe_path(exe_field: str) -> str:
     """Le chemin de l'exécutable, dépouillé des arguments qui le suivent.
 
