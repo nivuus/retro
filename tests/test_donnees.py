@@ -406,24 +406,34 @@ def test_le_readme_ne_promet_pas_un_classement_que_rien_ne_produit():
         )
 
 
+LICENCE_FILE = "LICENSE.md"
+LICENCE_ID = "PolyForm-Noncommercial-1.0.0"
+
+
 def test_le_depot_porte_le_texte_de_sa_licence():
-    """pyproject déclare MIT et le README dit « MIT. », mais le dépôt n'en
-    contenait aucun texte. La licence MIT exige la distribution de sa notice :
-    sans elle, la licence annoncée n'est pas concédée."""
-    licence = RACINE / "LICENSE"
-    assert licence.is_file(), "aucun fichier LICENSE à la racine du dépôt"
+    """The declared licence, the licence text shipped with the tree and the
+    README must name the same licence. PolyForm requires its terms (or their
+    URL) and the `Required Notice:` lines to travel with every copy."""
+    licence = RACINE / LICENCE_FILE
+    assert licence.is_file(), f"no {LICENCE_FILE} at the repository root"
     texte = licence.read_text(encoding="utf-8")
-    for attendu in ("MIT", "Maxime Allanic", "2026", "WITHOUT WARRANTY"):
-        assert attendu in texte, f"LICENSE : « {attendu} » absent"
+    for attendu in ("# PolyForm Noncommercial License 1.0.0",
+                    "https://polyformproject.org/licenses/noncommercial/1.0.0",
+                    "Required Notice:", "## Noncommercial Purposes"):
+        assert attendu in texte, f"{LICENCE_FILE}: '{attendu}' missing"
     conf = tomllib.loads((RACINE / "pyproject.toml").read_text(encoding="utf-8"))
-    assert conf["project"]["license"]["text"] == "MIT"
+    assert conf["project"]["license"]["text"] == LICENCE_ID
+    section = README.read_text(encoding="utf-8").split("## Licence", 1)[1]
+    assert "PolyForm Noncommercial 1.0.0" in section
+    assert f"({LICENCE_FILE})" in section
+    assert "MIT" not in section
 
 
 def test_la_licence_est_versionnee():
-    """Un LICENSE non versionné ne protège que la copie de travail."""
-    sortie = subprocess.run(["git", "ls-files", "-z", "LICENSE"], cwd=RACINE,
+    """An untracked licence file only covers the working copy."""
+    sortie = subprocess.run(["git", "ls-files", "-z", LICENCE_FILE], cwd=RACINE,
                             capture_output=True, text=True, check=True).stdout
-    assert [f for f in sortie.split("\0") if f] == ["LICENSE"]
+    assert [f for f in sortie.split("\0") if f] == [LICENCE_FILE]
 
 
 def test_les_bios_playstation_sont_interchangeables():
