@@ -38,7 +38,12 @@ _BINAIRES_7Z = ("7zz", "7z", "7za", "7zr", "7zr.exe", "7z.exe")
 
 
 class AcquireError(RuntimeError):
-    """L'émulateur n'a pas pu être installé, et rien n'a été laissé à moitié."""
+    """The emulator could not be installed.
+
+    The message names it and says what is left on disk: the previous install
+    unchanged, nothing at all, or an install without witness that the next
+    run finishes. `acquire` raises nothing else for a filesystem failure.
+    """
 
 
 def _fetch(url: str) -> bytes:
@@ -358,7 +363,15 @@ def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> Outcome:
         )
     cible = emulation_root / emu.install_dir
     temoin = cible / TEMOIN
-    if temoin.exists() and temoin.read_text(encoding="utf-8").strip() == emu.version:
+    try:
+        # An undecodable witness attests nothing: it compares unequal and
+        # the emulator is installed again.
+        attested = (temoin.read_text(encoding="utf-8", errors="replace").strip()
+                    if temoin.exists() else None)
+    except OSError as exc:
+        raise AcquireError(f"{emu.name} : {temoin} is unreadable ({exc}). "
+                           "Nothing was changed.") from exc
+    if attested == emu.version:
         return Outcome("à jour")
     deja = cible.exists()
 
@@ -407,38 +420,42 @@ def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> Outcome:
     # the system temp directory every file would have to be copied across
     # volumes instead of renamed.
     staging = cible.parent / f".{cible.name}{STAGING_SUFFIX}"
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        racine = pathlib.Path(tmp)
-        archive = racine / f"{emu.key}.{emu.archive}"
-        archive.write_bytes(blob)
-        # A staging directory left by an interrupted run holds only what
-        # that run extracted: it is ours, and it is stale.
-        if staging.exists():
-            shutil.rmtree(staging)
-        safe_extract(archive, emu.archive, staging)
-        # Les supplémentaires se déversent dans le MÊME dossier : c'est ce qui
-        # fait cohabiter l'émulateur et ses cores.
-        for i, (b, kind) in enumerate(supplements):
-            sup = racine / f"{emu.key}-part{i}.{kind}"
-            sup.write_bytes(b)
-            safe_extract(sup, kind, staging)
-        try:
+    try:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            racine = pathlib.Path(tmp)
+            archive = racine / f"{emu.key}.{emu.archive}"
+            archive.write_bytes(blob)
+            # A staging directory left by an interrupted run holds only what
+            # that run extracted: it is ours, and it is stale.
+            if staging.exists():
+                shutil.rmtree(staging)
+            safe_extract(archive, emu.archive, staging)
+            # Supplementary archives pour into the SAME tree: that is what
+            # puts an emulator and its cores side by side.
+            for i, (b, kind) in enumerate(supplements):
+                sup = racine / f"{emu.key}-part{i}.{kind}"
+                sup.write_bytes(b)
+                safe_extract(sup, kind, staging)
             replaced, removed = _put_in_place(staging, cible, temoin)
             # What is left are directories and the new version's copies of
             # files kept as the owner's. Removed BEFORE the witness: an
             # attested install leaves nothing behind it.
             shutil.rmtree(staging)
             _write_atomically(temoin, emu.version + "\n")
-        except OSError as exc:
-            if temoin.exists():
-                left = "The previous install is unchanged."
-            else:
-                left = ("The install is not attested (no witness) and may be "
-                        "incomplete; no file the previous version did not "
-                        "ship was touched. Run the install again to finish it.")
-            raise AcquireError(
-                f"{emu.name} : the changeover to version {emu.version} in {cible} "
-                f"failed ({exc}). {left}"
-            ) from exc
+    except OSError as exc:
+        # A full disk, a locked file, a refused permission: the failure of
+        # THIS emulator, which `install_all` records before going on.
+        if temoin.exists():
+            left = "The previous install is unchanged."
+        elif not cible.exists():
+            left = "Nothing was installed."
+        else:
+            left = ("The install is not attested (no witness) and may be "
+                    "incomplete; no file the previous version did not "
+                    "ship was touched. Run the install again to finish it.")
+        raise AcquireError(
+            f"{emu.name} {emu.version} : installing in {cible} failed "
+            f"({exc}). {left}"
+        ) from exc
 
     return Outcome("réinstallé" if deja else "installé", replaced, removed)
