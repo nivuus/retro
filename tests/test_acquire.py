@@ -310,5 +310,5 @@ def test_les_autres_emulateurs_s_installent_quand_meme(tmp_path):
     resultats = dict(install.install_all(manifeste, tmp_path / "Emulation",
                                          fetch=lambda u: blob))
     assert resultats["truc"] == "installé"
-    assert resultats["arelever"].startswith("ÉCHEC")
+    assert resultats["arelever"].startswith(install.UNPINNED)
     assert (tmp_path / "Emulation" / "Truc" / "truc.exe").is_file()

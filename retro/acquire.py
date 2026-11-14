@@ -46,6 +46,15 @@ class AcquireError(RuntimeError):
     """
 
 
+class NotPinned(AcquireError):
+    """The manifest entry has no recorded SHA256: refused before download.
+
+    A deliberate state of the shipped manifest, not a failure: `install_all`
+    reports it as skipped, so that an install where every PINNED emulator
+    is in place exits 0.
+    """
+
+
 def _fetch(url: str) -> bytes:
     import requests
     r = requests.get(url, timeout=300)
@@ -346,13 +355,13 @@ def acquire(emu, emulation_root: pathlib.Path, fetch=_fetch) -> Outcome:
     # empreinte vide aurait fait télécharger cent mégaoctets pour rendre
     # « attendue :  », un message qui n'envoie nulle part.
     #
-    # `install_all` capture cet échec comme les autres : les émulateurs
-    # épinglés s'installent quand même.
+    # `install_all` reports this refusal as a skip, not as a failure: the
+    # pinned emulators still install, and the command can still exit 0.
     if not emu.sha256.strip():
         # La version est vide elle aussi quand l'empreinte l'est : les deux
         # décrivent la même archive et se relèvent ensemble. On ne laisse donc
         # pas un blanc traîner au milieu du message.
-        raise AcquireError(
+        raise NotPinned(
             f"{emu.name} {emu.version}".strip()
             + " : empreinte SHA256 non relevée dans le "
             "manifeste. Rien n'a été téléchargé — un binaire que rien ne "

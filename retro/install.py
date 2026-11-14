@@ -110,27 +110,40 @@ def emulator_state(emulation_root, install_dir: str, exe: str) -> str:
     return ABSENT
 
 
+# The state of an entry the manifest lists without a pinned checksum. It
+# must never start with the failure prefix that `retro/cli.py` counts with
+# `startswith` to choose exit 1, and the suite's installer reads
+# exit 1 as "partial". A skip by design is neither.
+UNPINNED = "not pinned"
+
+
 def install_all(manifeste: dict, emulation_root: pathlib.Path,
                 fetch=acquire._fetch) -> list[tuple[str, str]]:
-    resultats = []
+    results = []
     for cle in sorted(manifeste):
         try:
             etat = acquire.acquire(manifeste[cle], emulation_root, fetch=fetch)
+        except acquire.NotPinned as exc:
+            etat = f"{UNPINNED} : {exc}"
         except acquire.AcquireError as exc:
             etat = f"ÉCHEC : {exc}"
-        resultats.append((cle, etat))
-    return resultats
+        results.append((cle, etat))
+    return results
 
 
-def format_install_report(resultats: list[tuple[str, str]]) -> str:
+def format_install_report(results: list[tuple[str, str]]) -> str:
     lignes = []
-    for cle, etat in resultats:
+    for cle, etat in results:
         marque = "!" if etat.startswith("ÉCHEC") else "·"
         lignes.append(f"  {marque} {cle} : {etat}")
-    echecs = [c for c, e in resultats if e.startswith("ÉCHEC")]
+    echecs = [c for c, e in results if e.startswith("ÉCHEC")]
     if echecs:
         lignes.append(f"  {len(echecs)} émulateur(s) non installé(s) : "
                       f"{', '.join(echecs)}")
+    skipped = [c for c, e in results if e.startswith(UNPINNED)]
+    if skipped:
+        lignes.append(f"  {len(skipped)} emulator(s) skipped, no pinned "
+                      f"checksum in the manifest: {', '.join(skipped)}")
     return "\n".join(lignes)
 
 
