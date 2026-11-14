@@ -199,17 +199,78 @@ EXTRACTEURS = {
 }
 
 
+_DESCRIPTORS = (".cue", ".gdi", ".ccd", ".toc", ".m3u")
+_IMAGES = (".bin", ".img", ".iso")
+# A cue sheet's FILE line, a cdrdao TOC's FILE / DATAFILE line: the name is
+# quoted, or a single token when it holds no space.
+_CUE_FILE = re.compile(r'^[ \t]*(?:FILE|DATAFILE)[ \t]+(?:"([^"\r\n]+)"|(\S+))', re.I | re.M)
+# A GDI track line: number, LBA, type, sector size, then the file name,
+# quoted when it holds spaces.
+_GDI_FILE = re.compile(
+    r'^[ \t]*\d+[ \t]+\d+[ \t]+\d+[ \t]+\d+[ \t]+(?:"([^"\r\n]+)"|(\S+))', re.M)
+
+
+def _named_file(descriptor: pathlib.Path, name: str) -> pathlib.Path | None:
+    """The file a descriptor names, relative to the descriptor's folder.
+
+    Descriptors written on Windows separate folders with a backslash, which
+    is an ordinary character on the Linux host that may scan the library.
+    An absolute name is not followed: a descriptor describes its own disc.
+    """
+    parts = [m for m in re.split(r"[\\/]", name.strip()) if m]
+    if not parts or pathlib.PureWindowsPath(name.strip()).anchor:
+        return None
+    path = descriptor.parent.joinpath(*parts)
+    return path if path.is_file() else None
+
+
+def _listed_names(path: pathlib.Path, suffix: str) -> list[str]:
+    """The file names a descriptor lists, in its own order; [] if unreadable."""
+    if suffix == ".ccd":
+        return []   # CloneCD names no file: its image is the same-stem .img
+    try:
+        text = lecture.octets(path).decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return []
+    if suffix == ".m3u":
+        return [line.strip() for line in text.splitlines()
+                if line.strip() and not line.lstrip().startswith("#")]
+    pattern = _GDI_FILE if suffix == ".gdi" else _CUE_FILE
+    return [a or b for a, b in pattern.findall(text)]
+
+
 def _pistes(chemin: pathlib.Path) -> list[pathlib.Path]:
     """Les fichiers où chercher, la plus grosse piste d'abord.
 
     Un .cue ou un .gdi ne CONTIENT rien : il décrit des pistes voisines. Le
     lire lui-même ne trouverait jamais de série.
+
+    Only the tracks the descriptor itself names are candidates: a folder can
+    hold several games, and the largest image in it may be a neighbour's. An
+    .m3u lists discs, each read in turn, in its order. When the descriptor
+    names nothing that exists, the images sharing its stem are the fallback.
     """
-    if chemin.suffix.lower() in (".cue", ".gdi", ".ccd", ".toc", ".m3u"):
-        voisins = [p for p in chemin.parent.iterdir()
-                   if p.is_file() and p.suffix.lower() in (".bin", ".img", ".iso")]
-        return sorted(voisins, key=lambda p: p.stat().st_size, reverse=True)
-    return [chemin]
+    suffix = chemin.suffix.lower()
+    if suffix not in _DESCRIPTORS:
+        return [chemin]
+    found: list[pathlib.Path] = []
+    for name in _listed_names(chemin, suffix):
+        f = _named_file(chemin, name)
+        if f is None or f in found:
+            continue
+        if suffix == ".m3u" and f.suffix.lower() in _DESCRIPTORS:
+            # One level only: an .m3u lists discs, never other playlists.
+            if f.suffix.lower() != ".m3u":
+                found.extend(p for p in _pistes(f) if p not in found)
+            continue
+        found.append(f)
+    if suffix == ".m3u":
+        return found
+    if not found:
+        found = [p for p in chemin.parent.iterdir()
+                 if p.is_file() and p.stem == chemin.stem
+                 and p.suffix.lower() in _IMAGES]
+    return sorted(found, key=lambda p: p.stat().st_size, reverse=True)
 
 
 def _tete(chemin: pathlib.Path, mo: int) -> bytes:
