@@ -30,6 +30,7 @@ import importlib.resources
 import pathlib
 import shutil
 
+from retro import atomic
 from retro import langue as langue_mod
 from retro import langue_args as langue_args_mod
 from retro import profiles as profiles_mod
@@ -818,10 +819,9 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
         workdir = f"{emulation_root}\\{install_dirs[pid]}"
         for systeme in profil.systems:
             cle = system_key(pid, systeme.id)
-            (dossier / f"{cle}.ini").write_text(
-                plan_systeme(pid, systeme, exe, workdir, plan_dir,
-                             bootstraps=profil.bootstraps),
-                encoding="utf-8")
+            atomic.write(dossier / f"{cle}.ini",
+                         plan_systeme(pid, systeme, exe, workdir, plan_dir,
+                                      bootstraps=profil.bootstraps))
             fichiers.add(f"{cle}.ini")
             ecrits.append(cle)
             # Les fichiers de réglages des modes qui en ont un. RetroArch est
@@ -831,8 +831,7 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
                               ("full", systeme.render.full)
                               ) if systeme.render else ():
                 if mode.config.strip():
-                    (dossier / config_name(cle, nom)).write_text(
-                        mode.config, encoding="utf-8")
+                    atomic.write(dossier / config_name(cle, nom), mode.config)
                     fichiers.add(config_name(cle, nom))
 
         # Par PROFIL et non par système : la configuration d'un émulateur ne
@@ -844,7 +843,7 @@ def ecrire_plan(emulation_root_local, emulation_root: str, profils: dict,
             # fonction que `retro status` interroge pour constater qu'un
             # fragment déposé n'est plus celui du profil.
             for nom, texte in fragments_attendus(pid, rang, amorcage):
-                (dossier / nom).write_text(texte, encoding="utf-8")
+                atomic.write(dossier / nom, texte)
                 fichiers.add(nom)
 
     # Tout fichier que ce passage n'a pas écrit s'en va : ce dossier

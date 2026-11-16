@@ -15,6 +15,7 @@ import urllib.parse
 
 import requests
 
+from retro import atomic
 from retro.steam import appid as appid_mod
 
 BASE = "https://www.steamgriddb.com/api/v2"
@@ -121,7 +122,9 @@ class ArtworkClient:
                     continue
                 url = candidats[0]["url"]
                 nom = f"{manquants[cle]}{_extension(url)}"
-                (grid_dir / nom).write_bytes(self._fetch_bytes(url))
+                # Atomic: a truncated image under its real name would be seen
+                # as present by existing_asset and never fetched again.
+                atomic.write(grid_dir / nom, self._fetch_bytes(url))
                 ecrits.append(nom)
             return ecrits
         except Exception as exc:  # noqa: BLE001 - volontairement large, voir docstring
@@ -161,11 +164,11 @@ def prune_orphans(grid_dir: pathlib.Path, orphaned: list[int]) -> list[str]:
             except OSError:
                 # Une vignette que le système refuse de supprimer — le client
                 # Steam la tient ouverte, et Windows lève alors [WinError 32] —
-                # ne doit pas faire échouer la synchronisation. L'appelant
-                # écrit les raccourcis APRÈS cette purge : une exception ici
-                # emporterait une bibliothèque qui, par ailleurs, remonte très
-                # bien, pour un ornement orphelin. Non compté : rien n'a été
-                # supprimé, et le passage suivant réessaiera.
+                # ne doit pas faire échouer la synchronisation : une
+                # exception ici emporterait, pour un ornement orphelin, une
+                # synchronisation qui par ailleurs remonte très bien. Non
+                # compté : rien n'a été supprimé, et le passage suivant
+                # réessaiera.
                 continue
             supprimes.append(fichier.name)
     return supprimes

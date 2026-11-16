@@ -87,7 +87,7 @@ def test_le_parsing_de_tasklist_extrait_les_noms(monkeypatch):
     sortie = '"steam.exe","4028","Console","1","89 340 K"\n"explorer.exe","912","Console","1","42 000 K"\n'
     monkeypatch.setattr(os, "name", "nt")
     monkeypatch.setattr(writer.subprocess, "run",
-                        lambda *a, **k: types.SimpleNamespace(stdout=sortie))
+                        lambda *a, **k: types.SimpleNamespace(stdout=sortie, returncode=0))
     assert writer._running_processes() == ["steam.exe", "explorer.exe"]
     assert writer.steam_is_running()
 

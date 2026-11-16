@@ -80,9 +80,13 @@ def sync_account(
             if fichier is not None:
                 raccourci["icon"] = f"{grille}\\{fichier.name}"
 
-    purges = len(artwork.prune_orphans(account.grid_dir, resultat.orphaned_appids))
-
     sauvegarde = writer.write_shortcuts(account.shortcuts_path, resultat.entries)
+
+    # Prune AFTER the write: if the write fails (full disk, no free backup
+    # name), the "orphaned" shortcuts stay in shortcuts.vdf and still need
+    # their artwork. prune_orphans never raises, so this order does not expose
+    # the write to a failed prune.
+    purges = len(artwork.prune_orphans(account.grid_dir, resultat.orphaned_appids))
 
     # Steam Input APRÈS l'écriture des raccourcis, et sans pouvoir la faire
     # échouer : une bibliothèque écrite dont les manettes restent à régler vaut
