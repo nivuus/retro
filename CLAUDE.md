@@ -36,6 +36,7 @@ retro/cli.py          # argparse : sync install scan render langue identite bios
 retro/scan.py, profiles.py, manifest.py, install.py, acquire.py   # inventaire, profils, manifeste, téléchargement vérifié
 retro/status.py       # rapport humain (retro status)
 retro/render.py, langue*.py, dialectes.py, bios.py, titres.py, rdb.py
+retro/atomic.py       # écriture atomique (temporaire + os.replace) : plans, artwork
 retro/steam/          # shortcuts.vdf, appid, artwork, steam_input, reconcile, sync
 retro/launcher.py     # dépose le lanceur et écrit les plans de lancement
 retro/data/           # DANS le paquet (package-data) : manifests/core.toml, profiles/*.toml,

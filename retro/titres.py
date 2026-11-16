@@ -60,7 +60,16 @@ class Titre:
 
 
 def _texte(v) -> str:
-    return v.decode("ascii", "replace") if isinstance(v, bytes) else str(v or "")
+    """A record field as text.
+
+    RDB text is msgpack `str`, i.e. UTF-8, and `retro.rdb` already decodes it.
+    A field written as msgpack `bin` (the converter does so for `serial`, and
+    a name can be stored the same way) declares no encoding of its own;
+    RetroArch handles every name as UTF-8, so bytes are read as UTF-8 too.
+    ASCII-only values such as serials and hex digests are unaffected, and a
+    non-English title keeps its script instead of turning into `?` runs.
+    """
+    return v.decode("utf-8", "replace") if isinstance(v, bytes) else str(v or "")
 
 
 def empreinte_fiche(v) -> str:
@@ -73,7 +82,7 @@ def empreinte_fiche(v) -> str:
     correspondance, et l'échec était muet.
     """
     if isinstance(v, bytes):
-        return v.hex() if len(v) == 16 else v.decode("ascii", "replace").lower()
+        return v.hex() if len(v) == 16 else _texte(v).lower()
     return str(v or "").lower()
 
 
@@ -258,6 +267,53 @@ def charger_table(chemin: pathlib.Path = TABLE) -> dict[str, dict]:
     return table
 
 
+class _Index:
+    """The records of one database, keyed once for every lookup.
+
+    Built in one pass over the records. Each lookup keeps the FIRST record in
+    file order that matches, which is what the linear scans it replaces did.
+    """
+
+    def __init__(self, fiches: list[dict]):
+        self._noms: dict[str, int] = {}
+        self._tiges: dict[str, int] = {}
+        self._md5: dict[str, int] = {}
+        self._series: dict[str, int] = {}
+        self._fiches = fiches
+        self._courtes: list[tuple[str, int]] = []
+        for i, e in enumerate(fiches):
+            rn = _texte(e.get("rom_name", "")).lower()
+            self._noms.setdefault(rn, i)
+            self._tiges.setdefault(rn.rsplit(".", 1)[0], i)
+            self._tiges.setdefault(tige_de_fiche(e.get("rom_name")), i)
+            h = empreinte_fiche(e.get("md5"))
+            if h:
+                self._md5.setdefault(h, i)
+            s = normaliser_serie(e.get("serial"))
+            if s:
+                self._series.setdefault(s, i)
+                if len(s) >= 4:
+                    self._courtes.append((s, i))
+
+    def par_nom(self, nom: str, tige: str) -> dict | None:
+        """The first record whose file name, or file stem, is this one."""
+        trouves = [i for i in (self._noms.get(nom), self._tiges.get(tige))
+                   if i is not None]
+        return self._fiches[min(trouves)] if trouves else None
+
+    def par_md5(self, empreinte: str) -> dict | None:
+        i = self._md5.get(empreinte)
+        return None if i is None else self._fiches[i]
+
+    def par_serie(self, serie: str) -> dict | None:
+        i = self._series.get(serie)
+        return None if i is None else self._fiches[i]
+
+    def series_suffixes(self, serie: str) -> list[dict]:
+        """The records whose serial is a suffix of `serie`."""
+        return [self._fiches[i] for s, i in self._courtes if serie.endswith(s)]
+
+
 class Resolveur:
     """Résout les titres d'une bibliothèque, une base chargée au plus une fois.
 
@@ -271,6 +327,13 @@ class Resolveur:
         self.dossier = dossier
         self.table = table if table is not None else charger_table()
         self._bases: dict[str, list[dict]] = {}
+        # One index per database, built on first use: resolving a library is
+        # then O(games), not O(games x records).
+        self._index: dict[str, _Index] = {}
+        # md5 of files already hashed, keyed by what makes the content change
+        # (path, size, mtime): a file is read once per run, however many times
+        # it is asked about.
+        self._empreintes: dict[tuple, str] = {}
         # Ce qui n'a pas pu être résolu, et pourquoi. Le rapport le nomme :
         # « 2 jeux gardent leur nom de fichier » sans dire lesquels laisserait
         # chercher.
@@ -298,22 +361,32 @@ class Resolveur:
         self._bases[sid] = fiches
         return fiches
 
+    def _indexer(self, sid: str, fiches: list[dict]) -> "_Index":
+        if sid not in self._index:
+            self._index[sid] = _Index(fiches)
+        return self._index[sid]
+
+    def _md5(self, chemin: pathlib.Path) -> str:
+        """The md5 of a file, streamed, and remembered for this run."""
+        st = chemin.stat()
+        cle = (str(chemin), st.st_size, st.st_mtime_ns)
+        if cle not in self._empreintes:
+            self._empreintes[cle] = lecture.md5(chemin)
+        return self._empreintes[cle]
+
     def resoudre(self, chemin: pathlib.Path, sid: str) -> Titre | None:
         fiches = self._base(sid)
         if not fiches:
             return None
-        nom, tige = chemin.name.lower(), chemin.stem.lower()
-        for e in fiches:
-            rn = _texte(e.get("rom_name", "")).lower()
-            if rn == nom or rn.rsplit(".", 1)[0] == tige \
-                    or tige_de_fiche(e.get("rom_name")) == tige:
-                return Titre(e["name"], "nom de fichier")
+        index = self._indexer(sid, fiches)
+        e = index.par_nom(chemin.name.lower(), chemin.stem.lower())
+        if e is not None:
+            return Titre(_texte(e["name"]), "nom de fichier")
         try:
             if chemin.is_file() and chemin.stat().st_size <= TAILLE_MAX_EMPREINTE:
-                h = hashlib.md5(lecture.octets(chemin)).hexdigest()
-                for e in fiches:
-                    if empreinte_fiche(e.get("md5")) == h:
-                        return Titre(e["name"], "empreinte md5")
+                e = index.par_md5(self._md5(chemin))
+                if e is not None:
+                    return Titre(_texte(e["name"]), "empreinte md5")
         except OSError:
             pass
         return self._par_serie(chemin, sid, fiches)
@@ -328,18 +401,17 @@ class Resolveur:
             serie = ""
         if not serie:
             return None
-        for e in fiches:
-            if normaliser_serie(e.get("serial")) == serie:
-                return Titre(e["name"], f"série {serie}")
+        index = self._indexer(sid, fiches)
+        e = index.par_serie(serie)
+        if e is not None:
+            return Titre(_texte(e["name"]), f"série {serie}")
         # LES BASES SEGA OMETTENT LE PRÉFIXE DE L'ÉDITEUR. Mesuré : le disque
         # de Sega Rally 2 (USA) porte « MK51019 » là où la base dit « 51019 »,
         # et Saturn Bomberman « MK81070 » pour « 81070 ». On accepte donc
         # qu'une série de la base soit un SUFFIXE de celle du disque — mais
         # UNIQUEMENT si elle ne désigne qu'une fiche. Renommer un jeu d'après
         # une ambiguïté serait pire que ne pas le renommer.
-        courtes = [e for e in fiches
-                   if len(normaliser_serie(e.get("serial"))) >= 4
-                   and serie.endswith(normaliser_serie(e.get("serial")))]
+        courtes = index.series_suffixes(serie)
         if len(courtes) == 1:
-            return Titre(courtes[0]["name"], f"série {serie} (suffixe)")
+            return Titre(_texte(courtes[0]["name"]), f"série {serie} (suffixe)")
         return None

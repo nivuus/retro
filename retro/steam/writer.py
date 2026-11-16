@@ -28,6 +28,15 @@ class SteamRunningError(RuntimeError):
     """Steam tourne : écrire maintenant serait écrasé à sa fermeture."""
 
 
+class SteamStateUnknownError(SteamRunningError):
+    """The process list could not be read, so Steam may be running.
+
+    A subclass of SteamRunningError on purpose: every caller that refuses to
+    write while Steam runs must refuse here too. Treating "could not tell" as
+    "not running" is the silent loss the guard exists to prevent.
+    """
+
+
 class BackupError(RuntimeError):
     """Aucun chemin de sauvegarde libre : on n'écrit pas sans filet."""
 
@@ -37,11 +46,26 @@ def _running_processes() -> list[str]:
     développement sous Linux n'ont pas de Steam à surveiller."""
     if os.name != "nt":
         return []
-    sortie = subprocess.run(
-        ["tasklist", "/fo", "csv", "/nh"],
-        capture_output=True, text=True, check=False,
-    ).stdout
-    return [ligne.split('","')[0].strip('"') for ligne in sortie.splitlines() if ligne]
+    try:
+        resultat = subprocess.run(
+            ["tasklist", "/fo", "csv", "/nh"],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError as exc:
+        raise SteamStateUnknownError(
+            f"Cannot list the running processes ({exc}): there is no way to "
+            "tell whether Steam is running, so nothing is written.") from exc
+    noms = [ligne.split('","')[0].strip('"')
+            for ligne in resultat.stdout.splitlines() if ligne]
+    # Windows always runs processes: an empty list, or a non-zero exit code,
+    # is a `tasklist` failure (session without rights, WMI blocked), never
+    # proof that Steam is closed.
+    if resultat.returncode != 0 or not noms:
+        raise SteamStateUnknownError(
+            f"`tasklist` failed (exit code {resultat.returncode}, "
+            f"{len(noms)} processes read): there is no way to tell whether "
+            "Steam is running, so nothing is written.")
+    return noms
 
 
 def steam_is_running(processes: list[str] | None = None) -> bool:
@@ -106,6 +130,10 @@ def write_shortcuts(path: pathlib.Path, entries: list[dict]) -> pathlib.Path | N
     # Rendre AVANT de toucher au disque : un rendu qui échoue ne doit pas
     # laisser un fichier à moitié écrit ni une sauvegarde orpheline.
     blob = vdf_io.dumps_shortcuts(entries)
+
+    # The CLI checks once, before the artwork download that takes minutes:
+    # Steam may have started since. Check again, right before writing.
+    assert_steam_not_running(path.name)
 
     existe = path.exists()
     if existe and path.read_bytes() == blob:
